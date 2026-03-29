@@ -57,4 +57,15 @@ class Module extends Model
     {
         return $query->where('status', true);
     }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Accessors
+    |--------------------------------------------------------------------------
+    */
+
+    public function getThumbnailAttribute($value)
+    {
+        return $value ? url($value) : null;
+    }
 }

@@ -15,12 +15,14 @@ class Topic extends Model
         'title',
         'description',
         'thumbnail',
+        'estimated_duration', 
         'status',
         'created_by',
     ];
 
     protected $casts = [
         'status' => 'boolean',
+        'estimated_duration' => 'integer',
     ];
 
     /*
@@ -63,5 +65,16 @@ class Topic extends Model
     public function scopeActive(Builder $query)
     {
         return $query->where('status', true);
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Accessor
+    |--------------------------------------------------------------------------
+    */
+
+    public function getThumbnailAttribute($value)
+    {
+        return $value ? url($value) : null;
     }
 }
