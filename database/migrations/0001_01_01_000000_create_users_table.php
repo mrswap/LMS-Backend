@@ -13,10 +13,21 @@ return new class extends Migration
     {
         Schema::create('users', function (Blueprint $table) {
             $table->id();
+
             $table->string('name');
             $table->string('email')->unique();
             $table->timestamp('email_verified_at')->nullable();
             $table->string('password');
+
+            // Role system (simple, scalable later)
+            $table->enum('role', ['superadmin', 'staff', 'sales'])->default('sales');
+
+            // Account status
+            $table->boolean('is_active')->default(true);
+
+            // Audit (who created this user)
+            $table->foreignId('created_by')->nullable()->constrained('users')->nullOnDelete();
+            $table->string('designation')->nullable();
             $table->rememberToken();
             $table->timestamps();
         });

@@ -1,0 +1,67 @@
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Builder;
+
+class Topic extends Model
+{
+    protected $fillable = [
+        'program_id',
+        'level_id',
+        'module_id',
+        'chapter_id',
+        'title',
+        'description',
+        'thumbnail',
+        'status',
+        'created_by',
+    ];
+
+    protected $casts = [
+        'status' => 'boolean',
+    ];
+
+    /*
+    |--------------------------------------------------------------------------
+    | Relationships
+    |--------------------------------------------------------------------------
+    */
+
+    public function program()
+    {
+        return $this->belongsTo(Program::class);
+    }
+
+    public function level()
+    {
+        return $this->belongsTo(Level::class);
+    }
+
+    public function module()
+    {
+        return $this->belongsTo(Module::class);
+    }
+
+    public function chapter()
+    {
+        return $this->belongsTo(Chapter::class);
+    }
+
+    public function creator()
+    {
+        return $this->belongsTo(User::class, 'created_by');
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Scopes
+    |--------------------------------------------------------------------------
+    */
+
+    public function scopeActive(Builder $query)
+    {
+        return $query->where('status', true);
+    }
+}
