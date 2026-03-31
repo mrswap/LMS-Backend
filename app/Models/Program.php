@@ -50,4 +50,32 @@ class Program extends Model
     {
         return $value ? url($value) : null;
     }
+    public function translations()
+    {
+        return $this->hasMany(ProgramTranslation::class);
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Helper: Get Translation with Fallback
+    |--------------------------------------------------------------------------
+    */
+    public function getTranslation($lang = null)
+    {
+        $lang = $lang ?? app()->getLocale();
+
+        $defaultLang = \App\Models\Language::where('is_default', true)->value('code');
+
+        $translation = $this->translations
+            ->where('language_code', $lang)
+            ->first();
+
+        if (!$translation) {
+            $translation = $this->translations
+                ->where('language_code', $defaultLang)
+                ->first();
+        }
+
+        return $translation;
+    }
 }
