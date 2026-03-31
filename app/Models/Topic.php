@@ -15,7 +15,7 @@ class Topic extends Model
         'title',
         'description',
         'thumbnail',
-        'estimated_duration', 
+        'estimated_duration',
         'status',
         'created_by',
     ];
@@ -76,5 +76,10 @@ class Topic extends Model
     public function getThumbnailAttribute($value)
     {
         return $value ? url($value) : null;
+    }
+
+    public function translations()
+    {
+        return $this->hasMany(TopicTranslation::class);
     }
 }
