@@ -9,6 +9,7 @@ use App\Modules\Admin\Program\Controllers\ModuleController;
 use App\Modules\Admin\Program\Controllers\ChapterController;
 use App\Modules\Admin\Program\Controllers\TopicController;
 use App\Modules\Admin\Language\Controllers\LanguageController;
+use App\Modules\Admin\UserManagement\Controllers\UserController;
 
 
 Route::prefix('v1')->group(function () {
@@ -35,6 +36,17 @@ Route::prefix('v1')->group(function () {
             Route::post('languages/{id}', [LanguageController::class, 'update']);
             Route::delete('languages/{id}', [LanguageController::class, 'destroy']);
             Route::post('languages/{id}/toggle-status', [LanguageController::class, 'toggleStatus']);
+            /*
+            |--------------------------------------------------------------------------
+            | USERS MANAGEMENT
+            |--------------------------------------------------------------------------
+            */
+            Route::get('users', [UserController::class, 'index']);
+            Route::post('users', [UserController::class, 'store']);
+            Route::get('users/{id}', [UserController::class, 'show']);
+            Route::post('users/{id}', [UserController::class, 'update']);
+            Route::delete('users/{id}', [UserController::class, 'destroy']);
+            Route::post('users/{id}/toggle-status', [UserController::class, 'toggleStatus']);
             /*
             |--------------------------------------------------------------------------
             | PROGRAMS

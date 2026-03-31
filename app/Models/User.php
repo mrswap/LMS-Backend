@@ -23,10 +23,15 @@ class User extends Authenticatable
         'password',
         'role',
         'designation',
+        'department',
+        'region',
+        'city',
+        'mobile',
+        'employee_id',
+        'profile_image',
         'is_active',
         'created_by',
     ];
-
     /*
     |--------------------------------------------------------------------------
     | Hidden Fields
@@ -65,6 +70,24 @@ class User extends Authenticatable
     | Helper Methods
     |--------------------------------------------------------------------------
     */
+    protected static function booted()
+    {
+        static::deleting(function ($user) {
+
+            if ($user->role === self::ROLE_SUPERADMIN) {
+
+                $count = self::where('role', self::ROLE_SUPERADMIN)->count();
+
+                if ($count <= 1) {
+                    throw new \Exception('At least one superadmin must exist.');
+                }
+
+                throw new \Exception('Superadmin cannot be deleted.');
+            }
+        });
+    }
+
+
     public function isSuperAdmin(): bool
     {
         return $this->role === self::ROLE_SUPERADMIN;
