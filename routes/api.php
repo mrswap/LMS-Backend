@@ -8,6 +8,8 @@ use App\Modules\Admin\Program\Controllers\LevelController;
 use App\Modules\Admin\Program\Controllers\ModuleController;
 use App\Modules\Admin\Program\Controllers\ChapterController;
 use App\Modules\Admin\Program\Controllers\TopicController;
+use App\Modules\Admin\Language\Controllers\LanguageController;
+
 
 Route::prefix('v1')->group(function () {
 
@@ -22,7 +24,17 @@ Route::prefix('v1')->group(function () {
 
         // 🔒 SUPERADMIN ONLY
         Route::middleware(['auth:sanctum', 'role:superadmin'])->group(function () {
-
+            /*
+            |--------------------------------------------------------------------------
+            | LANGUAGES
+            |--------------------------------------------------------------------------
+            */
+            Route::get('languages', [LanguageController::class, 'index']);
+            Route::post('languages', [LanguageController::class, 'store']);
+            Route::get('languages/{id}', [LanguageController::class, 'show']);
+            Route::post('languages/{id}', [LanguageController::class, 'update']);
+            Route::delete('languages/{id}', [LanguageController::class, 'destroy']);
+            Route::post('languages/{id}/toggle-status', [LanguageController::class, 'toggleStatus']);
             /*
             |--------------------------------------------------------------------------
             | PROGRAMS
@@ -86,7 +98,6 @@ Route::prefix('v1')->group(function () {
             Route::post('topics/{id}', [TopicController::class, 'update']);
             Route::delete('topics/{id}', [TopicController::class, 'destroy']);
             Route::post('topics/{id}/toggle-status', [TopicController::class, 'toggleStatus']);
-
         });
     });
 });
