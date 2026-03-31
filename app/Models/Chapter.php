@@ -22,12 +22,6 @@ class Chapter extends Model
         'status' => 'boolean',
     ];
 
-    /*
-    |--------------------------------------------------------------------------
-    | Relationships
-    |--------------------------------------------------------------------------
-    */
-
     public function program()
     {
         return $this->belongsTo(Program::class);
@@ -53,22 +47,16 @@ class Chapter extends Model
         return $this->belongsTo(User::class, 'created_by');
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | Scopes
-    |--------------------------------------------------------------------------
-    */
+    // 🔥 REQUIRED
+    public function translations()
+    {
+        return $this->hasMany(ChapterTranslation::class);
+    }
 
     public function scopeActive(Builder $query)
     {
         return $query->where('status', true);
     }
-
-    /*
-    |--------------------------------------------------------------------------
-    | Accessors
-    |--------------------------------------------------------------------------
-    */
 
     public function getThumbnailAttribute($value)
     {
