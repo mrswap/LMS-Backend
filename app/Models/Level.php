@@ -41,6 +41,12 @@ class Level extends Model
         return $this->belongsTo(User::class, 'created_by');
     }
 
+    // 🔥 REQUIRED (for multilingual)
+    public function translations()
+    {
+        return $this->hasMany(LevelTranslation::class);
+    }
+
     /*
     |--------------------------------------------------------------------------
     | Scopes
