@@ -31,11 +31,12 @@ class LevelController extends Controller
 
         $query = Level::with(['creator:id,name', 'program:id,title', 'translations']);
 
+
         /*
-    |--------------------------------------------------------------------------
-    | FILTER: PROGRAM
-    |--------------------------------------------------------------------------
-    */
+        |--------------------------------------------------------------------------
+        | FILTER: PROGRAM
+        |--------------------------------------------------------------------------
+        */
         if ($request->filled('program_id')) {
 
             $program = Program::find($request->program_id);
@@ -51,10 +52,10 @@ class LevelController extends Controller
         }
 
         /*
-    |--------------------------------------------------------------------------
-    | FILTER: TITLE (LANGUAGE BASED)
-    |--------------------------------------------------------------------------
-    */
+        |--------------------------------------------------------------------------
+        | FILTER: TITLE (LANGUAGE BASED)
+        |--------------------------------------------------------------------------
+        */
         if ($request->filled('search')) {
 
             $search = $request->search;
@@ -75,21 +76,33 @@ class LevelController extends Controller
         }
 
         /*
-    |--------------------------------------------------------------------------
-    | HIDE BASE_RECORD FOR EN (NO SEARCH CASE)
-    |--------------------------------------------------------------------------
-    */
+        |--------------------------------------------------------------------------
+        | HIDE BASE_RECORD FOR EN (NO SEARCH CASE)
+        |--------------------------------------------------------------------------
+        */
         if ($lang === 'en' && !$request->filled('search')) {
             $query->where('title', '!=', 'BASE_RECORD');
+        }
+
+        if ($request->has('status')) {
+
+            if ($request->status === 'all') {
+                // no filter
+            } else {
+                $query->where('status', (bool) $request->status);
+            }
+        } else {
+            // 🔥 default → only active
+            $query->where('status', true);
         }
 
         $levels = $query->latest()->paginate(10);
 
         /*
-    |--------------------------------------------------------------------------
-    | TRANSFORM RESPONSE
-    |--------------------------------------------------------------------------
-    */
+        |--------------------------------------------------------------------------
+        | TRANSFORM RESPONSE
+        |--------------------------------------------------------------------------
+        */
         $levels->getCollection()->transform(function ($level) use ($lang) {
 
             if ($lang === 'en') {
