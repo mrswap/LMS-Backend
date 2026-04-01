@@ -29,11 +29,13 @@ class LevelController extends Controller
     {
         $lang = $this->resolveLanguage($request);
 
-        $query = Level::with(['creator:id,name', 'program:id,title', 'translations'])
-            ->when($lang === 'en', function ($q) {
-                $q->where('title', '!=', 'BASE_RECORD');
-            });
+        $query = Level::with(['creator:id,name', 'program:id,title', 'translations']);
 
+        /*
+    |--------------------------------------------------------------------------
+    | FILTER: PROGRAM
+    |--------------------------------------------------------------------------
+    */
         if ($request->filled('program_id')) {
 
             $program = Program::find($request->program_id);
@@ -48,8 +50,46 @@ class LevelController extends Controller
             $query->where('program_id', $request->program_id);
         }
 
+        /*
+    |--------------------------------------------------------------------------
+    | FILTER: TITLE (LANGUAGE BASED)
+    |--------------------------------------------------------------------------
+    */
+        if ($request->filled('search')) {
+
+            $search = $request->search;
+
+            if ($lang === 'en') {
+
+                // 🔥 Search in main table
+                $query->where('title', 'like', "%{$search}%")
+                    ->where('title', '!=', 'BASE_RECORD');
+            } else {
+
+                // 🔥 Search in translations
+                $query->whereHas('translations', function ($q) use ($lang, $search) {
+                    $q->where('language_code', $lang)
+                        ->where('title', 'like', "%{$search}%");
+                });
+            }
+        }
+
+        /*
+    |--------------------------------------------------------------------------
+    | HIDE BASE_RECORD FOR EN (NO SEARCH CASE)
+    |--------------------------------------------------------------------------
+    */
+        if ($lang === 'en' && !$request->filled('search')) {
+            $query->where('title', '!=', 'BASE_RECORD');
+        }
+
         $levels = $query->latest()->paginate(10);
 
+        /*
+    |--------------------------------------------------------------------------
+    | TRANSFORM RESPONSE
+    |--------------------------------------------------------------------------
+    */
         $levels->getCollection()->transform(function ($level) use ($lang) {
 
             if ($lang === 'en') {
@@ -125,7 +165,6 @@ class LevelController extends Controller
                 ...$validated,
                 'created_by' => auth()->id(),
             ]);
-
         } else {
 
             $level = Level::create([
@@ -252,7 +291,6 @@ class LevelController extends Controller
                 'description' => $validated['description'] ?? null,
                 'thumbnail' => $validated['thumbnail'] ?? $level->thumbnail,
             ]);
-
         } else {
 
             $level->translations()->updateOrCreate(

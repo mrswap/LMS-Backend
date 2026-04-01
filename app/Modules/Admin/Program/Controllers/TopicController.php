@@ -40,7 +40,11 @@ class TopicController extends Controller
             'translations'
         ]);
 
-        // Filters (same as your original)
+        /*
+    |--------------------------------------------------------------------------
+    | FILTERS
+    |--------------------------------------------------------------------------
+    */
         if ($request->filled('program_id')) {
             if (!Program::find($request->program_id)) {
                 return response()->json(['success' => false, 'message' => 'Program not found'], 404);
@@ -69,12 +73,68 @@ class TopicController extends Controller
             $query->where('chapter_id', $request->chapter_id);
         }
 
-        if ($lang === 'en') {
+        /*
+    |--------------------------------------------------------------------------
+    | SEARCH (TOPIC + CHAPTER + MODULE + LEVEL + PROGRAM)
+    |--------------------------------------------------------------------------
+    */
+        if ($request->filled('search')) {
+
+            $search = $request->search;
+
+            if ($lang === 'en') {
+
+                $query->where(function ($q) use ($search) {
+
+                    // Topic
+                    $q->where('title', 'like', "%{$search}%")
+
+                        // Chapter
+                        ->orWhereHas('chapter', function ($q2) use ($search) {
+                            $q2->where('title', 'like', "%{$search}%");
+                        })
+
+                        // Module
+                        ->orWhereHas('module', function ($q3) use ($search) {
+                            $q3->where('title', 'like', "%{$search}%");
+                        })
+
+                        // Level
+                        ->orWhereHas('level', function ($q4) use ($search) {
+                            $q4->where('title', 'like', "%{$search}%");
+                        })
+
+                        // Program
+                        ->orWhereHas('program', function ($q5) use ($search) {
+                            $q5->where('title', 'like', "%{$search}%");
+                        });
+                });
+            } else {
+
+                // 🔥 Translation-based search (Topic only)
+                $query->whereHas('translations', function ($q) use ($lang, $search) {
+                    $q->where('language_code', $lang)
+                        ->where('title', 'like', "%{$search}%");
+                });
+            }
+        }
+
+        /*
+    |--------------------------------------------------------------------------
+    | HIDE BASE_RECORD (EN ONLY)
+    |--------------------------------------------------------------------------
+    */
+        if ($lang === 'en' && !$request->filled('search')) {
             $query->where('title', '!=', 'BASE_RECORD');
         }
 
         $topics = $query->latest()->paginate(10);
 
+        /*
+    |--------------------------------------------------------------------------
+    | TRANSFORM RESPONSE
+    |--------------------------------------------------------------------------
+    */
         $topics->getCollection()->transform(function ($topic) use ($lang) {
 
             if ($lang === 'en') {
@@ -85,7 +145,7 @@ class TopicController extends Controller
                     'description' => $topic->description,
                     'thumbnail' => $topic->thumbnail,
                     'estimated_duration' => $topic->estimated_duration,
-                    'status' => $topic->status,
+                    'status' => (bool) $topic->status,
                     'program' => $topic->program,
                     'level' => $topic->level,
                     'module' => $topic->module,
@@ -109,7 +169,7 @@ class TopicController extends Controller
                 'description' => $translation->description,
                 'thumbnail' => $topic->thumbnail,
                 'estimated_duration' => $topic->estimated_duration,
-                'status' => $topic->status,
+                'status' => (bool) $topic->status,
                 'program' => $topic->program,
                 'level' => $topic->level,
                 'module' => $topic->module,
@@ -119,11 +179,15 @@ class TopicController extends Controller
             ];
         });
 
-        $topics->setCollection($topics->getCollection()->filter()->values());
+        $topics->setCollection(
+            $topics->getCollection()->filter()->values()
+        );
 
-        return response()->json(['success' => true, 'data' => $topics]);
+        return response()->json([
+            'success' => true,
+            'data' => $topics
+        ]);
     }
-
     /*
     |--------------------------------------------------------------------------
     | STORE

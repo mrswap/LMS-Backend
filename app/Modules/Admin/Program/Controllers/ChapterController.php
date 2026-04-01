@@ -37,30 +37,119 @@ class ChapterController extends Controller
             'level:id,title',
             'module:id,title',
             'translations'
-        ])->when($lang === 'en', function ($q) {
-            $q->where('title', '!=', 'BASE_RECORD');
-        });
+        ]);
 
+        /*
+    |--------------------------------------------------------------------------
+    | FILTER: PROGRAM
+    |--------------------------------------------------------------------------
+    */
         if ($request->filled('program_id')) {
             $program = Program::find($request->program_id);
-            if (!$program) return response()->json(['success' => false, 'message' => 'Program not found'], 404);
+
+            if (!$program) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Program not found'
+                ], 404);
+            }
+
             $query->where('program_id', $request->program_id);
         }
 
+        /*
+    |--------------------------------------------------------------------------
+    | FILTER: LEVEL
+    |--------------------------------------------------------------------------
+    */
         if ($request->filled('level_id')) {
             $level = Level::find($request->level_id);
-            if (!$level) return response()->json(['success' => false, 'message' => 'Level not found'], 404);
+
+            if (!$level) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Level not found'
+                ], 404);
+            }
+
             $query->where('level_id', $request->level_id);
         }
 
+        /*
+    |--------------------------------------------------------------------------
+    | FILTER: MODULE
+    |--------------------------------------------------------------------------
+    */
         if ($request->filled('module_id')) {
             $module = Module::find($request->module_id);
-            if (!$module) return response()->json(['success' => false, 'message' => 'Module not found'], 404);
+
+            if (!$module) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Module not found'
+                ], 404);
+            }
+
             $query->where('module_id', $request->module_id);
+        }
+
+        /*
+    |--------------------------------------------------------------------------
+    | SEARCH (CHAPTER + MODULE + LEVEL + PROGRAM)
+    |--------------------------------------------------------------------------
+    */
+        if ($request->filled('search')) {
+
+            $search = $request->search;
+
+            if ($lang === 'en') {
+
+                $query->where(function ($q) use ($search) {
+
+                    // Chapter title
+                    $q->where('title', 'like', "%{$search}%")
+
+                        // Module title
+                        ->orWhereHas('module', function ($q2) use ($search) {
+                            $q2->where('title', 'like', "%{$search}%");
+                        })
+
+                        // Level title
+                        ->orWhereHas('level', function ($q3) use ($search) {
+                            $q3->where('title', 'like', "%{$search}%");
+                        })
+
+                        // Program title
+                        ->orWhereHas('program', function ($q4) use ($search) {
+                            $q4->where('title', 'like', "%{$search}%");
+                        });
+                });
+            } else {
+
+                // 🔥 Translation search (chapter only)
+                $query->whereHas('translations', function ($q) use ($lang, $search) {
+                    $q->where('language_code', $lang)
+                        ->where('title', 'like', "%{$search}%");
+                });
+            }
+        }
+
+        /*
+    |--------------------------------------------------------------------------
+    | HIDE BASE_RECORD (EN ONLY)
+    |--------------------------------------------------------------------------
+    */
+        if ($lang === 'en' && !$request->filled('search')) {
+            $query->where('title', '!=', 'BASE_RECORD');
         }
 
         $chapters = $query->latest()->paginate(10);
 
+        /*
+    |--------------------------------------------------------------------------
+    | TRANSFORM RESPONSE
+    |--------------------------------------------------------------------------
+    */
         $chapters->getCollection()->transform(function ($chapter) use ($lang) {
 
             if ($lang === 'en') {
@@ -79,7 +168,10 @@ class ChapterController extends Controller
                 ];
             }
 
-            $translation = $chapter->translations->where('language_code', $lang)->first();
+            $translation = $chapter->translations
+                ->where('language_code', $lang)
+                ->first();
+
             if (!$translation) return null;
 
             return [
@@ -107,7 +199,6 @@ class ChapterController extends Controller
             'data' => $chapters
         ]);
     }
-
     /*
     |--------------------------------------------------------------------------
     | STORE
@@ -159,7 +250,6 @@ class ChapterController extends Controller
                 ...$validated,
                 'created_by' => auth()->id(),
             ]);
-
         } else {
 
             $chapter = Chapter::create([
@@ -297,7 +387,6 @@ class ChapterController extends Controller
                 'description' => $validated['description'] ?? null,
                 'thumbnail' => $validated['thumbnail'] ?? $chapter->thumbnail,
             ]);
-
         } else {
 
             $chapter->translations()->updateOrCreate(
