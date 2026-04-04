@@ -60,6 +60,6 @@ class Chapter extends Model
 
     public function getThumbnailAttribute($value)
     {
-        return $value ? url($value) : null;
+        return $value ? url('public/' . ltrim($value, '/')) : null;
     }
 }

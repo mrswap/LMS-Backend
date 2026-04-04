@@ -128,6 +128,28 @@ class TopicController extends Controller
             $query->where('title', '!=', 'BASE_RECORD');
         }
 
+        /*
+        |--------------------------------------------------------------------------
+        | STATUS FILTER (🔥 FIXED POSITION)
+        |--------------------------------------------------------------------------
+        */
+        if ($request->has('status')) {
+
+            if ($request->status === 'all') {
+                // no filter
+            } else {
+                $query->where('status', (bool) $request->status);
+            }
+        } else {
+            // default → only active
+            $query->where('status', true);
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | PAGINATION (AFTER ALL FILTERS)
+        |--------------------------------------------------------------------------
+        */
         $topics = $query->latest()->paginate(10);
 
         if ($request->has('status')) {
@@ -283,45 +305,45 @@ class TopicController extends Controller
         ], 201);
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | SHOW
-    |--------------------------------------------------------------------------
-    */
-    public function show(Request $request, $id)
-    {
-        $lang = $this->resolveLanguage($request);
+        /*
+        |--------------------------------------------------------------------------
+        | SHOW
+        |--------------------------------------------------------------------------
+        */
+        public function show(Request $request, $id)
+        {
+            $lang = $this->resolveLanguage($request);
 
-        $topic = Topic::with(['translations'])->findOrFail($id);
+            $topic = Topic::with(['translations'])->findOrFail($id);
 
-        if ($lang === 'en') {
-            if ($topic->title === 'BASE_RECORD') {
-                return response()->json(['success' => false, 'message' => 'English content not available'], 404);
+            if ($lang === 'en') {
+                if ($topic->title === 'BASE_RECORD') {
+                    return response()->json(['success' => false, 'message' => 'English content not available'], 404);
+                }
+
+                return response()->json(['success' => true, 'data' => $topic]);
             }
 
-            return response()->json(['success' => true, 'data' => $topic]);
+            $translation = $topic->translations
+                ->where('language_code', $lang)
+                ->first();
+
+            if (!$translation) {
+                return response()->json(['success' => false, 'message' => 'Translation not available'], 404);
+            }
+
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'id' => $topic->id,
+                    'language_code' => $lang,
+                    'title' => $translation->title,
+                    'description' => $translation->description,
+                    'thumbnail' => $topic->thumbnail,
+                    'estimated_duration' => $topic->estimated_duration,
+                ]
+            ]);
         }
-
-        $translation = $topic->translations
-            ->where('language_code', $lang)
-            ->first();
-
-        if (!$translation) {
-            return response()->json(['success' => false, 'message' => 'Translation not available'], 404);
-        }
-
-        return response()->json([
-            'success' => true,
-            'data' => [
-                'id' => $topic->id,
-                'language_code' => $lang,
-                'title' => $translation->title,
-                'description' => $translation->description,
-                'thumbnail' => $topic->thumbnail,
-                'estimated_duration' => $topic->estimated_duration,
-            ]
-        ]);
-    }
 
     /*
     |--------------------------------------------------------------------------

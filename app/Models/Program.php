@@ -46,10 +46,6 @@ class Program extends Model
         return $query->where('status', true);
     }
 
-    public function getThumbnailAttribute($value)
-    {
-        return $value ? url($value) : null;
-    }
     public function translations()
     {
         return $this->hasMany(ProgramTranslation::class);
@@ -77,5 +73,11 @@ class Program extends Model
         }
 
         return $translation;
+    }
+
+
+    public function getThumbnailAttribute($value)
+    {
+        return $value ? url('public/' . ltrim($value, '/')) : null;
     }
 }

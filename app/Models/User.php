@@ -112,4 +112,9 @@ class User extends Authenticatable
     {
         return $this->belongsTo(User::class, 'created_by');
     }
+
+    public function getThumbnailAttribute($value)
+    {
+        return $value ? url('public/' . ltrim($value, '/')) : null;
+    }
 }

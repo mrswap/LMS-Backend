@@ -46,4 +46,9 @@ class Language extends Model
     {
         return $value ? url($value) : null;
     }
+
+    public function getThumbnailAttribute($value)
+    {
+        return $value ? url('public/' . ltrim($value, '/')) : null;
+    }
 }
