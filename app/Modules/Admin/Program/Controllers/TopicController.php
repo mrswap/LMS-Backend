@@ -41,9 +41,9 @@ class TopicController extends Controller
         ]);
 
         /*
-        |--------------------------------------------------------------------------
+        |-----------------------------
         | FILTERS
-        |--------------------------------------------------------------------------
+        |-----------------------------
         */
         if ($request->filled('program_id')) {
             if (!Program::find($request->program_id)) {
@@ -74,9 +74,9 @@ class TopicController extends Controller
         }
 
         /*
-        |--------------------------------------------------------------------------
-        | SEARCH (TOPIC + CHAPTER + MODULE + LEVEL + PROGRAM)
-        |--------------------------------------------------------------------------
+        |-----------------------------
+        | SEARCH
+        |-----------------------------
         */
         if ($request->filled('search')) {
 
@@ -85,33 +85,13 @@ class TopicController extends Controller
             if ($lang === 'en') {
 
                 $query->where(function ($q) use ($search) {
-
-                    // Topic
                     $q->where('title', 'like', "%{$search}%")
-
-                        // Chapter
-                        ->orWhereHas('chapter', function ($q2) use ($search) {
-                            $q2->where('title', 'like', "%{$search}%");
-                        })
-
-                        // Module
-                        ->orWhereHas('module', function ($q3) use ($search) {
-                            $q3->where('title', 'like', "%{$search}%");
-                        })
-
-                        // Level
-                        ->orWhereHas('level', function ($q4) use ($search) {
-                            $q4->where('title', 'like', "%{$search}%");
-                        })
-
-                        // Program
-                        ->orWhereHas('program', function ($q5) use ($search) {
-                            $q5->where('title', 'like', "%{$search}%");
-                        });
+                        ->orWhereHas('chapter', fn($q2) => $q2->where('title', 'like', "%{$search}%"))
+                        ->orWhereHas('module', fn($q3) => $q3->where('title', 'like', "%{$search}%"))
+                        ->orWhereHas('level', fn($q4) => $q4->where('title', 'like', "%{$search}%"))
+                        ->orWhereHas('program', fn($q5) => $q5->where('title', 'like', "%{$search}%"));
                 });
             } else {
-
-                // 🔥 Translation-based search (Topic only)
                 $query->whereHas('translations', function ($q) use ($lang, $search) {
                     $q->where('language_code', $lang)
                         ->where('title', 'like', "%{$search}%");
@@ -120,43 +100,21 @@ class TopicController extends Controller
         }
 
         /*
-        |--------------------------------------------------------------------------
-        | HIDE BASE_RECORD (EN ONLY)
-        |--------------------------------------------------------------------------
+        |-----------------------------
+        | BASE RECORD FILTER
+        |-----------------------------
         */
         if ($lang === 'en' && !$request->filled('search')) {
             $query->where('title', '!=', 'BASE_RECORD');
         }
 
         /*
-        |--------------------------------------------------------------------------
-        | STATUS FILTER (🔥 FIXED POSITION)
-        |--------------------------------------------------------------------------
+        |-----------------------------
+        | STATUS
+        |-----------------------------
         */
         if ($request->has('status')) {
-
-            if ($request->status === 'all') {
-                // no filter
-            } else {
-                $query->where('status', (bool) $request->status);
-            }
-        } else {
-            // default → only active
-            $query->where('status', true);
-        }
-
-        /*
-        |--------------------------------------------------------------------------
-        | PAGINATION (AFTER ALL FILTERS)
-        |--------------------------------------------------------------------------
-        */
-        $topics = $query->latest()->paginate(10);
-
-        if ($request->has('status')) {
-
-            if ($request->status === 'all') {
-                // no filter
-            } else {
+            if ($request->status !== 'all') {
                 $query->where('status', (bool) $request->status);
             }
         } else {
@@ -164,9 +122,37 @@ class TopicController extends Controller
         }
 
         /*
-        |--------------------------------------------------------------------------
-        | TRANSFORM RESPONSE
-        |--------------------------------------------------------------------------
+        |-----------------------------
+        | SORTING
+        |-----------------------------
+        */
+        $sortByMap = [
+            'createdAt' => 'created_at',
+            'title'     => 'title',
+            'duration'  => 'estimated_duration',
+        ];
+
+        $sortBy = $request->get('sortBy', 'createdAt');
+        $order  = strtolower($request->get('order', 'desc')) === 'asc' ? 'asc' : 'desc';
+
+        $sortColumn = $sortByMap[$sortBy] ?? 'created_at';
+
+        $query->orderBy($sortColumn, $order);
+
+        /*
+        |-----------------------------
+        | PAGINATION
+        |-----------------------------
+        */
+        $limit = (int) $request->get('limit', 10);
+        $limit = ($limit > 0 && $limit <= 100) ? $limit : 10;
+
+        $topics = $query->paginate($limit);
+
+        /*
+        |-----------------------------
+        | TRANSFORM
+        |-----------------------------
         */
         $topics->getCollection()->transform(function ($topic) use ($lang) {
 
@@ -305,45 +291,45 @@ class TopicController extends Controller
         ], 201);
     }
 
-        /*
+    /*
         |--------------------------------------------------------------------------
         | SHOW
         |--------------------------------------------------------------------------
         */
-        public function show(Request $request, $id)
-        {
-            $lang = $this->resolveLanguage($request);
+    public function show(Request $request, $id)
+    {
+        $lang = $this->resolveLanguage($request);
 
-            $topic = Topic::with(['translations'])->findOrFail($id);
+        $topic = Topic::with(['translations'])->findOrFail($id);
 
-            if ($lang === 'en') {
-                if ($topic->title === 'BASE_RECORD') {
-                    return response()->json(['success' => false, 'message' => 'English content not available'], 404);
-                }
-
-                return response()->json(['success' => true, 'data' => $topic]);
+        if ($lang === 'en') {
+            if ($topic->title === 'BASE_RECORD') {
+                return response()->json(['success' => false, 'message' => 'English content not available'], 404);
             }
 
-            $translation = $topic->translations
-                ->where('language_code', $lang)
-                ->first();
-
-            if (!$translation) {
-                return response()->json(['success' => false, 'message' => 'Translation not available'], 404);
-            }
-
-            return response()->json([
-                'success' => true,
-                'data' => [
-                    'id' => $topic->id,
-                    'language_code' => $lang,
-                    'title' => $translation->title,
-                    'description' => $translation->description,
-                    'thumbnail' => $topic->thumbnail,
-                    'estimated_duration' => $topic->estimated_duration,
-                ]
-            ]);
+            return response()->json(['success' => true, 'data' => $topic]);
         }
+
+        $translation = $topic->translations
+            ->where('language_code', $lang)
+            ->first();
+
+        if (!$translation) {
+            return response()->json(['success' => false, 'message' => 'Translation not available'], 404);
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'id' => $topic->id,
+                'language_code' => $lang,
+                'title' => $translation->title,
+                'description' => $translation->description,
+                'thumbnail' => $topic->thumbnail,
+                'estimated_duration' => $topic->estimated_duration,
+            ]
+        ]);
+    }
 
     /*
     |--------------------------------------------------------------------------

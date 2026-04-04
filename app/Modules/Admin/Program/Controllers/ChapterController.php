@@ -40,93 +40,58 @@ class ChapterController extends Controller
         ]);
 
         /*
-        |--------------------------------------------------------------------------
-        | FILTER: PROGRAM
-        |--------------------------------------------------------------------------
+        |-----------------------------
+        | FILTERS
+        |-----------------------------
         */
         if ($request->filled('program_id')) {
-            $program = Program::find($request->program_id);
-
-            if (!$program) {
+            if (!Program::find($request->program_id)) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Program not found'
                 ], 404);
             }
-
             $query->where('program_id', $request->program_id);
         }
 
-        /*
-        |--------------------------------------------------------------------------
-        | FILTER: LEVEL
-        |--------------------------------------------------------------------------
-        */
         if ($request->filled('level_id')) {
-            $level = Level::find($request->level_id);
-
-            if (!$level) {
+            if (!Level::find($request->level_id)) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Level not found'
                 ], 404);
             }
-
             $query->where('level_id', $request->level_id);
         }
 
-        /*
-        |--------------------------------------------------------------------------
-        | FILTER: MODULE
-        |--------------------------------------------------------------------------
-        */
         if ($request->filled('module_id')) {
-            $module = Module::find($request->module_id);
-
-            if (!$module) {
+            if (!Module::find($request->module_id)) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Module not found'
                 ], 404);
             }
-
             $query->where('module_id', $request->module_id);
         }
 
         /*
-        |--------------------------------------------------------------------------
-        | SEARCH (CHAPTER + MODULE + LEVEL + PROGRAM)
-        |--------------------------------------------------------------------------
+        |-----------------------------
+        | SEARCH
+        |-----------------------------
         */
-        if ($request->filled('search')) {
+            if ($request->filled('search')) {
 
             $search = $request->search;
 
             if ($lang === 'en') {
 
                 $query->where(function ($q) use ($search) {
-
-                    // Chapter title
                     $q->where('title', 'like', "%{$search}%")
-
-                        // Module title
-                        ->orWhereHas('module', function ($q2) use ($search) {
-                            $q2->where('title', 'like', "%{$search}%");
-                        })
-
-                        // Level title
-                        ->orWhereHas('level', function ($q3) use ($search) {
-                            $q3->where('title', 'like', "%{$search}%");
-                        })
-
-                        // Program title
-                        ->orWhereHas('program', function ($q4) use ($search) {
-                            $q4->where('title', 'like', "%{$search}%");
-                        });
+                        ->orWhereHas('module', fn($q2) => $q2->where('title', 'like', "%{$search}%"))
+                        ->orWhereHas('level', fn($q3) => $q3->where('title', 'like', "%{$search}%"))
+                        ->orWhereHas('program', fn($q4) => $q4->where('title', 'like', "%{$search}%"));
                 });
             } else {
-
-                // 🔥 Translation search (chapter only)
                 $query->whereHas('translations', function ($q) use ($lang, $search) {
                     $q->where('language_code', $lang)
                         ->where('title', 'like', "%{$search}%");
@@ -135,31 +100,58 @@ class ChapterController extends Controller
         }
 
         /*
-        |--------------------------------------------------------------------------
-        | HIDE BASE_RECORD (EN ONLY)
-        |--------------------------------------------------------------------------
+        |-----------------------------
+        | BASE RECORD FILTER
+        |-----------------------------
         */
         if ($lang === 'en' && !$request->filled('search')) {
             $query->where('title', '!=', 'BASE_RECORD');
         }
 
+        /*
+        |-----------------------------
+        | STATUS
+        |-----------------------------
+        */
         if ($request->has('status')) {
-
-            if ($request->status === 'all') {
-                // no filter
-            } else {
+            if ($request->status !== 'all') {
                 $query->where('status', (bool) $request->status);
             }
         } else {
             $query->where('status', true);
         }
 
-        $chapters = $query->latest()->paginate(10);
+        /*
+        |-----------------------------
+        | SORTING
+        |-----------------------------
+        */
+        $sortByMap = [
+            'createdAt' => 'created_at',
+            'title'     => 'title',
+        ];
+
+        $sortBy = $request->get('sortBy', 'createdAt');
+        $order  = strtolower($request->get('order', 'desc')) === 'asc' ? 'asc' : 'desc';
+
+        $sortColumn = $sortByMap[$sortBy] ?? 'created_at';
+
+        $query->orderBy($sortColumn, $order);
 
         /*
-        |--------------------------------------------------------------------------
-        | TRANSFORM RESPONSE
-        |--------------------------------------------------------------------------
+        |-----------------------------
+        | PAGINATION
+        |-----------------------------
+        */
+        $limit = (int) $request->get('limit', 10);
+        $limit = ($limit > 0 && $limit <= 100) ? $limit : 10;
+
+        $chapters = $query->paginate($limit);
+
+        /*
+        |-----------------------------
+        | TRANSFORM
+        |-----------------------------
         */
         $chapters->getCollection()->transform(function ($chapter) use ($lang) {
 

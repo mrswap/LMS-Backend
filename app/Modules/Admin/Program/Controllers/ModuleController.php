@@ -38,15 +38,13 @@ class ModuleController extends Controller
         ]);
 
         /*
-        |--------------------------------------------------------------------------
-        | FILTER: PROGRAM
-        |--------------------------------------------------------------------------
+        |-----------------------------
+        | FILTERS
+        |-----------------------------
         */
         if ($request->filled('program_id')) {
 
-            $program = Program::find($request->program_id);
-
-            if (!$program) {
+            if (!Program::find($request->program_id)) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Program not found'
@@ -56,16 +54,9 @@ class ModuleController extends Controller
             $query->where('program_id', $request->program_id);
         }
 
-        /*
-        |--------------------------------------------------------------------------
-        | FILTER: LEVEL
-        |--------------------------------------------------------------------------
-        */
         if ($request->filled('level_id')) {
 
-            $level = Level::find($request->level_id);
-
-            if (!$level) {
+            if (!Level::find($request->level_id)) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Level not found'
@@ -76,9 +67,9 @@ class ModuleController extends Controller
         }
 
         /*
-        |--------------------------------------------------------------------------
-        | SEARCH (MODULE + LEVEL + PROGRAM)
-        |--------------------------------------------------------------------------
+        |-----------------------------
+        | SEARCH
+        |-----------------------------
         */
         if ($request->filled('search')) {
 
@@ -87,23 +78,12 @@ class ModuleController extends Controller
             if ($lang === 'en') {
 
                 $query->where(function ($q) use ($search) {
-
-                    // Module title
                     $q->where('title', 'like', "%{$search}%")
-
-                        // Level title
-                        ->orWhereHas('level', function ($q2) use ($search) {
-                            $q2->where('title', 'like', "%{$search}%");
-                        })
-
-                        // Program title
-                        ->orWhereHas('program', function ($q3) use ($search) {
-                            $q3->where('title', 'like', "%{$search}%");
-                        });
+                        ->orWhereHas('level', fn($q2) => $q2->where('title', 'like', "%{$search}%"))
+                        ->orWhereHas('program', fn($q3) => $q3->where('title', 'like', "%{$search}%"));
                 });
             } else {
 
-                // 🔥 Translation-based search
                 $query->whereHas('translations', function ($q) use ($lang, $search) {
                     $q->where('language_code', $lang)
                         ->where('title', 'like', "%{$search}%");
@@ -112,31 +92,58 @@ class ModuleController extends Controller
         }
 
         /*
-        |--------------------------------------------------------------------------
-        | HIDE BASE_RECORD (EN ONLY)
-        |--------------------------------------------------------------------------
+        |-----------------------------
+        | BASE RECORD FILTER
+        |-----------------------------
         */
         if ($lang === 'en' && !$request->filled('search')) {
             $query->where('title', '!=', 'BASE_RECORD');
         }
 
+        /*
+        |-----------------------------
+        | STATUS
+        |-----------------------------
+        */
         if ($request->has('status')) {
-
-            if ($request->status === 'all') {
-                // no filter
-            } else {
+            if ($request->status !== 'all') {
                 $query->where('status', (bool) $request->status);
             }
         } else {
             $query->where('status', true);
         }
-        
-        $modules = $query->latest()->paginate(10);
 
         /*
-        |--------------------------------------------------------------------------
-        | TRANSFORM RESPONSE
-        |--------------------------------------------------------------------------
+        |-----------------------------
+        | SORTING
+        |-----------------------------
+        */
+        $sortByMap = [
+            'createdAt' => 'created_at',
+            'title'     => 'title',
+        ];
+
+        $sortBy = $request->get('sortBy', 'createdAt');
+        $order  = strtolower($request->get('order', 'desc')) === 'asc' ? 'asc' : 'desc';
+
+        $sortColumn = $sortByMap[$sortBy] ?? 'created_at';
+
+        $query->orderBy($sortColumn, $order);
+
+        /*
+        |-----------------------------
+        | PAGINATION
+        |-----------------------------
+        */
+        $limit = (int) $request->get('limit', 10);
+        $limit = ($limit > 0 && $limit <= 100) ? $limit : 10;
+
+        $modules = $query->paginate($limit);
+
+        /*
+        |-----------------------------
+        | TRANSFORM
+        |-----------------------------
         */
         $modules->getCollection()->transform(function ($module) use ($lang) {
 

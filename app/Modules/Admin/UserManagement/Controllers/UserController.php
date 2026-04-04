@@ -11,17 +11,73 @@ use Illuminate\Support\Str;
 class UserController extends Controller
 {
     protected $uploadPath = 'uploads/users/profile-images/';
-
-    public function index()
+    
+    
+    public function index(Request $request)
     {
-        $users = User::where('role', User::ROLE_SALES)
-            ->with('creator:id,name')
-            ->latest()
-            ->paginate(10);
+        $query = User::where('role', User::ROLE_SALES)
+            ->with('creator:id,name');
 
-        return response()->json($users);
+        /*
+        |-----------------------------
+        | SEARCH (optional)
+        |-----------------------------
+        */
+        if ($request->filled('search')) {
+            $search = $request->search;
+
+            $query->where(function ($q) use ($search) {
+                $q->where('name', 'like', "%{$search}%")
+                    ->orWhere('email', 'like', "%{$search}%");
+            });
+        }
+
+        /*
+        |-----------------------------
+        | STATUS (optional)
+        |-----------------------------
+        */
+        if ($request->has('status')) {
+            if ($request->status !== 'all') {
+                $query->where('status', (bool) $request->status);
+            }
+        }
+
+        /*
+        |-----------------------------
+        | SORTING
+        |-----------------------------
+        */
+        $sortByMap = [
+            'createdAt' => 'created_at',
+            'name'      => 'name',
+            'email'     => 'email',
+        ];
+
+        $sortBy = $request->get('sortBy', 'createdAt');
+        $order  = strtolower($request->get('order', 'desc')) === 'asc' ? 'asc' : 'desc';
+
+        $sortColumn = $sortByMap[$sortBy] ?? 'created_at';
+
+        $query->orderBy($sortColumn, $order);
+
+        /*
+        |-----------------------------
+        | PAGINATION
+        |-----------------------------
+        */
+        $limit = (int) $request->get('limit', 10);
+        $limit = ($limit > 0 && $limit <= 100) ? $limit : 10;
+
+        $users = $query->paginate($limit);
+
+        return response()->json([
+            'success' => true,
+            'data' => $users
+        ]);
     }
 
+    
     public function store(Request $request)
     {
         $request->validate([

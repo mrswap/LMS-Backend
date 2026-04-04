@@ -29,19 +29,20 @@ class LevelController extends Controller
     {
         $lang = $this->resolveLanguage($request);
 
-        $query = Level::with(['creator:id,name', 'program:id,title', 'translations']);
-
+        $query = Level::with([
+            'creator:id,name',
+            'program:id,title',
+            'translations'
+        ]);
 
         /*
-        |--------------------------------------------------------------------------
+        |-----------------------------
         | FILTER: PROGRAM
-        |--------------------------------------------------------------------------
+        |-----------------------------
         */
         if ($request->filled('program_id')) {
 
-            $program = Program::find($request->program_id);
-
-            if (!$program) {
+            if (!Program::find($request->program_id)) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Program not found'
@@ -52,9 +53,9 @@ class LevelController extends Controller
         }
 
         /*
-        |--------------------------------------------------------------------------
-        | FILTER: TITLE (LANGUAGE BASED)
-        |--------------------------------------------------------------------------
+        |-----------------------------
+        | SEARCH
+        |-----------------------------
         */
         if ($request->filled('search')) {
 
@@ -62,12 +63,10 @@ class LevelController extends Controller
 
             if ($lang === 'en') {
 
-                // 🔥 Search in main table
                 $query->where('title', 'like', "%{$search}%")
                     ->where('title', '!=', 'BASE_RECORD');
             } else {
 
-                // 🔥 Search in translations
                 $query->whereHas('translations', function ($q) use ($lang, $search) {
                     $q->where('language_code', $lang)
                         ->where('title', 'like', "%{$search}%");
@@ -76,32 +75,58 @@ class LevelController extends Controller
         }
 
         /*
-        |--------------------------------------------------------------------------
-        | HIDE BASE_RECORD FOR EN (NO SEARCH CASE)
-        |--------------------------------------------------------------------------
+        |-----------------------------
+        | BASE RECORD FILTER
+        |-----------------------------
         */
         if ($lang === 'en' && !$request->filled('search')) {
             $query->where('title', '!=', 'BASE_RECORD');
         }
 
+        /*
+        |-----------------------------
+        | STATUS
+        |-----------------------------
+        */
         if ($request->has('status')) {
-
-            if ($request->status === 'all') {
-                // no filter
-            } else {
+            if ($request->status !== 'all') {
                 $query->where('status', (bool) $request->status);
             }
         } else {
-            // 🔥 default → only active
             $query->where('status', true);
         }
 
-        $levels = $query->latest()->paginate(10);
+        /*
+        |-----------------------------
+        | SORTING
+        |-----------------------------
+        */
+        $sortByMap = [
+            'createdAt' => 'created_at',
+            'title'     => 'title',
+        ];
+
+        $sortBy = $request->get('sortBy', 'createdAt');
+        $order  = strtolower($request->get('order', 'desc')) === 'asc' ? 'asc' : 'desc';
+
+        $sortColumn = $sortByMap[$sortBy] ?? 'created_at';
+
+        $query->orderBy($sortColumn, $order);
 
         /*
-        |--------------------------------------------------------------------------
-        | TRANSFORM RESPONSE
-        |--------------------------------------------------------------------------
+        |-----------------------------
+        | PAGINATION
+        |-----------------------------
+        */
+        $limit = (int) $request->get('limit', 10);
+        $limit = ($limit > 0 && $limit <= 100) ? $limit : 10;
+
+        $levels = $query->paginate($limit);
+
+        /*
+        |-----------------------------
+        | TRANSFORM
+        |-----------------------------
         */
         $levels->getCollection()->transform(function ($level) use ($lang) {
 
