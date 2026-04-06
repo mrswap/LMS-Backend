@@ -117,4 +117,9 @@ class User extends Authenticatable
     {
         return $value ? url('public/' . ltrim($value, '/')) : null;
     }
+
+    public function getProfileImageAttribute($value)
+    {
+        return $value ? url('public/' . ltrim($value, '/')) : null;
+    }
 }

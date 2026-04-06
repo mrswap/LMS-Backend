@@ -11,8 +11,8 @@ use Illuminate\Support\Str;
 class UserController extends Controller
 {
     protected $uploadPath = 'uploads/users/profile-images/';
-    
-    
+
+
     public function index(Request $request)
     {
         $query = User::where('role', User::ROLE_SALES)
@@ -77,7 +77,7 @@ class UserController extends Controller
         ]);
     }
 
-    
+
     public function store(Request $request)
     {
         $request->validate([
@@ -170,6 +170,66 @@ class UserController extends Controller
 
         return response()->json([
             'status' => $user->is_active
+        ]);
+    }
+
+    public function profile(Request $request)
+    {
+        return response()->json([
+            'data' => $request->user()
+        ]);
+    }
+
+    public function updateProfile(Request $request)
+    {
+        $user = $request->user();
+
+        // 🔹 Validation (dynamic)
+        $request->validate([
+            'email' => 'nullable|email|unique:users,email,' . $user->id,
+            'password' => 'nullable|min:6|confirmed',
+        ]);
+
+        /*
+        |--------------------------------------------------------------------------
+        | PROFILE IMAGE
+        |--------------------------------------------------------------------------
+        */
+        if ($request->hasFile('profile_image')) {
+            $file = $request->file('profile_image');
+            $name = time() . '_' . \Str::random(10) . '.' . $file->getClientOriginalExtension();
+            $file->move(public_path($this->uploadPath), $name);
+            $user->profile_image = $this->uploadPath . $name;
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | PASSWORD (ONLY IF PROVIDED)
+        |--------------------------------------------------------------------------
+        */
+        if ($request->filled('password')) {
+            $user->password = \Hash::make($request->password);
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | ALL OTHER FIELDS (DYNAMIC UPDATE)
+        |--------------------------------------------------------------------------
+        */
+        $user->update([
+            'name' => $request->name ?? $user->name,
+            'email' => $request->email ?? $user->email,
+            'mobile' => $request->mobile ?? $user->mobile,
+            'employee_id' => $request->employee_id ?? $user->employee_id,
+            'department' => $request->department ?? $user->department,
+            'designation' => $request->designation ?? $user->designation,
+            'region' => $request->region ?? $user->region,
+            'city' => $request->city ?? $user->city,
+        ]);
+
+        return response()->json([
+            'message' => 'Profile updated successfully',
+            'data' => $user
         ]);
     }
 }

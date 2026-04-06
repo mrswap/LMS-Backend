@@ -10,7 +10,7 @@ use App\Modules\Admin\Program\Controllers\ChapterController;
 use App\Modules\Admin\Program\Controllers\TopicController;
 use App\Modules\Admin\Language\Controllers\LanguageController;
 use App\Modules\Admin\UserManagement\Controllers\UserController;
-
+use App\Modules\Admin\Auth\Controllers\PasswordController;
 
 Route::prefix('v1')->group(function () {
 
@@ -18,9 +18,16 @@ Route::prefix('v1')->group(function () {
 
         // 🔐 AUTH
         Route::post('/login', [AuthController::class, 'login']);
-
+        // PASSWORD RESET
+        Route::post('/forgot-password', [PasswordController::class, 'forgotPassword']);
+        Route::post('/reset-password', [PasswordController::class, 'resetPassword']);
+        
         Route::middleware(['auth:sanctum', 'role:superadmin,staff'])->group(function () {
             Route::post('/logout', [AuthController::class, 'logout']);
+
+            //profile 
+            Route::get('/profile', [UserController::class, 'profile']);
+            Route::post('/profile', [UserController::class, 'updateProfile']);
         });
 
         // 🔒 SUPERADMIN ONLY
