@@ -11,6 +11,7 @@ use App\Modules\Admin\Program\Controllers\TopicController;
 use App\Modules\Admin\Language\Controllers\LanguageController;
 use App\Modules\Admin\UserManagement\Controllers\UserController;
 use App\Modules\Admin\Auth\Controllers\PasswordController;
+use App\Modules\Admin\ContentManagement\Controllers\MediaController;
 
 Route::prefix('v1')->group(function () {
 
@@ -21,7 +22,7 @@ Route::prefix('v1')->group(function () {
         // PASSWORD RESET
         Route::post('/forgot-password', [PasswordController::class, 'forgotPassword']);
         Route::post('/reset-password', [PasswordController::class, 'resetPassword']);
-        
+
         Route::middleware(['auth:sanctum', 'role:superadmin,staff'])->group(function () {
             Route::post('/logout', [AuthController::class, 'logout']);
 
@@ -117,6 +118,19 @@ Route::prefix('v1')->group(function () {
             Route::post('topics/{id}', [TopicController::class, 'update']);
             Route::delete('topics/{id}', [TopicController::class, 'destroy']);
             Route::post('topics/{id}/toggle-status', [TopicController::class, 'toggleStatus']);
+
+
+            /*
+            |--------------------------------------------------------------------------
+            | MEDIA LIBRARY
+            |--------------------------------------------------------------------------
+            */
+            Route::get('media', [MediaController::class, 'index']);
+            Route::post('media', [MediaController::class, 'store']);
+            Route::get('media/{id}', [MediaController::class, 'show']);
+            Route::post('media/{id}', [MediaController::class, 'update']);
+            Route::delete('media/{id}', [MediaController::class, 'destroy']);
+            Route::post('media/{id}/toggle-status', [MediaController::class, 'toggleStatus']);
         });
     });
 });
