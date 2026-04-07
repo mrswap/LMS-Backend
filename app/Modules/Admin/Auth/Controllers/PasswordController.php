@@ -39,7 +39,7 @@ class PasswordController extends Controller
         );
 
         // ✅ CLEAN LINK (NO EMAIL)
-        $resetLink = url("/reset-password?token=$token");
+        $resetLink = env('FRONT_END_URL') . "/reset-password?token=$token";
 
         Mail::raw("Reset your password securely:\n$resetLink", function ($message) use ($user) {
             $message->to($user->email)
