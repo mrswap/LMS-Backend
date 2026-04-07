@@ -62,4 +62,26 @@ class Chapter extends Model
     {
         return $value ? url('public/' . ltrim($value, '/')) : null;
     }
+
+    protected static function boot()
+    {
+        parent::boot();
+
+        static::updated(function ($chapter) {
+
+            if ($chapter->wasChanged('module_id')) {
+
+                $module = \App\Models\Module::with('level.program')->find($chapter->module_id);
+
+                if (!$module) return;
+
+                // 🔹 Update all topics of this chapter
+                $chapter->topics()->update([
+                    'module_id'  => $module->id,
+                    'level_id'   => $module->level_id,
+                    'program_id' => $module->program_id,
+                ]);
+            }
+        });
+    }
 }

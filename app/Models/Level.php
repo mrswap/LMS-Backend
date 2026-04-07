@@ -68,4 +68,32 @@ class Level extends Model
     {
         return $value ? url('public/' . ltrim($value, '/')) : null;
     }
+
+    protected static function boot()
+    {
+        parent::boot();
+
+        static::updated(function ($level) {
+
+            if ($level->wasChanged('program_id')) {
+
+                $programId = $level->program_id;
+
+                // 🔹 Step 1: Update all modules
+                $level->modules()->update([
+                    'program_id' => $programId,
+                ]);
+
+                // 🔹 Step 2: Update all chapters under those modules
+                \App\Models\Chapter::where('level_id', $level->id)->update([
+                    'program_id' => $programId,
+                ]);
+
+                // 🔹 Step 3: Update all topics under those chapters
+                \App\Models\Topic::where('level_id', $level->id)->update([
+                    'program_id' => $programId,
+                ]);
+            }
+        });
+    }
 }

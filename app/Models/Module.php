@@ -56,4 +56,31 @@ class Module extends Model
     {
         return $value ? url('public/' . ltrim($value, '/')) : null;
     }
+
+    protected static function boot()
+    {
+        parent::boot();
+
+        static::updated(function ($module) {
+
+            if ($module->wasChanged('level_id')) {
+
+                $level = \App\Models\Level::with('program')->find($module->level_id);
+
+                if (!$level) return;
+
+                // 🔹 Update all chapters
+                $module->chapters()->update([
+                    'level_id'   => $level->id,
+                    'program_id' => $level->program_id,
+                ]);
+
+                // 🔹 Update all topics under those chapters
+                \App\Models\Topic::where('module_id', $module->id)->update([
+                    'level_id'   => $level->id,
+                    'program_id' => $level->program_id,
+                ]);
+            }
+        });
+    }
 }
