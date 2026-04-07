@@ -352,17 +352,47 @@ class ModuleController extends Controller
         $module = Module::with('translations')->findOrFail($id);
 
         $validated = $request->validate([
+            'program_id' => 'required|integer',
+            'level_id' => 'required|integer',
             'title' => 'required|string|max:255',
             'description' => 'nullable|string',
             'thumbnail' => 'nullable|image|mimes:jpg,jpeg,png|max:2048',
+            'status' => 'nullable|boolean',
         ]);
 
+        // =============================
+        // 🔗 HIERARCHY VALIDATION
+        // =============================
+        $program = Program::find($validated['program_id']);
+        if (!$program) {
+            return response()->json(['success' => false, 'message' => 'Program not found'], 404);
+        }
+
+        $level = Level::find($validated['level_id']);
+        if (!$level) {
+            return response()->json(['success' => false, 'message' => 'Level not found'], 404);
+        }
+
+        if ($level->program_id != $program->id) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Level does not belong to selected program'
+            ], 422);
+        }
+
+        // =============================
+        // 🖼️ THUMBNAIL UPLOAD (delete old)
+        // =============================
         if ($request->hasFile('thumbnail') && $request->file('thumbnail')->isValid()) {
 
             $oldPath = $module->getRawOriginal('thumbnail');
 
             if ($oldPath && file_exists(public_path($oldPath))) {
                 unlink(public_path($oldPath));
+            }
+
+            if (!file_exists(public_path($this->uploadPath))) {
+                mkdir(public_path($this->uploadPath), 0777, true);
             }
 
             $file = $request->file('thumbnail');
@@ -372,15 +402,31 @@ class ModuleController extends Controller
             $validated['thumbnail'] = $this->uploadPath . $filename;
         }
 
+        // =============================
+        // 🌐 LANGUAGE LOGIC
+        // =============================
         if ($lang === 'en') {
 
+            // Direct update (store jaisa)
             $module->update([
-                'title' => $validated['title'],
+                'program_id' => $validated['program_id'],
+                'level_id'   => $validated['level_id'],
+                'title'      => $validated['title'],
                 'description' => $validated['description'] ?? null,
-                'thumbnail' => $validated['thumbnail'] ?? $module->thumbnail,
+                'thumbnail'  => $validated['thumbnail'] ?? $module->thumbnail,
+                'status'     => $validated['status'] ?? $module->status,
             ]);
         } else {
 
+            // 🔹 Core fields update
+            $module->update([
+                'program_id' => $validated['program_id'],
+                'level_id'   => $validated['level_id'],
+                'thumbnail'  => $validated['thumbnail'] ?? $module->thumbnail,
+                'status'     => $validated['status'] ?? $module->status,
+            ]);
+
+            // 🔹 Translation update/create
             $module->translations()->updateOrCreate(
                 ['language_code' => $lang],
                 [
@@ -389,6 +435,8 @@ class ModuleController extends Controller
                 ]
             );
         }
+
+        $module->load(['creator:id,name', 'program:id,title', 'level:id,title', 'translations']);
 
         return response()->json([
             'success' => true,

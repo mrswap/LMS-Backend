@@ -343,22 +343,88 @@ class TopicController extends Controller
         $topic = Topic::with('translations')->findOrFail($id);
 
         $validated = $request->validate([
+            'program_id' => 'required|integer',
+            'level_id' => 'required|integer',
+            'module_id' => 'required|integer',
+            'chapter_id' => 'required|integer',
             'title' => 'required|string|max:255',
             'description' => 'nullable|string',
+            'estimated_duration' => 'nullable|integer|min:1',
+            'thumbnail' => 'nullable|image|mimes:jpg,jpeg,png|max:2048',
+            'status' => 'nullable|boolean',
         ]);
 
+        // =============================
+        // 🔗 HIERARCHY VALIDATION
+        // =============================
+        $program = Program::find($validated['program_id']);
+        $level   = Level::find($validated['level_id']);
+        $module  = Module::find($validated['module_id']);
+        $chapter = Chapter::find($validated['chapter_id']);
+
+        if (!$program || !$level || !$module || !$chapter) {
+            return response()->json(['success' => false, 'message' => 'Invalid hierarchy'], 404);
+        }
+
+        if (
+            $level->program_id != $program->id ||
+            $module->level_id != $level->id ||
+            $chapter->module_id != $module->id
+        ) {
+            return response()->json(['success' => false, 'message' => 'Invalid hierarchy mapping'], 422);
+        }
+
+        // =============================
+        // 🖼️ THUMBNAIL UPLOAD
+        // =============================
+        if ($request->hasFile('thumbnail')) {
+            if (!file_exists(public_path($this->uploadPath))) {
+                mkdir(public_path($this->uploadPath), 0777, true);
+            }
+
+            $file = $request->file('thumbnail');
+            $filename = time() . '_' . Str::random(10) . '.' . $file->getClientOriginalExtension();
+            $file->move(public_path($this->uploadPath), $filename);
+
+            $validated['thumbnail'] = $this->uploadPath . $filename;
+        }
+
+        // =============================
+        // 🌐 LANGUAGE LOGIC
+        // =============================
         if ($lang === 'en') {
 
-            $topic->update($validated);
+            // Direct update (same as store)
+            $topic->update([
+                ...$validated,
+            ]);
         } else {
 
+            // 🔹 Core fields update
+            $topic->update([
+                'program_id' => $validated['program_id'],
+                'level_id' => $validated['level_id'],
+                'module_id' => $validated['module_id'],
+                'chapter_id' => $validated['chapter_id'],
+                'estimated_duration' => $validated['estimated_duration'] ?? $topic->estimated_duration,
+                'thumbnail' => $validated['thumbnail'] ?? $topic->thumbnail,
+                'status' => $validated['status'] ?? $topic->status,
+            ]);
+
+            // 🔹 Translation update/create
             $topic->translations()->updateOrCreate(
                 ['language_code' => $lang],
-                $validated
+                [
+                    'title' => $validated['title'],
+                    'description' => $validated['description'] ?? null,
+                ]
             );
         }
 
-        return response()->json(['success' => true, 'data' => $topic]);
+        return response()->json([
+            'success' => true,
+            'data' => $topic->fresh(['translations'])
+        ]);
     }
 
     /*

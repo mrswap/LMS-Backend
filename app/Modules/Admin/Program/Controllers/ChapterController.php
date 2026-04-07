@@ -79,7 +79,7 @@ class ChapterController extends Controller
         | SEARCH
         |-----------------------------
         */
-            if ($request->filled('search')) {
+        if ($request->filled('search')) {
 
             $search = $request->search;
 
@@ -363,17 +363,46 @@ class ChapterController extends Controller
         $chapter = Chapter::with('translations')->findOrFail($id);
 
         $validated = $request->validate([
+            'program_id' => 'required|integer',
+            'level_id' => 'required|integer',
+            'module_id' => 'required|integer',
             'title' => 'required|string|max:255',
             'description' => 'nullable|string',
             'thumbnail' => 'nullable|image|mimes:jpg,jpeg,png|max:2048',
+            'status' => 'nullable|boolean',
         ]);
 
+        // =============================
+        // 🔗 HIERARCHY VALIDATION
+        // =============================
+        $program = Program::find($validated['program_id']);
+        $level   = Level::find($validated['level_id']);
+        $module  = Module::find($validated['module_id']);
+
+        if (!$program || !$level || !$module) {
+            return response()->json(['success' => false, 'message' => 'Invalid hierarchy'], 404);
+        }
+
+        if (
+            $level->program_id != $program->id ||
+            $module->level_id != $level->id
+        ) {
+            return response()->json(['success' => false, 'message' => 'Invalid hierarchy mapping'], 422);
+        }
+
+        // =============================
+        // 🖼️ THUMBNAIL UPLOAD (with delete old)
+        // =============================
         if ($request->hasFile('thumbnail') && $request->file('thumbnail')->isValid()) {
 
             $oldPath = $chapter->getRawOriginal('thumbnail');
 
             if ($oldPath && file_exists(public_path($oldPath))) {
                 unlink(public_path($oldPath));
+            }
+
+            if (!file_exists(public_path($this->uploadPath))) {
+                mkdir(public_path($this->uploadPath), 0777, true);
             }
 
             $file = $request->file('thumbnail');
@@ -383,15 +412,33 @@ class ChapterController extends Controller
             $validated['thumbnail'] = $this->uploadPath . $filename;
         }
 
+        // =============================
+        // 🌐 LANGUAGE LOGIC
+        // =============================
         if ($lang === 'en') {
 
+            // Direct update (store jaisa)
             $chapter->update([
-                'title' => $validated['title'],
+                'program_id' => $validated['program_id'],
+                'level_id'   => $validated['level_id'],
+                'module_id'  => $validated['module_id'],
+                'title'      => $validated['title'],
                 'description' => $validated['description'] ?? null,
-                'thumbnail' => $validated['thumbnail'] ?? $chapter->thumbnail,
+                'thumbnail'  => $validated['thumbnail'] ?? $chapter->thumbnail,
+                'status'     => $validated['status'] ?? $chapter->status,
             ]);
         } else {
 
+            // 🔹 Core fields update
+            $chapter->update([
+                'program_id' => $validated['program_id'],
+                'level_id'   => $validated['level_id'],
+                'module_id'  => $validated['module_id'],
+                'thumbnail'  => $validated['thumbnail'] ?? $chapter->thumbnail,
+                'status'     => $validated['status'] ?? $chapter->status,
+            ]);
+
+            // 🔹 Translation update/create
             $chapter->translations()->updateOrCreate(
                 ['language_code' => $lang],
                 [
@@ -403,7 +450,7 @@ class ChapterController extends Controller
 
         return response()->json([
             'success' => true,
-            'data' => $chapter
+            'data' => $chapter->fresh(['translations'])
         ]);
     }
 

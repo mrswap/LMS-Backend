@@ -29,6 +29,7 @@ Route::prefix('v1')->group(function () {
             //profile 
             Route::get('/profile', [UserController::class, 'profile']);
             Route::post('/profile', [UserController::class, 'updateProfile']);
+            Route::post('change-password', [UserController::class, 'changePassword']);
         });
 
         // 🔒 SUPERADMIN ONLY

@@ -304,15 +304,34 @@ class LevelController extends Controller
         $level = Level::with('translations')->findOrFail($id);
 
         $validated = $request->validate([
+            'program_id' => 'required|exists:programs,id',
             'title' => 'required|string|max:255',
             'description' => 'nullable|string',
             'thumbnail' => 'nullable|image|mimes:jpg,jpeg,png|max:2048',
+            'status' => 'nullable|boolean',
         ]);
 
+        // =============================
+        // 🔗 PROGRAM VALIDATION
+        // =============================
+        $program = Program::find($validated['program_id']);
+        if (!$program) {
+            return response()->json(['success' => false, 'message' => 'Program not found'], 404);
+        }
+
+        // =============================
+        // 🖼️ THUMBNAIL UPLOAD (delete old)
+        // =============================
         if ($request->hasFile('thumbnail') && $request->file('thumbnail')->isValid()) {
 
-            if ($level->thumbnail && file_exists(public_path($level->getRawOriginal('thumbnail')))) {
-                unlink(public_path($level->getRawOriginal('thumbnail')));
+            $oldPath = $level->getRawOriginal('thumbnail');
+
+            if ($oldPath && file_exists(public_path($oldPath))) {
+                unlink(public_path($oldPath));
+            }
+
+            if (!file_exists(public_path($this->uploadPath))) {
+                mkdir(public_path($this->uploadPath), 0777, true);
             }
 
             $file = $request->file('thumbnail');
@@ -322,15 +341,29 @@ class LevelController extends Controller
             $validated['thumbnail'] = $this->uploadPath . $filename;
         }
 
+        // =============================
+        // 🌐 LANGUAGE LOGIC
+        // =============================
         if ($lang === 'en') {
 
+            // Direct update (store jaisa)
             $level->update([
-                'title' => $validated['title'],
+                'program_id' => $validated['program_id'],
+                'title'      => $validated['title'],
                 'description' => $validated['description'] ?? null,
-                'thumbnail' => $validated['thumbnail'] ?? $level->thumbnail,
+                'thumbnail'  => $validated['thumbnail'] ?? $level->thumbnail,
+                'status'     => $validated['status'] ?? $level->status,
             ]);
         } else {
 
+            // 🔹 Core fields update
+            $level->update([
+                'program_id' => $validated['program_id'],
+                'thumbnail'  => $validated['thumbnail'] ?? $level->thumbnail,
+                'status'     => $validated['status'] ?? $level->status,
+            ]);
+
+            // 🔹 Translation update/create
             $level->translations()->updateOrCreate(
                 ['language_code' => $lang],
                 [
@@ -339,6 +372,8 @@ class LevelController extends Controller
                 ]
             );
         }
+
+        $level->load(['creator:id,name', 'program:id,title', 'translations']);
 
         return response()->json([
             'success' => true,

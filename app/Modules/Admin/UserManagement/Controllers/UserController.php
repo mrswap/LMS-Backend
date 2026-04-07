@@ -8,6 +8,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 
+
 class UserController extends Controller
 {
     protected $uploadPath = 'uploads/users/profile-images/';
@@ -230,6 +231,45 @@ class UserController extends Controller
         return response()->json([
             'message' => 'Profile updated successfully',
             'data' => $user
+        ]);
+    }
+
+    public function changePassword(Request $request)
+    {
+        $user = $request->user();
+
+        /*
+        |--------------------------------------------------------------------------
+        | VALIDATION
+        |--------------------------------------------------------------------------
+        */
+        $request->validate([
+            'old_password' => 'required',
+            'new_password' => 'required|min:6|confirmed',
+        ]);
+
+        /*
+        |--------------------------------------------------------------------------
+        | CHECK CURRENT PASSWORD
+        |--------------------------------------------------------------------------
+        */
+        if (!Hash::check($request->old_password, $user->password)) {
+            return response()->json([
+                'message' => 'Current password is incorrect'
+            ], 422);
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | UPDATE PASSWORD
+        |--------------------------------------------------------------------------
+        */
+        $user->update([
+            'password' => Hash::make($request->new_password)
+        ]);
+
+        return response()->json([
+            'message' => 'Password changed successfully'
         ]);
     }
 }
