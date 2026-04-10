@@ -82,4 +82,9 @@ class Topic extends Model
     {
         return $this->hasMany(TopicTranslation::class);
     }
+
+    public function contents()
+    {
+        return $this->hasMany(TopicContent::class)->orderBy('order');
+    }
 }

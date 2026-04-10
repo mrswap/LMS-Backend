@@ -12,6 +12,7 @@ use App\Modules\Admin\Language\Controllers\LanguageController;
 use App\Modules\Admin\UserManagement\Controllers\UserController;
 use App\Modules\Admin\Auth\Controllers\PasswordController;
 use App\Modules\Admin\ContentManagement\Controllers\MediaController;
+use App\Modules\Admin\ContentManagement\Controllers\SectionContentController;
 
 Route::prefix('v1')->group(function () {
 
@@ -126,12 +127,37 @@ Route::prefix('v1')->group(function () {
             | MEDIA LIBRARY
             |--------------------------------------------------------------------------
             */
-            Route::get('media', [MediaController::class, 'index']);
+
             Route::post('media', [MediaController::class, 'store']);
+            Route::get('media', [MediaController::class, 'index']);
             Route::get('media/{id}', [MediaController::class, 'show']);
             Route::post('media/{id}', [MediaController::class, 'update']);
             Route::delete('media/{id}', [MediaController::class, 'destroy']);
             Route::post('media/{id}/toggle-status', [MediaController::class, 'toggleStatus']);
+
+            /*
+            |--------------------------------------------------------------------------
+            | Section Content
+            |--------------------------------------------------------------------------
+            */
+
+            // 🔹 CREATE
+            Route::post('content-topics/{topic_id}/contents', [SectionContentController::class, 'store']);
+            // 🔹 LIST
+            Route::get('content-topics/{topic_id}/contents', [SectionContentController::class, 'index']);
+            // 🔹 FULL (frontend)
+            Route::get('content-topics/{topic_id}/full', [SectionContentController::class, 'full']);
+            // 🔥 IMPORTANT: specific routes BEFORE {id}
+            // 🔹 REORDER (must be before {id})
+            Route::post('content-topics/{topic_id}/contents/reorder', [SectionContentController::class, 'reorder']);
+            // 🔹 TOGGLE STATUS
+            Route::post('content-topics/{topic_id}/contents/{id}/toggle-status', [SectionContentController::class, 'toggleStatus'])->whereNumber('id');
+            // 🔹 SINGLE
+            Route::get('content-topics/{topic_id}/contents/{id}', [SectionContentController::class, 'show'])->whereNumber('id');
+            // 🔹 UPDATE
+            Route::post('content-topics/{topic_id}/contents/{id}', [SectionContentController::class, 'update'])->whereNumber('id');
+            // 🔹 DELETE
+            Route::delete('content-topics/{topic_id}/contents/{id}', [SectionContentController::class, 'destroy'])->whereNumber('id');
         });
     });
 });
