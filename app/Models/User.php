@@ -2,7 +2,6 @@
 
 namespace App\Models;
 
-use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
@@ -21,7 +20,7 @@ class User extends Authenticatable
         'name',
         'email',
         'password',
-        'role',
+        'role_id', // ✅ IMPORTANT
         'designation',
         'department',
         'region',
@@ -32,6 +31,7 @@ class User extends Authenticatable
         'is_active',
         'created_by',
     ];
+
     /*
     |--------------------------------------------------------------------------
     | Hidden Fields
@@ -58,7 +58,7 @@ class User extends Authenticatable
 
     /*
     |--------------------------------------------------------------------------
-    | ROLE CONSTANTS
+    | ROLE CONSTANTS (only for reference, not storage)
     |--------------------------------------------------------------------------
     */
     const ROLE_SUPERADMIN = 'superadmin';
@@ -67,16 +67,21 @@ class User extends Authenticatable
 
     /*
     |--------------------------------------------------------------------------
-    | Helper Methods
+    | Boot Logic
     |--------------------------------------------------------------------------
     */
     protected static function booted()
     {
         static::deleting(function ($user) {
 
-            if ($user->role === self::ROLE_SUPERADMIN) {
+            // 🔥 load role relation
+            $user->load('role');
 
-                $count = self::where('role', self::ROLE_SUPERADMIN)->count();
+            if ($user->role?->name === self::ROLE_SUPERADMIN) {
+
+                $count = self::whereHas('role', function ($q) {
+                    $q->where('name', self::ROLE_SUPERADMIN);
+                })->count();
 
                 if ($count <= 1) {
                     throw new \Exception('At least one superadmin must exist.');
@@ -87,31 +92,48 @@ class User extends Authenticatable
         });
     }
 
-
-    public function isSuperAdmin(): bool
-    {
-        return $this->role === self::ROLE_SUPERADMIN;
-    }
-
-    public function isStaff(): bool
-    {
-        return $this->role === self::ROLE_STAFF;
-    }
-
-    public function isSales(): bool
-    {
-        return $this->role === self::ROLE_SALES;
-    }
-
     /*
     |--------------------------------------------------------------------------
     | Relationships
     |--------------------------------------------------------------------------
     */
+
+    public function role()
+    {
+        return $this->belongsTo(Role::class);
+    }
+
     public function creator()
     {
         return $this->belongsTo(User::class, 'created_by');
     }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Helper Methods
+    |--------------------------------------------------------------------------
+    */
+
+    public function isSuperAdmin(): bool
+    {
+        return $this->role?->name === self::ROLE_SUPERADMIN;
+    }
+
+    public function isStaff(): bool
+    {
+        return $this->role?->name === self::ROLE_STAFF;
+    }
+
+    public function isSales(): bool
+    {
+        return $this->role?->name === self::ROLE_SALES;
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Accessors
+    |--------------------------------------------------------------------------
+    */
 
     public function getThumbnailAttribute($value)
     {

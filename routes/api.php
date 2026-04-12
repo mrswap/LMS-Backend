@@ -13,6 +13,7 @@ use App\Modules\Admin\UserManagement\Controllers\UserController;
 use App\Modules\Admin\Auth\Controllers\PasswordController;
 use App\Modules\Admin\ContentManagement\Controllers\MediaController;
 use App\Modules\Admin\ContentManagement\Controllers\SectionContentController;
+use App\Modules\Admin\Settings\Controllers\RoleController;
 
 Route::prefix('v1')->group(function () {
 
@@ -138,8 +139,7 @@ Route::prefix('v1')->group(function () {
             /*
             |--------------------------------------------------------------------------
             | Section Content
-            |--------------------------------------------------------------------------
-            */
+            |--------------------------------------------------------------------------            */
 
             // 🔹 CREATE
             Route::post('content-topics/{topic_id}/contents', [SectionContentController::class, 'store']);
@@ -158,6 +158,20 @@ Route::prefix('v1')->group(function () {
             Route::post('content-topics/{topic_id}/contents/{id}', [SectionContentController::class, 'update'])->whereNumber('id');
             // 🔹 DELETE
             Route::delete('content-topics/{topic_id}/contents/{id}', [SectionContentController::class, 'destroy'])->whereNumber('id');
+
+            /*
+            |--------------------------------------------------------------------------
+            | Settings - Roles,
+            |--------------------------------------------------------------------------
+            */
+            Route::prefix('setting')->group(function () {
+                Route::get('roles', [RoleController::class, 'index']);
+                Route::post('roles', [RoleController::class, 'store']);
+                Route::get('roles/{id}', [RoleController::class, 'show']);
+                Route::post('roles/{id}', [RoleController::class, 'update']);
+                Route::delete('roles/{id}', [RoleController::class, 'destroy']);
+                Route::post('roles/{id}/toggle-status', [RoleController::class, 'toggleStatus']);
+            });
         });
     });
 });

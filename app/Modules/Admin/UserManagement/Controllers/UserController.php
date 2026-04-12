@@ -7,6 +7,7 @@ use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
+use App\Models\Role;
 
 
 class UserController extends Controller
@@ -16,8 +17,10 @@ class UserController extends Controller
 
     public function index(Request $request)
     {
-        $query = User::where('role', User::ROLE_SALES)
-            ->with('creator:id,name');
+        $query = User::whereHas('role', function ($q) {
+            $q->where('name', User::ROLE_SALES);
+        })
+            ->with(['creator:id,name', 'role:id,name,label']);
 
         /*
         |-----------------------------
@@ -88,7 +91,9 @@ class UserController extends Controller
             'role' => 'required',
             'department' => 'required',
             'region' => 'required',
-            'password' => 'required|min:6'
+            'password' => 'required|min:6',
+            'role_id' => 'required|exists:roles,id',
+            
         ]);
 
         $imagePath = null;
@@ -105,7 +110,7 @@ class UserController extends Controller
             'email' => $request->email,
             'mobile' => $request->mobile,
             'employee_id' => $request->employee_id,
-            'role' => $request->role,
+            'role_id' =>  $request->role_id,
             'department' => $request->department,
             'designation' => $request->designation,
             'region' => $request->region,
@@ -114,7 +119,6 @@ class UserController extends Controller
             'profile_image' => $imagePath,
             'created_by' => auth()->id(),
         ]);
-
         return response()->json([
             'message' => 'User created successfully',
             'data' => $user
@@ -145,6 +149,7 @@ class UserController extends Controller
             'designation' => $request->designation ?? $user->designation,
             'region' => $request->region ?? $user->region,
             'city' => $request->city ?? $user->city,
+            'role_id' =>  $request->role_id,
         ]);
 
         return response()->json([
