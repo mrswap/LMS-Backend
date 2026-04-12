@@ -10,10 +10,17 @@ use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use Carbon\Carbon;
+use App\Services\SmtpService;
 
 class PasswordController extends Controller
 {
-    // 1️⃣ FORGOT PASSWORD
+    protected $smtpService;
+
+    public function __construct(SmtpService $smtpService)
+    {
+        $this->smtpService = $smtpService;
+    }
+
     public function forgotPassword(Request $request)
     {
         $request->validate([
@@ -38,8 +45,12 @@ class PasswordController extends Controller
             ]
         );
 
-        // ✅ CLEAN LINK (NO EMAIL)
         $resetLink = env('FRONT_END_URL') . "/reset-password?token=$token";
+
+        $smtp = \App\Models\SmtpSetting::first();
+        if ($smtp) {
+            $this->smtpService->applyConfig($smtp);
+        }
 
         Mail::raw("Reset your password securely:\n$resetLink", function ($message) use ($user) {
             $message->to($user->email)

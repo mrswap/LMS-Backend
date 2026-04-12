@@ -20,6 +20,8 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'auth' => \App\Http\Middleware\Authenticate::class,
             'role' => \App\Http\Middleware\RoleMiddleware::class,
+            'smtp' => \App\Http\Middleware\ApplySmtpConfig::class,
+
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
@@ -81,6 +83,5 @@ return Application::configure(basePath: dirname(__DIR__))
                 ], 404);
             }
         });
-
     })
     ->create(); // ✅ VERY IMPORTANT

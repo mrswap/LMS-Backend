@@ -15,6 +15,7 @@ use App\Modules\Admin\ContentManagement\Controllers\MediaController;
 use App\Modules\Admin\ContentManagement\Controllers\SectionContentController;
 use App\Modules\Admin\Settings\Controllers\RoleController;
 use App\Modules\Admin\Settings\Controllers\DesignationController;
+use App\Modules\Admin\Settings\Controllers\SmtpController;
 
 Route::prefix('v1')->group(function () {
 
@@ -180,6 +181,10 @@ Route::prefix('v1')->group(function () {
                 Route::post('designations/{id}', [DesignationController::class, 'update']);
                 Route::delete('designations/{id}', [DesignationController::class, 'destroy']);
                 Route::post('designations/{id}/toggle-status', [DesignationController::class, 'toggleStatus']);
+                //smtp
+                Route::get('smtp', [SmtpController::class, 'get']);
+                Route::post('smtp', [SmtpController::class, 'update']);
+                Route::post('smtp/test', [SmtpController::class, 'test']);
             });
         });
     });
