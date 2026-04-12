@@ -20,7 +20,11 @@ class UserController extends Controller
         $query = User::whereHas('role', function ($q) {
             $q->where('name', User::ROLE_SALES);
         })
-            ->with(['creator:id,name', 'role:id,name,label']);
+            ->with([
+                'creator:id,name',
+                'role:id,name,label',
+                'designation:id,name,label'
+            ]);
 
         /*
         |-----------------------------
@@ -91,9 +95,10 @@ class UserController extends Controller
             'role' => 'required',
             'department' => 'required',
             'region' => 'required',
+            'designation_id' => 'required|exists:designations,id',
             'password' => 'required|min:6',
             'role_id' => 'required|exists:roles,id',
-            
+
         ]);
 
         $imagePath = null;
@@ -112,7 +117,7 @@ class UserController extends Controller
             'employee_id' => $request->employee_id,
             'role_id' =>  $request->role_id,
             'department' => $request->department,
-            'designation' => $request->designation,
+            'designation_id' => $request->designation_id,
             'region' => $request->region,
             'city' => $request->city,
             'password' => Hash::make($request->password),

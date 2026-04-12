@@ -14,6 +14,7 @@ use App\Modules\Admin\Auth\Controllers\PasswordController;
 use App\Modules\Admin\ContentManagement\Controllers\MediaController;
 use App\Modules\Admin\ContentManagement\Controllers\SectionContentController;
 use App\Modules\Admin\Settings\Controllers\RoleController;
+use App\Modules\Admin\Settings\Controllers\DesignationController;
 
 Route::prefix('v1')->group(function () {
 
@@ -165,12 +166,20 @@ Route::prefix('v1')->group(function () {
             |--------------------------------------------------------------------------
             */
             Route::prefix('setting')->group(function () {
+                //setting
                 Route::get('roles', [RoleController::class, 'index']);
                 Route::post('roles', [RoleController::class, 'store']);
                 Route::get('roles/{id}', [RoleController::class, 'show']);
                 Route::post('roles/{id}', [RoleController::class, 'update']);
                 Route::delete('roles/{id}', [RoleController::class, 'destroy']);
                 Route::post('roles/{id}/toggle-status', [RoleController::class, 'toggleStatus']);
+                //designation
+                Route::get('designations', [DesignationController::class, 'index']);
+                Route::post('designations', [DesignationController::class, 'store']);
+                Route::get('designations/{id}', [DesignationController::class, 'show']);
+                Route::post('designations/{id}', [DesignationController::class, 'update']);
+                Route::delete('designations/{id}', [DesignationController::class, 'destroy']);
+                Route::post('designations/{id}/toggle-status', [DesignationController::class, 'toggleStatus']);
             });
         });
     });

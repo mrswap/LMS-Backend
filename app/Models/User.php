@@ -20,8 +20,8 @@ class User extends Authenticatable
         'name',
         'email',
         'password',
-        'role_id', // ✅ IMPORTANT
-        'designation',
+        'role_id',
+        'designation_id',
         'department',
         'region',
         'city',
@@ -108,6 +108,10 @@ class User extends Authenticatable
         return $this->belongsTo(User::class, 'created_by');
     }
 
+    public function designation()
+    {
+        return $this->belongsTo(Designation::class);
+    }
     /*
     |--------------------------------------------------------------------------
     | Helper Methods
