@@ -16,6 +16,7 @@ use App\Modules\Admin\ContentManagement\Controllers\SectionContentController;
 use App\Modules\Admin\Settings\Controllers\RoleController;
 use App\Modules\Admin\Settings\Controllers\DesignationController;
 use App\Modules\Admin\Settings\Controllers\SmtpController;
+use App\Modules\Admin\FAQ\Controllers\FaqController;
 
 Route::prefix('v1')->group(function () {
 
@@ -124,7 +125,17 @@ Route::prefix('v1')->group(function () {
             Route::delete('topics/{id}', [TopicController::class, 'destroy']);
             Route::post('topics/{id}/toggle-status', [TopicController::class, 'toggleStatus']);
 
-
+            /*
+            |--------------------------------------------------------------------------
+            | FAQs
+            |--------------------------------------------------------------------------
+            */
+            Route::get('faqs', [FaqController::class, 'index']);
+            Route::post('faqs', [FaqController::class, 'store']);
+            Route::get('faqs/{id}', [FaqController::class, 'show']);
+            Route::post('faqs/{id}', [FaqController::class, 'update']);
+            Route::delete('faqs/{id}', [FaqController::class, 'destroy']);
+            Route::post('faqs/{id}/toggle-status', [FaqController::class, 'toggleStatus']);
             /*
             |--------------------------------------------------------------------------
             | MEDIA LIBRARY

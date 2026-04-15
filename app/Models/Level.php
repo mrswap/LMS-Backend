@@ -41,6 +41,11 @@ class Level extends Model
         return $this->belongsTo(User::class, 'created_by');
     }
 
+    public function faqs()
+    {
+        return $this->morphMany(\App\Models\Faq::class, 'faqable');
+    }
+
     // 🔥 REQUIRED (for multilingual)
     public function translations()
     {

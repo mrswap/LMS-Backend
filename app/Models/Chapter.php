@@ -42,6 +42,12 @@ class Chapter extends Model
         return $this->hasMany(Topic::class);
     }
 
+    public function faqs()
+    {
+        return $this->morphMany(\App\Models\Faq::class, 'faqable');
+    }
+
+
     public function creator()
     {
         return $this->belongsTo(User::class, 'created_by');

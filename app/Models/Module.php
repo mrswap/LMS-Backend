@@ -36,6 +36,11 @@ class Module extends Model
         return $this->hasMany(Chapter::class);
     }
 
+    public function faqs()
+    {
+        return $this->morphMany(\App\Models\Faq::class, 'faqable');
+    }
+
     public function creator()
     {
         return $this->belongsTo(User::class, 'created_by');
