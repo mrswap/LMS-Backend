@@ -25,8 +25,10 @@ class RoleMiddleware
             ], 403);
         }
 
-        // Step 3: Role check
-        if (!empty($roles) && !in_array($user->role, $roles)) {
+        // 🔥 Step 3: Role check (FIXED)
+        $user->load('role');
+
+        if (!empty($roles) && (! $user->role || !in_array($user->role->name, $roles))) {
             return response()->json([
                 'message' => 'Unauthorized role access'
             ], 403);
