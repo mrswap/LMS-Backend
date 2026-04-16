@@ -15,10 +15,14 @@ return new class extends Migration
         |-----------------------------------------
         */
         Schema::table('users', function (Blueprint $table) {
-            $table->unsignedBigInteger('role_id')->nullable()->after('password');
-            $table->unsignedBigInteger('designation_id')->nullable()->after('role_id');
-        });
+            if (!Schema::hasColumn('users', 'role_id')) {
+                $table->unsignedBigInteger('role_id')->nullable()->after('password');
+            }
 
+            if (!Schema::hasColumn('users', 'designation_id')) {
+                $table->unsignedBigInteger('designation_id')->nullable()->after('role_id');
+            }
+        });
         /*
         |-----------------------------------------
         | STEP 2 — MIGRATE ROLE DATA (ENUM → ID)
@@ -51,7 +55,13 @@ return new class extends Migration
         |-----------------------------------------
         */
         Schema::table('users', function (Blueprint $table) {
-            $table->dropColumn(['role', 'designation']);
+            if (Schema::hasColumn('users', 'role')) {
+                $table->dropColumn('role');
+            }
+
+            if (Schema::hasColumn('users', 'designation')) {
+                $table->dropColumn('designation');
+            }
         });
 
         /*
@@ -59,9 +69,39 @@ return new class extends Migration
         | STEP 5 — ADD FOREIGN KEYS
         |-----------------------------------------
         */
+        /*
+        |-----------------------------------------
+        | STEP 5 — ADD FOREIGN KEYS (SAFE)
+        |-----------------------------------------
+        */
+        function foreignKeyExists($table, $constraint)
+        {
+            return DB::selectOne("
+        SELECT CONSTRAINT_NAME
+        FROM information_schema.KEY_COLUMN_USAGE
+        WHERE TABLE_NAME = ?
+        AND CONSTRAINT_NAME = ?
+        AND TABLE_SCHEMA = DATABASE()
+    ", [$table, $constraint]) !== null;
+        }
+
         Schema::table('users', function (Blueprint $table) {
-            $table->foreign('role_id')->references('id')->on('roles')->cascadeOnDelete();
-            $table->foreign('designation_id')->references('id')->on('designations')->nullOnDelete();
+
+            // ROLE FK
+            if (!foreignKeyExists('users', 'users_role_id_foreign')) {
+                $table->foreign('role_id')
+                    ->references('id')
+                    ->on('roles')
+                    ->cascadeOnDelete();
+            }
+
+            // DESIGNATION FK
+            if (!foreignKeyExists('users', 'users_designation_id_foreign')) {
+                $table->foreign('designation_id')
+                    ->references('id')
+                    ->on('designations')
+                    ->nullOnDelete();
+            }
         });
     }
 
