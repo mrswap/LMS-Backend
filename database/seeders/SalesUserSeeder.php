@@ -4,19 +4,25 @@ namespace Database\Seeders;
 
 use Illuminate\Database\Seeder;
 use App\Models\User;
+use App\Models\Role;
 use Illuminate\Support\Facades\Hash;
 
 class SalesUserSeeder extends Seeder
 {
     public function run(): void
     {
+        // Get role safely
+        $role = Role::where('name', User::ROLE_SALES)->first();
+
+        $roleId = $role?->id ?? 3; // fallback: 3 = sales
+
         User::updateOrCreate(
             ['email' => 'salesperson@netswaptech.com'],
             [
                 'name' => 'Sales Person',
                 'password' => Hash::make('12345678'),
-                'role' => User::ROLE_SALES,
-                'designation' => 'Sales Executive',
+                'role_id' => $roleId,
+                'designation_id' => null,
                 'department' => 'Sales',
                 'region' => 'India',
                 'city' => 'Indore',
