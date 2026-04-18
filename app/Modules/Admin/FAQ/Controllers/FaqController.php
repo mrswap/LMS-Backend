@@ -43,11 +43,11 @@ class FaqController extends Controller
 
         $request->validate([
             'type'   => 'required|in:level,module,chapter,topic,all',
-            'id'     => 'nullable|integer|required_unless:type,all',
+            'id'     => 'nullable|integer',
             'search' => 'nullable|string',
             'status' => 'nullable|in:0,1,all',
             'limit'  => 'nullable|integer|min:1|max:100',
-            'sortBy' => 'nullable|in:createdAt,question',
+            'sortBy' => 'nullable|in:createdAt',
             'order'  => 'nullable|in:asc,desc'
         ]);
 
@@ -56,15 +56,9 @@ class FaqController extends Controller
     | BASE QUERY
     |-------------------------------------------------------------
     */
-        if ($request->type === 'all') {
+        $query = Faq::with('translations');
 
-            $query = Faq::with('translations');
-
-            // Optional filter by id
-            if ($request->filled('id')) {
-                $query->where('faqable_id', $request->id);
-            }
-        } else {
+        if ($request->type !== 'all') {
 
             $modelClass = $this->resolveModel($request->type);
 
@@ -75,16 +69,23 @@ class FaqController extends Controller
                 ], 400);
             }
 
-            $model = $modelClass::find($request->id);
+            // Filter by type
+            $query->where('faqable_type', $modelClass);
 
-            if (!$model) {
-                return response()->json([
-                    'success' => false,
-                    'message' => ucfirst($request->type) . ' not found'
-                ], 404);
+            // If ID is provided → validate + filter
+            if ($request->filled('id')) {
+
+                $model = $modelClass::find($request->id);
+
+                if (!$model) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => ucfirst($request->type) . ' not found'
+                    ], 404);
+                }
+
+                $query->where('faqable_id', $request->id);
             }
-
-            $query = $model->faqs()->with('translations');
         }
 
         /*
@@ -102,7 +103,7 @@ class FaqController extends Controller
 
         /*
     |-------------------------------------------------------------
-    | SEARCH (QUESTION)
+    | SEARCH
     |-------------------------------------------------------------
     */
         if ($request->filled('search')) {
@@ -119,15 +120,8 @@ class FaqController extends Controller
     | SORTING
     |-------------------------------------------------------------
     */
-        $sortByMap = [
-            'createdAt' => 'created_at',
-            'question'  => 'id', // fallback
-        ];
-
-        $sortBy = $request->get('sortBy', 'createdAt');
-        $order  = strtolower($request->get('order', 'desc')) === 'asc' ? 'asc' : 'desc';
-
-        $query->orderBy($sortByMap[$sortBy] ?? 'created_at', $order);
+        $order = strtolower($request->get('order', 'desc')) === 'asc' ? 'asc' : 'desc';
+        $query->orderBy('created_at', $order);
 
         /*
     |-------------------------------------------------------------
@@ -153,12 +147,14 @@ class FaqController extends Controller
             if (!$translation) return null;
 
             return [
-                'id'         => $faq->id,
-                'question'   => $translation->question,
-                'answer'     => $translation->answer,
-                'image'      => $faq->image,
-                'status'     => (bool) $faq->status,
-                'created_at' => $faq->created_at,
+                'id'            => $faq->id,
+                'type'          => class_basename($faq->faqable_type), // helpful for frontend
+                'faqable_id'    => $faq->faqable_id,
+                'question'      => $translation->question,
+                'answer'        => $translation->answer,
+                'image'         => $faq->image,
+                'status'        => (bool) $faq->status,
+                'created_at'    => $faq->created_at,
             ];
         });
 
@@ -171,6 +167,7 @@ class FaqController extends Controller
             'data' => $faqs
         ]);
     }
+
     /*
     |-------------------------------------------------------------
     | STORE
