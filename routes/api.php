@@ -17,6 +17,10 @@ use App\Modules\Admin\Settings\Controllers\RoleController;
 use App\Modules\Admin\Settings\Controllers\DesignationController;
 use App\Modules\Admin\Settings\Controllers\SmtpController;
 use App\Modules\Admin\FAQ\Controllers\FaqController;
+use App\Modules\Admin\Assessment\Controllers\AssessmentController;
+use App\Modules\Admin\Assessment\Controllers\QuestionController;
+use App\Modules\Admin\Assessment\Controllers\OptionController;
+
 
 Route::prefix('v1')->group(function () {
 
@@ -152,7 +156,8 @@ Route::prefix('v1')->group(function () {
             /*
             |--------------------------------------------------------------------------
             | Section Content
-            |--------------------------------------------------------------------------            */
+            |--------------------------------------------------------------------------
+            */
 
             // 🔹 CREATE
             Route::post('content-topics/{topic_id}/contents', [SectionContentController::class, 'store']);
@@ -171,6 +176,35 @@ Route::prefix('v1')->group(function () {
             Route::post('content-topics/{topic_id}/contents/{id}', [SectionContentController::class, 'update'])->whereNumber('id');
             // 🔹 DELETE
             Route::delete('content-topics/{topic_id}/contents/{id}', [SectionContentController::class, 'destroy'])->whereNumber('id');
+
+
+
+            /*
+            |--------------------------------------------------------------------------
+            | Assesment  Content
+            |--------------------------------------------------------------------------
+            */
+            Route::prefix('assessments')->group(function () {
+
+                Route::get('/', [AssessmentController::class, 'index']);
+                Route::post('/', [AssessmentController::class, 'store']);
+                Route::get('{id}', [AssessmentController::class, 'show']);
+                Route::post('{id}', [AssessmentController::class, 'update']);
+                Route::delete('{id}', [AssessmentController::class, 'destroy']);
+                Route::post('{id}/toggle-status', [AssessmentController::class, 'toggleStatus']);
+
+                Route::post('{assessment_id}/questions', [QuestionController::class, 'store']);
+                Route::get('{assessment_id}/questions', [QuestionController::class, 'index']);
+                Route::post('questions/{id}', [QuestionController::class, 'update']);
+                Route::delete('questions/{id}', [QuestionController::class, 'destroy']);
+
+                Route::post('questions/{question_id}/options', [OptionController::class, 'store']);
+                Route::post('options/{id}', [OptionController::class, 'update']);
+                Route::delete('options/{id}', [OptionController::class, 'destroy']);
+            });
+
+
+
 
             /*
             |--------------------------------------------------------------------------
