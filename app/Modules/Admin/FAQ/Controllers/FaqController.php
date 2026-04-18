@@ -42,8 +42,8 @@ class FaqController extends Controller
         $lang = $this->resolveLanguage($request);
 
         $request->validate([
-            'type'   => 'required|in:level,module,chapter,topic',
-            'id'     => 'required|integer',
+            'type'   => 'required|in:level,module,chapter,topic,all',
+            'id'     => 'nullable|integer|required_unless:type,all',
             'search' => 'nullable|string',
             'status' => 'nullable|in:0,1,all',
             'limit'  => 'nullable|integer|min:1|max:100',
@@ -52,31 +52,45 @@ class FaqController extends Controller
         ]);
 
         /*
-    |-----------------------------
-    | RESOLVE MODEL
-    |-----------------------------
+    |-------------------------------------------------------------
+    | BASE QUERY
+    |-------------------------------------------------------------
     */
-        $modelClass = $this->resolveModel($request->type);
-        $model = $modelClass::find($request->id);
+        if ($request->type === 'all') {
 
-        if (!$model) {
-            return response()->json([
-                'success' => false,
-                'message' => ucfirst($request->type) . ' not found'
-            ], 404);
+            $query = Faq::with('translations');
+
+            // Optional filter by id
+            if ($request->filled('id')) {
+                $query->where('faqable_id', $request->id);
+            }
+        } else {
+
+            $modelClass = $this->resolveModel($request->type);
+
+            if (!$modelClass) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Invalid type'
+                ], 400);
+            }
+
+            $model = $modelClass::find($request->id);
+
+            if (!$model) {
+                return response()->json([
+                    'success' => false,
+                    'message' => ucfirst($request->type) . ' not found'
+                ], 404);
+            }
+
+            $query = $model->faqs()->with('translations');
         }
 
         /*
-    |-----------------------------
-    | BASE QUERY
-    |-----------------------------
-    */
-        $query = $model->faqs()->with('translations');
-
-        /*
-    |-----------------------------
+    |-------------------------------------------------------------
     | STATUS FILTER
-    |-----------------------------
+    |-------------------------------------------------------------
     */
         if ($request->has('status')) {
             if ($request->status !== 'all') {
@@ -87,10 +101,10 @@ class FaqController extends Controller
         }
 
         /*
-        |-----------------------------
-        | SEARCH (QUESTION)
-        |-----------------------------
-        */
+    |-------------------------------------------------------------
+    | SEARCH (QUESTION)
+    |-------------------------------------------------------------
+    */
         if ($request->filled('search')) {
             $search = $request->search;
 
@@ -101,13 +115,13 @@ class FaqController extends Controller
         }
 
         /*
-        |-----------------------------
-        | SORTING
-        |-----------------------------
-        */
+    |-------------------------------------------------------------
+    | SORTING
+    |-------------------------------------------------------------
+    */
         $sortByMap = [
             'createdAt' => 'created_at',
-            'question'  => 'id', // fallback (since question is in translation)
+            'question'  => 'id', // fallback
         ];
 
         $sortBy = $request->get('sortBy', 'createdAt');
@@ -116,20 +130,20 @@ class FaqController extends Controller
         $query->orderBy($sortByMap[$sortBy] ?? 'created_at', $order);
 
         /*
-        |-----------------------------
-        | PAGINATION
-        |-----------------------------
-        */
+    |-------------------------------------------------------------
+    | PAGINATION
+    |-------------------------------------------------------------
+    */
         $limit = (int) $request->get('limit', 10);
         $limit = ($limit > 0 && $limit <= 100) ? $limit : 10;
 
         $faqs = $query->paginate($limit);
 
         /*
-        |-----------------------------
-        | TRANSFORM
-        |-----------------------------
-        */
+    |-------------------------------------------------------------
+    | TRANSFORM
+    |-------------------------------------------------------------
+    */
         $faqs->getCollection()->transform(function ($faq) use ($lang) {
 
             $translation = $faq->translations
@@ -139,11 +153,11 @@ class FaqController extends Controller
             if (!$translation) return null;
 
             return [
-                'id'        => $faq->id,
-                'question'  => $translation->question,
-                'answer'    => $translation->answer,
-                'image'     => $faq->image,
-                'status'    => (bool) $faq->status,
+                'id'         => $faq->id,
+                'question'   => $translation->question,
+                'answer'     => $translation->answer,
+                'image'      => $faq->image,
+                'status'     => (bool) $faq->status,
                 'created_at' => $faq->created_at,
             ];
         });
@@ -157,7 +171,6 @@ class FaqController extends Controller
             'data' => $faqs
         ]);
     }
-
     /*
     |-------------------------------------------------------------
     | STORE
