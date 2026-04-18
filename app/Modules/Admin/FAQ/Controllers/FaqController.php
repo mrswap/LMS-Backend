@@ -42,20 +42,95 @@ class FaqController extends Controller
         $lang = $this->resolveLanguage($request);
 
         $request->validate([
-            'type' => 'required|in:level,module,chapter,topic',
-            'id'   => 'required|integer'
+            'type'   => 'required|in:level,module,chapter,topic',
+            'id'     => 'required|integer',
+            'search' => 'nullable|string',
+            'status' => 'nullable|in:0,1,all',
+            'limit'  => 'nullable|integer|min:1|max:100',
+            'sortBy' => 'nullable|in:createdAt,question',
+            'order'  => 'nullable|in:asc,desc'
         ]);
 
+        /*
+    |-----------------------------
+    | RESOLVE MODEL
+    |-----------------------------
+    */
         $modelClass = $this->resolveModel($request->type);
         $model = $modelClass::find($request->id);
 
         if (!$model) {
-            return response()->json(['success' => false], 404);
+            return response()->json([
+                'success' => false,
+                'message' => ucfirst($request->type) . ' not found'
+            ], 404);
         }
 
-        $faqs = $model->faqs()->with('translations')->get();
+        /*
+    |-----------------------------
+    | BASE QUERY
+    |-----------------------------
+    */
+        $query = $model->faqs()->with('translations');
 
-        $data = $faqs->map(function ($faq) use ($lang) {
+        /*
+    |-----------------------------
+    | STATUS FILTER
+    |-----------------------------
+    */
+        if ($request->has('status')) {
+            if ($request->status !== 'all') {
+                $query->where('status', (bool) $request->status);
+            }
+        } else {
+            $query->where('status', true);
+        }
+
+        /*
+        |-----------------------------
+        | SEARCH (QUESTION)
+        |-----------------------------
+        */
+        if ($request->filled('search')) {
+            $search = $request->search;
+
+            $query->whereHas('translations', function ($q) use ($lang, $search) {
+                $q->where('language_code', $lang)
+                    ->where('question', 'like', "%{$search}%");
+            });
+        }
+
+        /*
+        |-----------------------------
+        | SORTING
+        |-----------------------------
+        */
+        $sortByMap = [
+            'createdAt' => 'created_at',
+            'question'  => 'id', // fallback (since question is in translation)
+        ];
+
+        $sortBy = $request->get('sortBy', 'createdAt');
+        $order  = strtolower($request->get('order', 'desc')) === 'asc' ? 'asc' : 'desc';
+
+        $query->orderBy($sortByMap[$sortBy] ?? 'created_at', $order);
+
+        /*
+        |-----------------------------
+        | PAGINATION
+        |-----------------------------
+        */
+        $limit = (int) $request->get('limit', 10);
+        $limit = ($limit > 0 && $limit <= 100) ? $limit : 10;
+
+        $faqs = $query->paginate($limit);
+
+        /*
+        |-----------------------------
+        | TRANSFORM
+        |-----------------------------
+        */
+        $faqs->getCollection()->transform(function ($faq) use ($lang) {
 
             $translation = $faq->translations
                 ->where('language_code', $lang)
@@ -64,15 +139,23 @@ class FaqController extends Controller
             if (!$translation) return null;
 
             return [
-                'id' => $faq->id,
-                'question' => $translation->question,
-                'answer' => $translation->answer,
-                'image' => $faq->image,
-                'status' => $faq->status,
+                'id'        => $faq->id,
+                'question'  => $translation->question,
+                'answer'    => $translation->answer,
+                'image'     => $faq->image,
+                'status'    => (bool) $faq->status,
+                'created_at' => $faq->created_at,
             ];
-        })->filter()->values();
+        });
 
-        return response()->json(['success' => true, 'data' => $data]);
+        $faqs->setCollection(
+            $faqs->getCollection()->filter()->values()
+        );
+
+        return response()->json([
+            'success' => true,
+            'data' => $faqs
+        ]);
     }
 
     /*
