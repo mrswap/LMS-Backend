@@ -150,6 +150,7 @@ class FaqController extends Controller
                 'id'            => $faq->id,
                 'type'          => class_basename($faq->faqable_type), // helpful for frontend
                 'faqable_id'    => $faq->faqable_id,
+                'type_id'    => $faq->faqable_id,
                 'question'      => $translation->question,
                 'answer'        => $translation->answer,
                 'image'         => $faq->image,
