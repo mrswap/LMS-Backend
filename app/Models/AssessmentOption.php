@@ -25,4 +25,3 @@ class AssessmentOption extends Model
         return url($value); // ✅ correct
     }
 }
-s

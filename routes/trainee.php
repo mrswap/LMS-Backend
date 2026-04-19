@@ -4,6 +4,7 @@ use Illuminate\Support\Facades\Route;
 use App\Modules\Trainee\Auth\Controllers\AuthController;
 use App\Modules\Trainee\Auth\Controllers\PasswordController;
 use App\Modules\Trainee\Profile\Controllers\ProfileController;
+use App\Modules\Trainee\Assessment\Controllers\AttemptController;
 
 Route::prefix('v1/trainee')->group(function () {
 
@@ -30,5 +31,14 @@ Route::prefix('v1/trainee')->group(function () {
         Route::get('/profile', [ProfileController::class, 'profile']);
         Route::post('/update-profile', [ProfileController::class, 'updateProfile']);
         Route::post('/change-password', [ProfileController::class, 'changePassword']);
+
+
+        Route::prefix('assessments')->group(function () {
+            Route::post('{id}/start', [AttemptController::class, 'start']);
+            Route::get('{id}/questions', [AttemptController::class, 'questions']);
+            Route::post('answer', [AttemptController::class, 'answer']);
+            Route::get('{id}/resume', [AttemptController::class, 'resume']);
+            Route::post('{id}/submit', [AttemptController::class, 'submit']);
+        });
     });
 });
