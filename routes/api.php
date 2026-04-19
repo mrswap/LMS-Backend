@@ -176,7 +176,7 @@ Route::prefix('v1')->group(function () {
             Route::post('content-topics/{topic_id}/contents/{id}', [SectionContentController::class, 'update'])->whereNumber('id');
             // 🔹 DELETE
             Route::delete('content-topics/{topic_id}/contents/{id}', [SectionContentController::class, 'destroy'])->whereNumber('id');
-
+            Route::post('content-topics/{topic_id}/contents/bulk', [SectionContentController::class, 'bulkStore']);
 
 
             /*
