@@ -151,23 +151,16 @@ class SectionContentController extends Controller
 
         $query = TopicContent::with([
             'translations',
-            'topic:id,program_id,level_id,module_id,chapter_id,title'
+            'topic.program:id,title',
+            'topic.level:id,title',
+            'topic.module:id,title',
+            'topic.chapter:id,title',
         ]);
 
-        /*
-        |-----------------------------
-        | TOPIC FILTER (OPTIONAL)
-        |-----------------------------
-        */
         if ($topicId) {
             $query->where('topic_id', $topicId);
         }
 
-        /*
-    |-----------------------------
-    | HIERARCHY FILTERS
-    |-----------------------------
-    */
         if ($request->filled('program_id')) {
             $query->whereHas(
                 'topic',
@@ -200,20 +193,14 @@ class SectionContentController extends Controller
             );
         }
 
-        /*
-    |-----------------------------
-    | TYPE FILTER
-    |-----------------------------
-    */
+        if ($request->filled('topic_id')) {
+            $query->where('topic_id', $request->topic_id);
+        }
+
         if ($request->filled('type')) {
             $query->where('type', $request->type);
         }
 
-        /*
-    |-----------------------------
-    | STATUS FILTER
-    |-----------------------------
-    */
         if ($request->has('status')) {
             if ($request->status !== 'all') {
                 $query->where('status', (bool)$request->status);
@@ -222,13 +209,7 @@ class SectionContentController extends Controller
             $query->where('status', true);
         }
 
-        /*
-    |-----------------------------
-    | SEARCH
-    |-----------------------------
-    */
         if ($request->filled('search')) {
-
             $search = $request->search;
 
             if ($lang === 'en') {
@@ -251,29 +232,13 @@ class SectionContentController extends Controller
             }
         }
 
-        /*
-    |-----------------------------
-    | SORTING
-    |-----------------------------
-    */
-        $query->orderBy('topic_id')
-            ->orderBy('order');
+        $query->orderBy('topic_id')->orderBy('order');
 
-        /*
-    |-----------------------------
-    | PAGINATION
-    |-----------------------------
-    */
         $limit = (int)$request->get('limit', 10);
         $limit = ($limit > 0 && $limit <= 100) ? $limit : 10;
 
         $contents = $query->paginate($limit);
 
-        /*
-    |-----------------------------
-    | TRANSFORM
-    |-----------------------------
-    */
         $contents->getCollection()->transform(function ($item) use ($lang) {
 
             $translation = $item->translations
@@ -294,7 +259,26 @@ class SectionContentController extends Controller
                 'meta' => $item->meta,
                 'order' => $item->order,
                 'status' => (bool)$item->status,
-                'topic' => $item->topic,
+                'topic' => [
+                    'id' => $item->topic->id ?? null,
+                    'title' => $item->topic->title ?? null,
+                    'program' => [
+                        'id' => $item->topic->program->id ?? null,
+                        'title' => $item->topic->program->title ?? null,
+                    ],
+                    'level' => [
+                        'id' => $item->topic->level->id ?? null,
+                        'title' => $item->topic->level->title ?? null,
+                    ],
+                    'module' => [
+                        'id' => $item->topic->module->id ?? null,
+                        'title' => $item->topic->module->title ?? null,
+                    ],
+                    'chapter' => [
+                        'id' => $item->topic->chapter->id ?? null,
+                        'title' => $item->topic->chapter->title ?? null,
+                    ],
+                ],
             ];
         });
 
@@ -307,19 +291,73 @@ class SectionContentController extends Controller
             'data' => $contents
         ]);
     }
-
     /*
     |--------------------------------------------------------------------------
     | SHOW
     |--------------------------------------------------------------------------
     */
-    public function show($topicId, $id)
+    public function show(Request $request, $topicId, $id)
     {
-        return TopicContent::where('topic_id', $topicId)
-            ->with('translations')
-            ->findOrFail($id);
-    }
+        $lang = $this->resolveLanguage($request);
 
+        $item = TopicContent::with([
+            'translations',
+            'topic.program:id,title',
+            'topic.level:id,title',
+            'topic.module:id,title',
+            'topic.chapter:id,title',
+        ])
+            ->where('topic_id', $topicId)
+            ->findOrFail($id);
+
+        $translation = $item->translations
+            ->where('language_code', $lang)
+            ->first();
+
+        $title = $translation->title ?? $item->title;
+        $content = $translation->content ?? $item->content;
+
+        if ($title === 'BASE_RECORD') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Content not available'
+            ], 404);
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'id' => $item->id,
+                'topic_id' => $item->topic_id,
+                'type' => $item->type,
+                'title' => $title,
+                'content' => $item->type === 'text' ? $content : null,
+                'meta' => $item->meta,
+                'order' => $item->order,
+                'status' => (bool)$item->status,
+                'topic' => [
+                    'id' => $item->topic->id ?? null,
+                    'title' => $item->topic->title ?? null,
+                    'program' => [
+                        'id' => $item->topic->program->id ?? null,
+                        'title' => $item->topic->program->title ?? null,
+                    ],
+                    'level' => [
+                        'id' => $item->topic->level->id ?? null,
+                        'title' => $item->topic->level->title ?? null,
+                    ],
+                    'module' => [
+                        'id' => $item->topic->module->id ?? null,
+                        'title' => $item->topic->module->title ?? null,
+                    ],
+                    'chapter' => [
+                        'id' => $item->topic->chapter->id ?? null,
+                        'title' => $item->topic->chapter->title ?? null,
+                    ],
+                ],
+            ]
+        ]);
+    }
     /*
     |--------------------------------------------------------------------------
     | FULL (Frontend API)

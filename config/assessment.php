@@ -21,7 +21,7 @@ return [
 
     'quiz' => [
         'max_attempts' => 5,
-        'timer_enabled' => false,     // mostly practice based
+        'timer_enabled' => true,     // mostly practice based
     ],
 
     /*
