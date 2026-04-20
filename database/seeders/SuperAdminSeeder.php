@@ -13,19 +13,31 @@ class SuperAdminSeeder extends Seeder
     {
         // Get role safely
         $role = Role::where('name', User::ROLE_SUPERADMIN)->first();
+        $roleId = $role?->id ?? 1;
 
-        $roleId = $role?->id ?? 1; // fallback: 1 = superadmin
-
-        User::updateOrCreate(
-            ['email' => 'swapnil@netswaptech.com'],
+        $users = [
             [
+                'email' => 'swapnil@netswaptech.com',
                 'name' => 'Super Admin',
-                'password' => Hash::make('12345678'),
-                'role_id' => $roleId,
-                'designation_id' => null, // better than string
-                'is_active' => true,
-                'created_by' => null,
-            ]
-        );
+            ],
+            [
+                'email' => 'ajaycharve109@gmail.com',
+                'name' => 'Ajay Charve',
+            ],
+        ];
+
+        foreach ($users as $user) {
+            User::updateOrCreate(
+                ['email' => $user['email']],
+                [
+                    'name' => $user['name'],
+                    'password' => Hash::make('12345678'),
+                    'role_id' => $roleId,
+                    'designation_id' => null,
+                    'is_active' => true,
+                    'created_by' => null,
+                ]
+            );
+        }
     }
 }
