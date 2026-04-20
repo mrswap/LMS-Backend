@@ -30,6 +30,7 @@ class SalesUserSeeder extends Seeder
                 'employee_id' => 'EMP001',
                 'is_active' => true,
                 'created_by' => 1,
+                'email_verified_at' => now(),
             ]
         );
     }

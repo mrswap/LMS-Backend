@@ -165,6 +165,7 @@ Route::prefix('v1')->group(function () {
             Route::get('content-topics/{topic_id}/contents', [SectionContentController::class, 'index']);
             // 🔹 FULL (frontend)
             Route::get('content-topics/{topic_id}/full', [SectionContentController::class, 'full']);
+            Route::get('contents', [SectionContentController::class, 'index']);
             // 🔥 IMPORTANT: specific routes BEFORE {id}
             // 🔹 REORDER (must be before {id})
             Route::post('content-topics/{topic_id}/contents/reorder', [SectionContentController::class, 'reorder']);

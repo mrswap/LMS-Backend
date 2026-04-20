@@ -60,7 +60,11 @@ class Topic extends Model
     {
         return $this->morphMany(\App\Models\Faq::class, 'faqable');
     }
-    
+
+    public function progress()
+    {
+        return $this->hasMany(UserProgress::class);
+    }
     /*
     |--------------------------------------------------------------------------
     | Scopes

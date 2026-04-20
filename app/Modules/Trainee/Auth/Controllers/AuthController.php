@@ -12,6 +12,9 @@ use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
 use Carbon\Carbon;
 use App\Services\SmtpService;
+use App\Models\UserProgress;
+use App\Models\Topic;
+
 
 class AuthController extends Controller
 {
@@ -185,6 +188,29 @@ class AuthController extends Controller
 
         $token = $user->createToken('trainee_token')->plainTextToken;
 
+        $userId = $user->id;
+
+        // 🔍 check if already initialized
+        $exists = UserProgress::where('user_id', $userId)->exists();
+
+        if (!$exists) {
+
+            // ⚠️ assuming single program / simple flow
+            $firstTopic = Topic::orderBy('id')->first();
+
+            if ($firstTopic) {
+                UserProgress::create([
+                    'user_id' => $userId,
+                    'program_id' => $firstTopic->program_id,
+                    'level_id' => $firstTopic->level_id,
+                    'module_id' => $firstTopic->module_id,
+                    'chapter_id' => $firstTopic->chapter_id,
+                    'topic_id' => $firstTopic->id,
+                    'is_unlocked' => true,
+                    'is_completed' => false,
+                ]);
+            }
+        }
         return response()->json([
             'token' => $token,
             'user' => $user

@@ -5,6 +5,9 @@ use App\Modules\Trainee\Auth\Controllers\AuthController;
 use App\Modules\Trainee\Auth\Controllers\PasswordController;
 use App\Modules\Trainee\Profile\Controllers\ProfileController;
 use App\Modules\Trainee\Assessment\Controllers\AttemptController;
+use App\Modules\Trainee\Progress\Controllers\ProgressController;
+use App\Modules\Trainee\Content\Controllers\ContentController;
+
 
 Route::prefix('v1/trainee')->group(function () {
 
@@ -39,6 +42,12 @@ Route::prefix('v1/trainee')->group(function () {
             Route::post('answer', [AttemptController::class, 'answer']);
             Route::get('{id}/resume', [AttemptController::class, 'resume']);
             Route::post('{id}/submit', [AttemptController::class, 'submit']);
+        });
+
+        Route::get('/progress', [ProgressController::class, 'index']);
+
+        Route::prefix('content')->group(function () {
+            Route::get('topics/{topic_id}', [ContentController::class, 'index']);
         });
     });
 });

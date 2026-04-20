@@ -9,6 +9,9 @@ use App\Models\AssessmentAttempt;
 use App\Models\AssessmentAnswer;
 use App\Modules\Trainee\Assessment\Services\AssessmentService;
 use DB;
+use App\Modules\Trainee\Progress\Services\ProgressionService;
+use App\Models\Topic;
+use App\Models\Level;
 
 class AttemptController extends Controller
 {
@@ -86,7 +89,7 @@ class AttemptController extends Controller
     public function questions($id, Request $request)
     {
         $attemptId = $request->attempt_id;
-        
+
         $attempt = AssessmentAttempt::with('assessment')->findOrFail($attemptId);
 
         $assessment = Assessment::with('questions.options')->findOrFail($id);
@@ -197,10 +200,9 @@ class AttemptController extends Controller
         ]);
     }
 
-    // 🔹 SUBMIT
+
     public function submit($id, Request $request)
     {
-
         $attempt = AssessmentAttempt::with('answers')
             ->where('id', $request->attempt_id)
             ->where('user_id', auth()->id())
@@ -211,14 +213,15 @@ class AttemptController extends Controller
                 'message' => 'Already submitted'
             ], 422);
         }
+
         $assessment = Assessment::findOrFail($id);
 
-        // ⏱ timer check (strict)
+        // ⏱ timer check
         if ($assessment->duration) {
             $expire = $attempt->started_at->addMinutes($assessment->duration);
 
             if (now()->greaterThan($expire)) {
-                // auto submit allowed (no block)
+                // auto submit allowed
             }
         }
 
@@ -226,14 +229,52 @@ class AttemptController extends Controller
 
             $result = $this->service->evaluateAttempt($attempt);
 
+            // 🔥 determine pass/fail first
+            $isPassed = $result['percentage'] >= $assessment->passing_score;
+
             $attempt->update([
                 'score' => $result['marks'],
                 'percentage' => $result['percentage'],
                 'submitted_at' => now(),
-                'status' => $result['percentage'] >= $assessment->passing_score
-                    ? 'passed'
-                    : 'failed'
+                'status' => $isPassed ? 'passed' : 'failed'
             ]);
+
+            /*
+            |--------------------------------------------------------------------------
+            | 🔥 PHASE 3 INTEGRATION (MOST IMPORTANT)
+            |--------------------------------------------------------------------------
+            */
+            if ($isPassed) {
+
+                $progressionService = app(ProgressionService::class);
+
+                // 🟢 Topic Quiz
+                if ($assessment->type === 'topic') {
+
+                    // ⚠️ make sure assessment me topic_id hai
+                    $topic = Topic::find($assessment->assessmentable_id);
+
+                    if ($topic) {
+                        $progressionService->handleTopicCompletion(
+                            auth()->id(),
+                            $topic
+                        );
+                    }
+                }
+
+                // 🔴 Level Exam
+                if ($assessment->type === 'level') {
+
+                    $level = Level::find($assessment->assessmentable_id);
+
+                    if ($level) {
+                        $progressionService->handleLevelExamPass(
+                            auth()->id(),
+                            $level
+                        );
+                    }
+                }
+            }
 
             return response()->json([
                 'score' => $result['marks'],

@@ -20,10 +20,10 @@ class SectionContentController extends Controller
     }
 
     /*
-    |--------------------------------------------------------------------------
-    | CREATE (Single)
-    |--------------------------------------------------------------------------
-    */
+        |--------------------------------------------------------------------------
+        | CREATE (Single)
+        |--------------------------------------------------------------------------
+        */
     public function store(SectionContentRequest $request, $topicId)
     {
         $lang = $this->resolveLanguage($request);
@@ -145,19 +145,75 @@ class SectionContentController extends Controller
     | LIST (Admin)
     |--------------------------------------------------------------------------
     */
-    public function index(Request $request, $topicId)
+    public function index(Request $request, $topicId = null)
     {
         $lang = $this->resolveLanguage($request);
 
         $query = TopicContent::with([
             'translations',
             'topic:id,program_id,level_id,module_id,chapter_id,title'
-        ])->where('topic_id', $topicId);
+        ]);
 
+        /*
+        |-----------------------------
+        | TOPIC FILTER (OPTIONAL)
+        |-----------------------------
+        */
+        if ($topicId) {
+            $query->where('topic_id', $topicId);
+        }
+
+        /*
+    |-----------------------------
+    | HIERARCHY FILTERS
+    |-----------------------------
+    */
+        if ($request->filled('program_id')) {
+            $query->whereHas(
+                'topic',
+                fn($q) =>
+                $q->where('program_id', $request->program_id)
+            );
+        }
+
+        if ($request->filled('level_id')) {
+            $query->whereHas(
+                'topic',
+                fn($q) =>
+                $q->where('level_id', $request->level_id)
+            );
+        }
+
+        if ($request->filled('module_id')) {
+            $query->whereHas(
+                'topic',
+                fn($q) =>
+                $q->where('module_id', $request->module_id)
+            );
+        }
+
+        if ($request->filled('chapter_id')) {
+            $query->whereHas(
+                'topic',
+                fn($q) =>
+                $q->where('chapter_id', $request->chapter_id)
+            );
+        }
+
+        /*
+    |-----------------------------
+    | TYPE FILTER
+    |-----------------------------
+    */
         if ($request->filled('type')) {
             $query->where('type', $request->type);
         }
 
+        /*
+    |-----------------------------
+    | STATUS FILTER
+    |-----------------------------
+    */
         if ($request->has('status')) {
             if ($request->status !== 'all') {
                 $query->where('status', (bool)$request->status);
@@ -166,7 +222,13 @@ class SectionContentController extends Controller
             $query->where('status', true);
         }
 
+        /*
+    |-----------------------------
+    | SEARCH
+    |-----------------------------
+    */
         if ($request->filled('search')) {
+
             $search = $request->search;
 
             if ($lang === 'en') {
@@ -189,8 +251,29 @@ class SectionContentController extends Controller
             }
         }
 
-        $contents = $query->orderBy('order')->paginate(10);
+        /*
+    |-----------------------------
+    | SORTING
+    |-----------------------------
+    */
+        $query->orderBy('topic_id')
+            ->orderBy('order');
 
+        /*
+    |-----------------------------
+    | PAGINATION
+    |-----------------------------
+    */
+        $limit = (int)$request->get('limit', 10);
+        $limit = ($limit > 0 && $limit <= 100) ? $limit : 10;
+
+        $contents = $query->paginate($limit);
+
+        /*
+    |-----------------------------
+    | TRANSFORM
+    |-----------------------------
+    */
         $contents->getCollection()->transform(function ($item) use ($lang) {
 
             $translation = $item->translations
@@ -204,6 +287,7 @@ class SectionContentController extends Controller
 
             return [
                 'id' => $item->id,
+                'topic_id' => $item->topic_id,
                 'type' => $item->type,
                 'title' => $title,
                 'content' => $item->type === 'text' ? $content : null,
