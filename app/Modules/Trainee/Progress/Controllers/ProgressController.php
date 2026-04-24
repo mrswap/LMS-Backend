@@ -239,4 +239,147 @@ class ProgressController extends Controller
             'description' => $translation->description ?? $model->description,
         ];
     }
+
+    public function hierarchy(Request $request)
+    {
+        $userId = auth()->id();
+        $lang = $this->resolveLanguage($request);
+
+        $progress = UserProgress::where('user_id', $userId)
+            ->get()
+            ->keyBy('topic_id');
+
+        $programs = Program::with('levels.modules.chapters.topics')->get();
+
+        $data = $programs->map(function ($program) use ($progress, $lang) {
+
+            $t = $this->getTranslated($program, $lang);
+
+            return [
+                'type' => 'program',
+                'id' => $program->id,
+                'title' => $t['title'],
+                'description' => $t['description'],
+                'thumbnail' => $program->thumbnail,
+
+                'levels' => $program->levels->map(function ($level) use ($progress, $lang) {
+
+                    $t = $this->getTranslated($level, $lang);
+
+                    return [
+                        'type' => 'level',
+                        'id' => $level->id,
+                        'title' => $t['title'],
+                        'description' => $t['description'],
+                        'thumbnail' => $level->thumbnail,
+
+                        'is_unlocked' => true, // future: level unlock logic
+                        'is_completed' => false,
+
+                        'modules' => $level->modules->map(function ($module) use ($progress, $lang) {
+
+                            $t = $this->getTranslated($module, $lang);
+
+                            $topics = $module->chapters->flatMap->topics;
+
+                            $isUnlocked = $topics->contains(fn($topic) => $progress[$topic->id]->is_unlocked ?? false);
+                            $isCompleted = $topics->every(fn($topic) => $progress[$topic->id]->is_completed ?? false);
+
+                            return [
+                                'type' => 'module',
+                                'id' => $module->id,
+                                'title' => $t['title'],
+                                'description' => $t['description'],
+                                'thumbnail' => $module->thumbnail,
+
+                                'is_unlocked' => $isUnlocked,
+                                'is_completed' => $isCompleted,
+
+                                'chapters' => $module->chapters->map(function ($chapter) use ($progress, $lang) {
+
+                                    $t = $this->getTranslated($chapter, $lang);
+
+                                    $isUnlocked = $chapter->topics->contains(fn($topic) => $progress[$topic->id]->is_unlocked ?? false);
+                                    $isCompleted = $chapter->topics->every(fn($topic) => $progress[$topic->id]->is_completed ?? false);
+
+                                    return [
+                                        'type' => 'chapter',
+                                        'id' => $chapter->id,
+                                        'title' => $t['title'],
+                                        'description' => $t['description'],
+                                        'thumbnail' => $chapter->thumbnail,
+
+                                        'is_unlocked' => $isUnlocked,
+                                        'is_completed' => $isCompleted,
+
+                                        'topics' => $chapter->topics->map(function ($topic) use ($progress, $lang) {
+
+                                            $p = $progress[$topic->id] ?? null;
+                                            $t = $this->getTranslated($topic, $lang);
+
+                                            return [
+                                                'type' => 'topic',
+                                                'id' => $topic->id,
+                                                'title' => $t['title'],
+                                                'description' => $t['description'],
+                                                'thumbnail' => $topic->thumbnail,
+
+                                                'is_unlocked' => $p?->is_unlocked ?? false,
+                                                'is_completed' => $p?->is_completed ?? false,
+                                            ];
+                                        })
+                                    ];
+                                })
+                            ];
+                        })
+                    ];
+                })
+            ];
+        });
+
+        return response()->json([
+            'success' => true,
+            'data' => $data
+        ]);
+    }
+
+    public function single(Request $request, $type, $id)
+    {
+        $lang = $this->resolveLanguage($request);
+        $userId = auth()->id();
+
+        $progress = UserProgress::where('user_id', $userId)
+            ->get()
+            ->keyBy('topic_id');
+
+        switch ($type) {
+
+            case 'level':
+                $level = Level::with('modules.chapters.topics')->findOrFail($id);
+                return response()->json([
+                    'success' => true,
+                    'data' => $this->mapLevel($level, $progress, $lang)
+                ]);
+
+            case 'module':
+                $module = Module::with('chapters.topics')->findOrFail($id);
+                return response()->json([
+                    'success' => true,
+                    'data' => $this->mapModule($module, $progress, $lang)
+                ]);
+
+            case 'chapter':
+                $chapter = Chapter::with('topics')->findOrFail($id);
+                return response()->json([
+                    'success' => true,
+                    'data' => $this->mapChapter($chapter, $progress, $lang)
+                ]);
+
+            default:
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Invalid type'
+                ], 422);
+        }
+    }
 }

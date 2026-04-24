@@ -214,9 +214,63 @@ class AssessmentController extends Controller
 
     public function show($id)
     {
-        return response()->json(
-            Assessment::with('questions.options')->findOrFail($id)
-        );
+        $assessment = Assessment::with('questions.options')->findOrFail($id);
+
+        $parent = null;
+
+        if ($assessment->assessmentable_type === \App\Models\Topic::class) {
+
+            $topic = \App\Models\Topic::with([
+                'chapter.module.level.program'
+            ])->find($assessment->assessmentable_id);
+
+            $parent = [
+                'type' => 'topic',
+                'topic' => [
+                    'id' => $topic->id,
+                    'title' => $topic->title,
+                ],
+                'chapter' => [
+                    'id' => $topic->chapter->id,
+                    'title' => $topic->chapter->title,
+                ],
+                'module' => [
+                    'id' => $topic->chapter->module->id,
+                    'title' => $topic->chapter->module->title,
+                ],
+                'level' => [
+                    'id' => $topic->chapter->module->level->id,
+                    'title' => $topic->chapter->module->level->title,
+                ],
+                'program' => [
+                    'id' => $topic->chapter->module->level->program->id,
+                    'title' => $topic->chapter->module->level->program->title,
+                ],
+            ];
+        }
+
+        if ($assessment->assessmentable_type === \App\Models\Level::class) {
+
+            $level = \App\Models\Level::with('program')
+                ->find($assessment->assessmentable_id);
+
+            $parent = [
+                'type' => 'level',
+                'level' => [
+                    'id' => $level->id,
+                    'title' => $level->title,
+                ],
+                'program' => [
+                    'id' => $level->program->id,
+                    'title' => $level->program->title,
+                ],
+            ];
+        }
+
+        return response()->json([
+            'assessment' => $assessment,
+            'hierarchy' => $parent
+        ]);
     }
 
     public function update(Request $request, $id)
@@ -289,7 +343,7 @@ class AssessmentController extends Controller
         ]);
     }
 
-    
+
     public function toggleStatus($id)
     {
         $assessment = Assessment::findOrFail($id);

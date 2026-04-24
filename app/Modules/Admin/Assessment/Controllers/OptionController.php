@@ -5,6 +5,10 @@ namespace App\Modules\Admin\Assessment\Controllers;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Models\AssessmentOption;
+use App\Models\AssessmentQuestion;
+use App\Models\Assessment;
+use App\Models\Topic;
+use App\Models\Level;
 
 class OptionController extends Controller
 {
@@ -92,5 +96,110 @@ class OptionController extends Controller
         return response()->json([
             'message' => 'Option deleted successfully'
         ]);
+    }
+
+    // 🔹 GET ALL OPTIONS (by question) + hierarchy
+    public function index($question_id)
+    {
+        $question = AssessmentQuestion::with(['options', 'assessment'])
+            ->findOrFail($question_id);
+
+        $hierarchy = $this->buildHierarchy($question->assessment);
+
+        return response()->json([
+            'question' => [
+                'id' => $question->id,
+                'question_text' => $question->question_text,
+                'file' => $question->file,
+            ],
+            'options' => $question->options,
+            'hierarchy' => $hierarchy
+        ]);
+    }
+
+    // 🔹 GET SINGLE OPTION + hierarchy
+    public function show($id)
+    {
+        $option = AssessmentOption::with('question.assessment')
+            ->findOrFail($id);
+
+        $question = $option->question;
+        $assessment = $question->assessment;
+
+        $hierarchy = $this->buildHierarchy($assessment);
+
+        return response()->json([
+            'option' => $option,
+            'question' => [
+                'id' => $question->id,
+                'question_text' => $question->question_text,
+            ],
+            'hierarchy' => $hierarchy
+        ]);
+    }
+
+    // 🔹 COMMON HIERARCHY BUILDER (IMPORTANT)
+    private function buildHierarchy($assessment)
+    {
+        $hierarchy = null;
+
+        // 👉 Topic based assessment
+        if ($assessment->assessmentable_type === Topic::class) {
+
+            $topic = Topic::with('chapter.module.level.program')
+                ->find($assessment->assessmentable_id);
+
+            $hierarchy = [
+                'type' => 'topic',
+
+                'topic' => [
+                    'id' => $topic->id,
+                    'title' => $topic->title,
+                ],
+
+                'chapter' => [
+                    'id' => $topic->chapter->id,
+                    'title' => $topic->chapter->title,
+                ],
+
+                'module' => [
+                    'id' => $topic->chapter->module->id,
+                    'title' => $topic->chapter->module->title,
+                ],
+
+                'level' => [
+                    'id' => $topic->chapter->module->level->id,
+                    'title' => $topic->chapter->module->level->title,
+                ],
+
+                'program' => [
+                    'id' => $topic->chapter->module->level->program->id,
+                    'title' => $topic->chapter->module->level->program->title,
+                ],
+            ];
+        }
+
+        // 👉 Level based assessment
+        if ($assessment->assessmentable_type === Level::class) {
+
+            $level = Level::with('program')
+                ->find($assessment->assessmentable_id);
+
+            $hierarchy = [
+                'type' => 'level',
+
+                'level' => [
+                    'id' => $level->id,
+                    'title' => $level->title,
+                ],
+
+                'program' => [
+                    'id' => $level->program->id,
+                    'title' => $level->program->title,
+                ],
+            ];
+        }
+
+        return $hierarchy;
     }
 }

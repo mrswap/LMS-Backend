@@ -93,4 +93,79 @@ class QuestionController extends Controller
             'message' => 'Question deleted successfully'
         ]);
     }
+
+    public function show($id)
+    {
+        $question = \App\Models\AssessmentQuestion::with([
+            'options',
+            'assessment'
+        ])->findOrFail($id);
+
+        $assessment = $question->assessment;
+
+        $hierarchy = null;
+
+        // 🔹 CASE 1: Topic based assessment
+        if ($assessment->assessmentable_type === \App\Models\Topic::class) {
+
+            $topic = \App\Models\Topic::with([
+                'chapter.module.level.program'
+            ])->find($assessment->assessmentable_id);
+
+            $hierarchy = [
+                'type' => 'topic',
+
+                'topic' => [
+                    'id' => $topic->id,
+                    'title' => $topic->title,
+                ],
+
+                'chapter' => [
+                    'id' => $topic->chapter->id,
+                    'title' => $topic->chapter->title,
+                ],
+
+                'module' => [
+                    'id' => $topic->chapter->module->id,
+                    'title' => $topic->chapter->module->title,
+                ],
+
+                'level' => [
+                    'id' => $topic->chapter->module->level->id,
+                    'title' => $topic->chapter->module->level->title,
+                ],
+
+                'program' => [
+                    'id' => $topic->chapter->module->level->program->id,
+                    'title' => $topic->chapter->module->level->program->title,
+                ],
+            ];
+        }
+
+        // 🔹 CASE 2: Level based assessment
+        if ($assessment->assessmentable_type === \App\Models\Level::class) {
+
+            $level = \App\Models\Level::with('program')
+                ->find($assessment->assessmentable_id);
+
+            $hierarchy = [
+                'type' => 'level',
+
+                'level' => [
+                    'id' => $level->id,
+                    'title' => $level->title,
+                ],
+
+                'program' => [
+                    'id' => $level->program->id,
+                    'title' => $level->program->title,
+                ],
+            ];
+        }
+
+        return response()->json([
+            'question' => $question,
+            'hierarchy' => $hierarchy
+        ]);
+    }
 }

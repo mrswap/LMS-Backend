@@ -198,10 +198,13 @@ Route::prefix('v1')->group(function () {
                 Route::get('{assessment_id}/questions', [QuestionController::class, 'index']);
                 Route::post('questions/{id}', [QuestionController::class, 'update']);
                 Route::delete('questions/{id}', [QuestionController::class, 'destroy']);
+                Route::get('questions/{id}', [QuestionController::class, 'show']);
 
                 Route::post('questions/{question_id}/options', [OptionController::class, 'store']);
                 Route::post('options/{id}', [OptionController::class, 'update']);
                 Route::delete('options/{id}', [OptionController::class, 'destroy']);
+                Route::get('questions/{question_id}/options', [OptionController::class, 'index']);
+                Route::get('options/{id}', [OptionController::class, 'show']);
             });
 
 
