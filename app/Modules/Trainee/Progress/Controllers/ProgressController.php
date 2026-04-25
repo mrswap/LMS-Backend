@@ -157,11 +157,19 @@ class ProgressController extends Controller
     {
         $t = $this->getTranslated($level, $lang);
 
+        $topics = $level->modules
+            ->flatMap->chapters
+            ->flatMap->topics;
+
         return [
             'id' => $level->id,
+            'type' => 'level',
             'title' => $t['title'],
             'description' => $t['description'],
             'thumbnail' => $level->thumbnail,
+
+            'is_unlocked' => $topics->contains(fn($t) => $progress[$t->id]->is_unlocked ?? false),
+            'is_completed' => $topics->every(fn($t) => $progress[$t->id]->is_completed ?? false),
 
             'modules' => $level->modules->map(
                 fn($module) =>
@@ -173,12 +181,18 @@ class ProgressController extends Controller
     private function mapModule($module, $progress, $lang)
     {
         $t = $this->getTranslated($module, $lang);
+        $status = $this->getModuleStatus($module, $progress);
 
         return [
             'id' => $module->id,
+            'type' => 'module',
             'title' => $t['title'],
             'description' => $t['description'],
             'thumbnail' => $module->thumbnail,
+
+            // ✅ FIX
+            'is_unlocked' => $status['is_unlocked'],
+            'is_completed' => $status['is_completed'],
 
             'chapters' => $module->chapters->map(
                 fn($chapter) =>
@@ -190,12 +204,18 @@ class ProgressController extends Controller
     private function mapChapter($chapter, $progress, $lang)
     {
         $t = $this->getTranslated($chapter, $lang);
+        $status = $this->getChapterStatus($chapter, $progress);
 
         return [
             'id' => $chapter->id,
+            'type' => 'chapter',
             'title' => $t['title'],
             'description' => $t['description'],
             'thumbnail' => $chapter->thumbnail,
+
+            // ✅ FIX
+            'is_unlocked' => $status['is_unlocked'],
+            'is_completed' => $status['is_completed'],
 
             'topics' => $chapter->topics->map(
                 fn($topic) =>
@@ -219,6 +239,24 @@ class ProgressController extends Controller
 
             'is_unlocked' => $p?->is_unlocked ?? false,
             'is_completed' => $p?->is_completed ?? false,
+        ];
+    }
+
+    private function getModuleStatus($module, $progress)
+    {
+        $topics = $module->chapters->flatMap->topics;
+
+        return [
+            'is_unlocked' => $topics->contains(fn($t) => $progress[$t->id]->is_unlocked ?? false),
+            'is_completed' => $topics->every(fn($t) => $progress[$t->id]->is_completed ?? false),
+        ];
+    }
+
+    private function getChapterStatus($chapter, $progress)
+    {
+        return [
+            'is_unlocked' => $chapter->topics->contains(fn($t) => $progress[$t->id]->is_unlocked ?? false),
+            'is_completed' => $chapter->topics->every(fn($t) => $progress[$t->id]->is_completed ?? false),
         ];
     }
 
