@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
@@ -24,6 +25,11 @@ class TopicContent extends Model
     public function topic()
     {
         return $this->belongsTo(Topic::class);
+    }
+
+    public function progress()
+    {
+        return $this->hasMany(UserContentProgress::class, 'topic_content_id');
     }
 
     public function translations()

@@ -28,6 +28,22 @@ class AttemptController extends Controller
         $userId = auth()->id();
 
         $assessment = Assessment::findOrFail($id);
+        
+        if ($assessment->type === 'topic') {
+
+            $topic = \App\Models\Topic::find($assessment->assessmentable_id);
+
+            if ($topic) {
+                $isReady = app(\App\Modules\Trainee\Progress\Controllers\ProgressController::class)
+                    ->isTopicContentCompleted($topic, auth()->id());
+
+                if (!$isReady) {
+                    return response()->json([
+                        'message' => 'Complete all content first'
+                    ], 422);
+                }
+            }
+        }
 
         // 🧠 type-based config
         $maxAttempts = $assessment->type === 'level'

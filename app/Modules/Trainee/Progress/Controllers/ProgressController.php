@@ -35,10 +35,10 @@ class ProgressController extends Controller
             ->keyBy('topic_id');
 
         /*
-    |--------------------------------------------------------------------------
-    | LEVEL → MODULES ONLY
-    |--------------------------------------------------------------------------
-    */
+        |--------------------------------------------------------------------------
+        | LEVEL → MODULES ONLY
+        |--------------------------------------------------------------------------
+        */
         if ($request->level_id) {
 
             $modules = Module::with('chapters.topics')
@@ -74,10 +74,10 @@ class ProgressController extends Controller
         }
 
         /*
-    |--------------------------------------------------------------------------
-    | MODULE → CHAPTERS ONLY
-    |--------------------------------------------------------------------------
-    */
+        |--------------------------------------------------------------------------
+        | MODULE → CHAPTERS ONLY
+        |--------------------------------------------------------------------------
+        */
         if ($request->module_id) {
 
             $chapters = Chapter::with('topics')
@@ -112,10 +112,10 @@ class ProgressController extends Controller
         }
 
         /*
-    |--------------------------------------------------------------------------
-    | CHAPTER → TOPICS ONLY
-    |--------------------------------------------------------------------------
-    */
+        |--------------------------------------------------------------------------
+        | CHAPTER → TOPICS ONLY
+        |--------------------------------------------------------------------------
+        */
         if ($request->chapter_id) {
 
             $topics = Topic::where('chapter_id', $request->chapter_id)->get();
@@ -205,7 +205,63 @@ class ProgressController extends Controller
     {
         $t = $this->getTranslated($chapter, $lang);
         $status = $this->getChapterStatus($chapter, $progress);
+        $userId = auth()->id();
 
+        $topics = $chapter->topics->map(function ($topic) use ($progress, $lang, $userId) {
+
+            $p = $progress[$topic->id] ?? null;
+
+            $contents = $topic->contents ?? collect();
+
+            $totalContents = $contents->count();
+
+            $readContents = \App\Models\UserContentProgress::where('user_id', $userId)
+                ->whereIn('topic_content_id', $contents->pluck('id'))
+                ->where('is_read', true)
+                ->count();
+
+            $isContentDone = $totalContents > 0 && $totalContents === $readContents;
+
+            // assessment
+            $assessment = \App\Models\Assessment::where('assessmentable_id', $topic->id)
+                ->where('type', 'topic')
+                ->first();
+
+            $attempts = 0;
+            $passed = false;
+
+            if ($assessment) {
+                $attempts = \App\Models\AssessmentAttempt::where('assessment_id', $assessment->id)
+                    ->where('user_id', $userId)
+                    ->whereIn('status', ['passed', 'failed'])
+                    ->count();
+
+                $passed = \App\Models\AssessmentAttempt::where('assessment_id', $assessment->id)
+                    ->where('user_id', $userId)
+                    ->where('status', 'passed')
+                    ->exists();
+            }
+
+            return [
+                'id' => $topic->id,
+                'title' => $topic->title,
+
+                'is_unlocked' => $p?->is_unlocked ?? false,
+                'is_completed' => $p?->is_completed ?? false,
+
+                // CONTENT
+                'total_contents' => $totalContents,
+                'read_contents' => $readContents,
+                'is_content_completed' => $isContentDone,
+
+                // ASSESSMENT
+                'assessment_attempts' => $attempts,
+                'assessment_passed' => $passed,
+                'is_quiz_available' => $isContentDone,
+            ];
+        });
+
+        // ✅ THIS WAS MISSING
         return [
             'id' => $chapter->id,
             'type' => 'chapter',
@@ -213,32 +269,34 @@ class ProgressController extends Controller
             'description' => $t['description'],
             'thumbnail' => $chapter->thumbnail,
 
-            // ✅ FIX
             'is_unlocked' => $status['is_unlocked'],
             'is_completed' => $status['is_completed'],
 
-            'topics' => $chapter->topics->map(
-                fn($topic) =>
-                $this->mapTopic($topic, $progress, $lang)
-            )
+            'topics' => $topics
         ];
     }
 
     private function mapTopic($topic, $progress, $lang)
     {
         $p = $progress[$topic->id] ?? null;
+        $userId = auth()->id();
 
         $t = $this->getTranslated($topic, $lang);
+
+        $isContentCompleted = $this->isTopicContentCompleted($topic, $userId);
 
         return [
             'id' => $topic->id,
             'title' => $t['title'],
             'description' => $t['description'],
             'thumbnail' => $topic->thumbnail,
-            'estimated_duration' => $topic->estimated_duration,
 
             'is_unlocked' => $p?->is_unlocked ?? false,
             'is_completed' => $p?->is_completed ?? false,
+
+            // ✅ NEW FLAGS
+            'is_content_completed' => $isContentCompleted,
+            'is_quiz_available' => $isContentCompleted && !($p?->is_completed ?? false),
         ];
     }
 
@@ -419,5 +477,19 @@ class ProgressController extends Controller
                     'message' => 'Invalid type'
                 ], 422);
         }
+    }
+
+    private function isTopicContentCompleted($topic, $userId)
+    {
+        $total = $topic->contents()->count();
+
+        if ($total === 0) return true; // optional logic
+
+        $read = \App\Models\UserContentProgress::where('user_id', $userId)
+            ->whereIn('topic_content_id', $topic->contents->pluck('id'))
+            ->where('is_read', true)
+            ->count();
+
+        return $total === $read;
     }
 }

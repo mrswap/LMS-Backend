@@ -7,6 +7,7 @@ use App\Modules\Trainee\Profile\Controllers\ProfileController;
 use App\Modules\Trainee\Assessment\Controllers\AttemptController;
 use App\Modules\Trainee\Progress\Controllers\ProgressController;
 use App\Modules\Trainee\Content\Controllers\ContentController;
+use App\Modules\Trainee\Content\Controllers\ContentProgressController;
 
 
 Route::prefix('v1/trainee')->group(function () {
@@ -50,6 +51,7 @@ Route::prefix('v1/trainee')->group(function () {
 
         Route::prefix('content')->group(function () {
             Route::get('topics/{topic_id}', [ContentController::class, 'index']);
+            Route::post('content/{id}/toggle-read', [ContentProgressController::class, 'toggle']);
         });
     });
 });
