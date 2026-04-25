@@ -258,6 +258,9 @@ class ProgressController extends Controller
                 'assessment_attempts' => $attempts,
                 'assessment_passed' => $passed,
                 'is_quiz_available' => $isContentDone,
+
+                'estimated_duration' => $topic->estimated_duration,
+
             ];
         });
 
