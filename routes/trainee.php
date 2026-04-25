@@ -51,7 +51,7 @@ Route::prefix('v1/trainee')->group(function () {
 
         Route::prefix('content')->group(function () {
             Route::get('topics/{topic_id}', [ContentController::class, 'index']);
-            Route::post('content/{id}/toggle-read', [ContentProgressController::class, 'toggle']);
+            Route::post('{id}/toggle-read', [ContentProgressController::class, 'toggle']);
         });
     });
 });
