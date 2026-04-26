@@ -17,14 +17,25 @@ class ProfileController extends Controller
     {
         $user = $request->user();
 
-        $user->update($request->only([
+        $data = $request->only([
             'name',
             'mobile',
             'department',
             'designation_id',
             'region',
             'city'
-        ]));
+        ]);
+
+        if ($request->hasFile('profile_image')) {
+            $file = $request->file('profile_image');
+
+            // store in storage/app/public/profile_images
+            $path = $file->store('profile_images', 'public');
+
+            $data['profile_image'] = $path;
+        }
+
+        $user->update($data);
 
         return response()->json([
             'message' => 'Profile updated',
