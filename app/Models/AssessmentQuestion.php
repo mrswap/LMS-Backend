@@ -29,6 +29,6 @@ class AssessmentQuestion extends Model
     {
         if (!$value) return null;
 
-        return url($value); // ✅ correct
+        return url('public/' . ltrim($value, '/'));
     }
 }

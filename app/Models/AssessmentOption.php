@@ -17,11 +17,11 @@ class AssessmentOption extends Model
     {
         return $this->belongsTo(AssessmentQuestion::class, 'question_id');
     }
-
+    
     public function getFileAttribute($value)
     {
         if (!$value) return null;
 
-        return url($value); // ✅ correct
+        return url('public/' . ltrim($value, '/'));
     }
 }

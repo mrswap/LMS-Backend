@@ -33,11 +33,11 @@ class Assessment extends Model
     {
         return $this->hasMany(AssessmentQuestion::class);
     }
-
+    
     public function getFileAttribute($value)
     {
         if (!$value) return null;
 
-        return url($value); // ✅ correct
+        return url('public/' . ltrim($value, '/'));
     }
 }
