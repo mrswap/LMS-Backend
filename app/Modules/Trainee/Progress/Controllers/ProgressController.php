@@ -155,11 +155,11 @@ class ProgressController extends Controller
 
     public function mapLevel($level, $progress, $lang)
     {
+        $userId = auth()->id();
+
         $t = $this->getTranslated($level, $lang);
 
-        $topics = $level->modules
-            ->flatMap->chapters
-            ->flatMap->topics;
+        $status = $this->getLevelStats($level, $progress, $userId);
 
         return [
             'id' => $level->id,
@@ -168,12 +168,19 @@ class ProgressController extends Controller
             'description' => $t['description'],
             'thumbnail' => $level->thumbnail,
 
-            'is_unlocked' => $topics->contains(fn($t) => $progress[$t->id]->is_unlocked ?? false),
-            'is_completed' => $topics->every(fn($t) => $progress[$t->id]->is_completed ?? false),
+            'is_unlocked' => true,
+            'is_completed' => $status['is_all_topics_completed'],
+
+            // ✅ NEW (LEVEL AGGREGATION)
+            'total_topics' => $status['total_topics'],
+            'completed_topics' => $status['completed_topics'],
+            'content_completed_topics' => $status['content_completed_topics'],
+
+            'is_content_completed' => $status['is_content_completed'],
+            'is_level_exam_available' => $status['is_level_exam_available'],
 
             'modules' => $level->modules->map(
-                fn($module) =>
-                $this->mapModule($module, $progress, $lang)
+                fn($module) => $this->mapModule($module, $progress, $lang)
             )
         ];
     }
@@ -494,5 +501,40 @@ class ProgressController extends Controller
             ->count();
 
         return $total === $read;
+    }
+
+    public function getLevelStats($level, $progress, $userId)
+    {
+        $topics = $level->modules
+            ->flatMap->chapters
+            ->flatMap->topics;
+
+        $totalTopics = $topics->count();
+
+        $completedTopics = $topics->filter(
+            fn($t) =>
+            $progress[$t->id]->is_completed ?? false
+        )->count();
+
+        // content completed (optional deeper insight)
+        $contentCompletedTopics = $topics->filter(
+            fn($t) =>
+            $this->isTopicContentCompleted($t, $userId)
+        )->count();
+
+        $allContentCompleted = $totalTopics > 0 && $contentCompletedTopics === $totalTopics;
+        $allTopicsPassed = $totalTopics > 0 && $completedTopics === $totalTopics;
+
+        return [
+            'total_topics' => $totalTopics,
+            'completed_topics' => $completedTopics,
+            'content_completed_topics' => $contentCompletedTopics,
+
+            'is_content_completed' => $allContentCompleted,
+            'is_all_topics_completed' => $allTopicsPassed,
+
+            // 🔥 MAIN FLAG
+            'is_level_exam_available' => $allTopicsPassed,
+        ];
     }
 }
