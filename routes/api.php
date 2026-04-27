@@ -20,7 +20,7 @@ use App\Modules\Admin\FAQ\Controllers\FaqController;
 use App\Modules\Admin\Assessment\Controllers\AssessmentController;
 use App\Modules\Admin\Assessment\Controllers\QuestionController;
 use App\Modules\Admin\Assessment\Controllers\OptionController;
-
+use App\Modules\Admin\Assessment\Controllers\FeedbackController;
 
 Route::prefix('v1')->group(function () {
 
@@ -187,6 +187,7 @@ Route::prefix('v1')->group(function () {
             */
             Route::prefix('assessments')->group(function () {
 
+                Route::get('assessment-feedbacks', [FeedbackController::class, 'index']);
                 Route::get('/', [AssessmentController::class, 'index']);
                 Route::post('/', [AssessmentController::class, 'store']);
                 Route::get('{id}', [AssessmentController::class, 'show']);
@@ -205,6 +206,7 @@ Route::prefix('v1')->group(function () {
                 Route::delete('options/{id}', [OptionController::class, 'destroy']);
                 Route::get('questions/{question_id}/options', [OptionController::class, 'index']);
                 Route::get('options/{id}', [OptionController::class, 'show']);
+
             });
 
 

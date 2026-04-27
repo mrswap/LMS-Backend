@@ -8,7 +8,7 @@ use App\Modules\Trainee\Assessment\Controllers\AttemptController;
 use App\Modules\Trainee\Progress\Controllers\ProgressController;
 use App\Modules\Trainee\Content\Controllers\ContentController;
 use App\Modules\Trainee\Content\Controllers\ContentProgressController;
-
+use App\Modules\Trainee\Assessment\Controllers\FeedbackController;
 
 Route::prefix('v1/trainee')->group(function () {
 
@@ -43,6 +43,7 @@ Route::prefix('v1/trainee')->group(function () {
             Route::post('answer', [AttemptController::class, 'answer']);
             Route::get('{id}/resume', [AttemptController::class, 'resume']);
             Route::post('{id}/submit', [AttemptController::class, 'submit']);
+            Route::post('{id}/feedback', [FeedbackController::class, 'store']);
         });
 
         Route::get('/progress', [ProgressController::class, 'index']);

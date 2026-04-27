@@ -13,7 +13,7 @@ use App\Models\Topic;
 
 class ProgressController extends Controller
 {
-    private function resolveLanguage(Request $request)
+    public function resolveLanguage(Request $request)
     {
         return $request->query('lang')
             ?? $request->header('Accept-Language')
@@ -153,7 +153,7 @@ class ProgressController extends Controller
     |--------------------------------------------------------------------------
     */
 
-    private function mapLevel($level, $progress, $lang)
+    public function mapLevel($level, $progress, $lang)
     {
         $t = $this->getTranslated($level, $lang);
 
@@ -178,7 +178,7 @@ class ProgressController extends Controller
         ];
     }
 
-    private function mapModule($module, $progress, $lang)
+    public function mapModule($module, $progress, $lang)
     {
         $t = $this->getTranslated($module, $lang);
         $status = $this->getModuleStatus($module, $progress);
@@ -201,7 +201,7 @@ class ProgressController extends Controller
         ];
     }
 
-    private function mapChapter($chapter, $progress, $lang)
+    public function mapChapter($chapter, $progress, $lang)
     {
         $t = $this->getTranslated($chapter, $lang);
         $status = $this->getChapterStatus($chapter, $progress);
@@ -279,7 +279,7 @@ class ProgressController extends Controller
         ];
     }
 
-    private function mapTopic($topic, $progress, $lang)
+    public function mapTopic($topic, $progress, $lang)
     {
         $p = $progress[$topic->id] ?? null;
         $userId = auth()->id();
@@ -303,7 +303,7 @@ class ProgressController extends Controller
         ];
     }
 
-    private function getModuleStatus($module, $progress)
+    public function getModuleStatus($module, $progress)
     {
         $topics = $module->chapters->flatMap->topics;
 
@@ -313,7 +313,7 @@ class ProgressController extends Controller
         ];
     }
 
-    private function getChapterStatus($chapter, $progress)
+    public function getChapterStatus($chapter, $progress)
     {
         return [
             'is_unlocked' => $chapter->topics->contains(fn($t) => $progress[$t->id]->is_unlocked ?? false),
@@ -327,7 +327,7 @@ class ProgressController extends Controller
     |--------------------------------------------------------------------------
     */
 
-    private function getTranslated($model, $lang)
+    public function getTranslated($model, $lang)
     {
         $translation = method_exists($model, 'getTranslation')
             ? $model->getTranslation($lang)
@@ -482,7 +482,7 @@ class ProgressController extends Controller
         }
     }
 
-    private function isTopicContentCompleted($topic, $userId)
+    public function isTopicContentCompleted($topic, $userId)
     {
         $total = $topic->contents()->count();
 
