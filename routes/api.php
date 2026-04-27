@@ -21,6 +21,7 @@ use App\Modules\Admin\Assessment\Controllers\AssessmentController;
 use App\Modules\Admin\Assessment\Controllers\QuestionController;
 use App\Modules\Admin\Assessment\Controllers\OptionController;
 use App\Modules\Admin\Assessment\Controllers\FeedbackController;
+use App\Modules\Admin\Settings\Controllers\SiteSettingController;
 
 Route::prefix('v1')->group(function () {
 
@@ -206,7 +207,6 @@ Route::prefix('v1')->group(function () {
                 Route::delete('options/{id}', [OptionController::class, 'destroy']);
                 Route::get('questions/{question_id}/options', [OptionController::class, 'index']);
                 Route::get('options/{id}', [OptionController::class, 'show']);
-
             });
 
 
@@ -236,6 +236,10 @@ Route::prefix('v1')->group(function () {
                 Route::get('smtp', [SmtpController::class, 'get']);
                 Route::post('smtp', [SmtpController::class, 'update']);
                 Route::post('smtp/test', [SmtpController::class, 'test']);
+                //site settings
+
+                Route::get('site', [SiteSettingController::class, 'get']);
+                Route::post('site', [SiteSettingController::class, 'update']);
             });
         });
     });
