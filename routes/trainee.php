@@ -9,6 +9,8 @@ use App\Modules\Trainee\Progress\Controllers\ProgressController;
 use App\Modules\Trainee\Content\Controllers\ContentController;
 use App\Modules\Trainee\Content\Controllers\ContentProgressController;
 use App\Modules\Trainee\Assessment\Controllers\FeedbackController;
+use App\Modules\Trainee\FAQ\Controllers\FaqController;
+
 
 Route::prefix('v1/trainee')->group(function () {
 
@@ -49,6 +51,7 @@ Route::prefix('v1/trainee')->group(function () {
         Route::get('/progress', [ProgressController::class, 'index']);
         Route::get('/hierarchy', [ProgressController::class, 'hierarchy']);
         Route::get('/hierarchy/{type}/{id}', [ProgressController::class, 'single']);
+        Route::get('/faqs/{type}/{id}', [FaqController::class, 'single']);
 
         Route::prefix('content')->group(function () {
             Route::get('topics/{topic_id}', [ContentController::class, 'index']);
