@@ -149,7 +149,7 @@ class UserController extends Controller
             'name' => $request->name ?? $user->name,
             'mobile' => $request->mobile ?? $user->mobile,
             'employee_id' => $request->employee_id ?? $user->employee_id,
-            'designation_id' => $request->designation ?? $user->designation,
+            'designation_id' => $request->designation_id ?? $user->designation_id,
             'region' => $request->region ?? $user->region,
             'city' => $request->city ?? $user->city,
             'role_id' =>  $request->role_id,

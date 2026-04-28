@@ -22,6 +22,8 @@ use App\Modules\Admin\Assessment\Controllers\QuestionController;
 use App\Modules\Admin\Assessment\Controllers\OptionController;
 use App\Modules\Admin\Assessment\Controllers\FeedbackController;
 use App\Modules\Admin\Settings\Controllers\SiteSettingController;
+use App\Modules\Admin\Contact\Controllers\ContactController;
+
 
 Route::prefix('v1')->group(function () {
 
@@ -237,9 +239,12 @@ Route::prefix('v1')->group(function () {
                 Route::post('smtp', [SmtpController::class, 'update']);
                 Route::post('smtp/test', [SmtpController::class, 'test']);
                 //site settings
-
                 Route::get('site', [SiteSettingController::class, 'get']);
                 Route::post('site', [SiteSettingController::class, 'update']);
+                //contact messages\
+                Route::get('contacts', [ContactController::class, 'index']);
+                Route::post('contacts/{id}/mark-seen', [ContactController::class, 'markSeen']);
+                Route::post('contacts/{id}/mark-unseen', [ContactController::class, 'markUnseen']);
             });
         });
     });

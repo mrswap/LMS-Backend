@@ -305,15 +305,15 @@ class FaqController extends Controller
 
 
     /*
-|-------------------------------------------------------------
-| SHOW
-|-------------------------------------------------------------
-*/
+    |-------------------------------------------------------------
+    | SHOW
+    |-------------------------------------------------------------
+    */
     public function show(Request $request, $id)
     {
         $lang = $this->resolveLanguage($request);
 
-        $faq = Faq::with('translations')->findOrFail($id);
+        $faq = Faq::with(['translations', 'faqable'])->findOrFail($id);
 
         $translation = $faq->translations
             ->where('language_code', $lang)
@@ -326,10 +326,25 @@ class FaqController extends Controller
             ], 404);
         }
 
+        // 🔥 Detect type
+        $typeMap = [
+            \App\Models\Level::class   => 'level',
+            \App\Models\Module::class  => 'module',
+            \App\Models\Chapter::class => 'chapter',
+            \App\Models\Topic::class   => 'topic',
+        ];
+
+        $faqableType = $typeMap[$faq->faqable_type] ?? null;
+
         return response()->json([
             'success' => true,
             'data' => [
                 'id' => $faq->id,
+                'type' => $faqableType, // 🔥 NEW
+                'reference' => [        // 🔥 NEW BLOCK
+                    'id' => $faq->faqable->id ?? null,
+                    'title' => $faq->faqable->title ?? null,
+                ],
                 'question' => $translation->question,
                 'answer' => $translation->answer,
                 'image' => $faq->image,

@@ -16,37 +16,44 @@ class ProfileController extends Controller
         return response()->json(['data' => $request->user()]);
     }
 
+
     public function updateProfile(Request $request)
     {
-        $user = $request->user(); // 🔥 id auth se
+        $user = $request->user();
 
         /*
         |------------------------------------------------------------------
         | VALIDATION
         |------------------------------------------------------------------
         */
-        $request->validate([
+        $validated = $request->validate([
             'name' => 'nullable|string',
             'email' => 'nullable|email|unique:users,email,' . $user->id,
             'mobile' => 'nullable|string',
+            'employee_id' => 'nullable|string',
+            'department' => 'nullable|string',
             'designation_id' => 'nullable|exists:designations,id',
-            'profile_image' => 'nullable|image|mimes:jpg,jpeg,png,webp|max:2048',
+            'region' => 'nullable|string',
+            'city' => 'nullable|string',
+            'profile_image' => $request->hasFile('profile_image')
+                ? 'image|mimes:jpg,jpeg,png,webp|max:2048'
+                : 'nullable',
+
         ]);
 
         /*
-    |------------------------------------------------------------------
-    | PROFILE IMAGE
-    |------------------------------------------------------------------
-    */
+        |------------------------------------------------------------------
+        | PROFILE IMAGE HANDLING
+        |------------------------------------------------------------------
+        */
+        $oldImage = $user->getRawOriginal('profile_image');
+
+        // ✅ Case 1: New Image Upload
         if ($request->hasFile('profile_image')) {
 
-            // old delete
-            if (
-                $user->getRawOriginal('profile_image') &&
-                file_exists(public_path($user->getRawOriginal('profile_image')))
-            ) {
-
-                unlink(public_path($user->getRawOriginal('profile_image')));
+            // delete old
+            if ($oldImage && file_exists(public_path($oldImage))) {
+                unlink(public_path($oldImage));
             }
 
             // upload new
@@ -54,25 +61,25 @@ class ProfileController extends Controller
             $name = time() . '_' . \Str::random(10) . '.' . $file->getClientOriginalExtension();
             $file->move(public_path($this->uploadPath), $name);
 
-            $user->profile_image = $this->uploadPath . $name;
+            $validated['profile_image'] = $this->uploadPath . $name;
+        }
+
+        // ✅ Case 2: Explicit NULL → remove image
+        elseif ($request->has('profile_image') && $request->profile_image === null) {
+
+            if ($oldImage && file_exists(public_path($oldImage))) {
+                unlink(public_path($oldImage));
+            }
+
+            $validated['profile_image'] = null;
         }
 
         /*
-    |------------------------------------------------------------------
-    | UPDATE FIELDS
-    |------------------------------------------------------------------
-    */
-        $user->fill([
-            'name' => $request->name,
-            'email' => $request->email,
-            'mobile' => $request->mobile,
-            'employee_id' => $request->employee_id,
-            'department' => $request->department,
-            'designation_id' => $request->designation_id,
-            'region' => $request->region,
-            'city' => $request->city,
-        ]);
-
+        |------------------------------------------------------------------
+        | UPDATE USER
+        |------------------------------------------------------------------
+        */
+        $user->fill($validated);
         $user->save();
 
         return response()->json([
@@ -80,6 +87,7 @@ class ProfileController extends Controller
             'data' => $user->fresh()
         ]);
     }
+
 
     public function changePassword(Request $request)
     {

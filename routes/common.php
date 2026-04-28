@@ -3,6 +3,7 @@
 use Illuminate\Support\Facades\Route;
 use App\Modules\Common\Options\Controllers\OptionController;
 use App\Modules\Common\Settings\Controllers\SiteSettingController;
+use App\Modules\Common\Contact\Controllers\ContactController;
 
 
 
@@ -20,4 +21,5 @@ Route::prefix('v1/common')->group(function () {
     // Designations (status: 0,1,all)
     Route::get('/designations', [OptionController::class, 'designations']);
     Route::get('/site/settings', [SiteSettingController::class, 'get']);
+    Route::post('/contact', [ContactController::class, 'submit']);
 });

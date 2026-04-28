@@ -58,12 +58,21 @@ class OptionController extends Controller
             'file' => 'nullable|file|max:2048',
         ]);
 
-        if ($request->is_correct) {
-            AssessmentOption::where('question_id', $option->question_id)
-                ->update(['is_correct' => false]);
-        }
+        $data = $request->only(['option_text']);
 
-        $data = $request->only(['option_text', 'is_correct']);
+        if ($request->has('is_correct')) {
+
+            if ($request->boolean('is_correct') === true) {
+
+                AssessmentOption::where('question_id', $option->question_id)
+                    ->update(['is_correct' => false]);
+
+                $data['is_correct'] = true;
+            } else {
+
+                $data['is_correct'] = false;
+            }
+        }
 
         if ($request->hasFile('file')) {
             $data['file'] = $this->uploadFile($request->file('file'));
@@ -71,7 +80,9 @@ class OptionController extends Controller
 
         $option->update($data);
 
-        return response()->json(['message' => 'Updated']);
+        return response()->json([
+            'message' => 'Updated successfully'
+        ]);
     }
 
     public function destroy($id)

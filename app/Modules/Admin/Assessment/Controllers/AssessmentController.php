@@ -18,19 +18,22 @@ class AssessmentController extends Controller
         return $this->uploadPath . $filename;
     }
 
+
     public function index(Request $request)
     {
         $query = Assessment::with([
-            'assessmentable',
+            'assessmentable.chapter.module.level.program',
+            'assessmentable.program',
             'questions:id,assessment_id'
         ]);
 
         /*
     |-----------------------------
-    | FILTER: TYPE (topic / level)
+    | FILTER: TYPE
     |-----------------------------
     */
         if ($request->filled('type')) {
+
             if (!in_array($request->type, ['topic', 'level'])) {
                 return response()->json([
                     'success' => false,
@@ -43,38 +46,94 @@ class AssessmentController extends Controller
 
         /*
     |-----------------------------
-    | FILTER: TOPIC
+    | HIERARCHY FILTER (FINAL)
+    | topic > chapter > module > level
     |-----------------------------
     */
-        if ($request->filled('topic_id')) {
+        if (
+            $request->filled('topic_id') ||
+            $request->filled('chapter_id') ||
+            $request->filled('module_id') ||
+            $request->filled('level_id')
+        ) {
 
-            if (!\App\Models\Topic::find($request->topic_id)) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Topic not found'
-                ], 404);
+            $topicQuery = \App\Models\Topic::query();
+
+            // 🔴 topic
+            if ($request->filled('topic_id')) {
+
+                if (!\App\Models\Topic::find($request->topic_id)) {
+                    return response()->json(['success' => false, 'message' => 'Topic not found'], 404);
+                }
+
+                $topicQuery->where('id', $request->topic_id);
             }
 
-            $query->where('assessmentable_type', \App\Models\Topic::class)
-                ->where('assessmentable_id', $request->topic_id);
-        }
+            // 🟡 chapter
+            elseif ($request->filled('chapter_id')) {
 
-        /*
-    |-----------------------------
-    | FILTER: LEVEL
-    |-----------------------------
-    */
-        if ($request->filled('level_id')) {
-
-            if (!\App\Models\Level::find($request->level_id)) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Level not found'
-                ], 404);
+                $topicQuery->where('chapter_id', $request->chapter_id);
             }
 
-            $query->where('assessmentable_type', \App\Models\Level::class)
-                ->where('assessmentable_id', $request->level_id);
+            // 🟢 module
+            elseif ($request->filled('module_id')) {
+
+                $topicQuery->whereHas('chapter', function ($q) use ($request) {
+                    $q->where('module_id', $request->module_id);
+                });
+            }
+
+            // 🔵 level
+            elseif ($request->filled('level_id')) {
+
+                if (!\App\Models\Level::find($request->level_id)) {
+                    return response()->json(['success' => false, 'message' => 'Level not found'], 404);
+                }
+
+                $topicQuery->whereHas('chapter.module.level', function ($q) use ($request) {
+                    $q->where('id', $request->level_id);
+                });
+            }
+
+            $topicIds = $topicQuery->pluck('id');
+
+            $query->where(function ($q) use ($request, $topicIds) {
+
+                // 🔹 topic assessments
+                if ($request->type === 'topic') {
+
+                    $q->where('assessmentable_type', \App\Models\Topic::class)
+                        ->whereIn('assessmentable_id', $topicIds);
+                }
+
+                // 🔹 level exam
+                elseif ($request->type === 'level') {
+
+                    if ($request->filled('level_id')) {
+                        $q->where('assessmentable_type', \App\Models\Level::class)
+                            ->where('assessmentable_id', $request->level_id);
+                    }
+                }
+
+                // 🔹 both
+                else {
+
+                    $q->where(function ($qq) use ($topicIds, $request) {
+
+                        $qq->where(function ($q1) use ($topicIds) {
+                            $q1->where('assessmentable_type', \App\Models\Topic::class)
+                                ->whereIn('assessmentable_id', $topicIds);
+                        });
+
+                        if ($request->filled('level_id')) {
+                            $qq->orWhere(function ($q2) use ($request) {
+                                $q2->where('assessmentable_type', \App\Models\Level::class)
+                                    ->where('assessmentable_id', $request->level_id);
+                            });
+                        }
+                    });
+                }
+            });
         }
 
         /*
@@ -89,11 +148,9 @@ class AssessmentController extends Controller
             $query->where(function ($q) use ($search) {
 
                 $q->where('title', 'like', "%{$search}%")
-
                     ->orWhereHas('assessmentable', function ($q2) use ($search) {
                         $q2->where('title', 'like', "%{$search}%");
                     })
-
                     ->orWhereHas('questions', function ($q3) use ($search) {
                         $q3->where('question_text', 'like', "%{$search}%");
                     });
@@ -127,9 +184,7 @@ class AssessmentController extends Controller
         $sortBy = $request->get('sortBy', 'createdAt');
         $order  = strtolower($request->get('order', 'desc')) === 'asc' ? 'asc' : 'desc';
 
-        $sortColumn = $sortByMap[$sortBy] ?? 'created_at';
-
-        $query->orderBy($sortColumn, $order);
+        $query->orderBy($sortByMap[$sortBy] ?? 'created_at', $order);
 
         /*
     |-----------------------------
@@ -143,10 +198,37 @@ class AssessmentController extends Controller
 
         /*
     |-----------------------------
-    | TRANSFORM
+    | TRANSFORM (WITH HIERARCHY)
     |-----------------------------
     */
         $assessments->getCollection()->transform(function ($assessment) {
+
+            $hierarchy = null;
+
+            if ($assessment->assessmentable_type === \App\Models\Topic::class) {
+
+                $t = $assessment->assessmentable;
+
+                $hierarchy = [
+                    'type' => 'topic',
+                    'topic' => ['id' => $t->id, 'title' => $t->title],
+                    'chapter' => ['id' => $t->chapter->id ?? null, 'title' => $t->chapter->title ?? null],
+                    'module' => ['id' => $t->chapter->module->id ?? null, 'title' => $t->chapter->module->title ?? null],
+                    'level' => ['id' => $t->chapter->module->level->id ?? null, 'title' => $t->chapter->module->level->title ?? null],
+                    'program' => ['id' => $t->chapter->module->level->program->id ?? null, 'title' => $t->chapter->module->level->program->title ?? null],
+                ];
+            }
+
+            if ($assessment->assessmentable_type === \App\Models\Level::class) {
+
+                $l = $assessment->assessmentable;
+
+                $hierarchy = [
+                    'type' => 'level',
+                    'level' => ['id' => $l->id, 'title' => $l->title],
+                    'program' => ['id' => $l->program->id ?? null, 'title' => $l->program->title ?? null],
+                ];
+            }
 
             return [
                 'id' => $assessment->id,
@@ -159,12 +241,9 @@ class AssessmentController extends Controller
                 'total_marks' => $assessment->total_marks,
                 'status' => (bool)$assessment->status,
 
-                'assessmentable_type' => class_basename($assessment->assessmentable_type),
-                'assessmentable_id' => $assessment->assessmentable_id,
-                'assessmentable' => $assessment->assessmentable,
+                'hierarchy' => $hierarchy,
 
                 'questions_count' => $assessment->questions->count(),
-
                 'created_at' => $assessment->created_at,
             ];
         });
@@ -174,6 +253,11 @@ class AssessmentController extends Controller
             'data' => $assessments
         ]);
     }
+
+
+
+
+
 
     public function store(Request $request)
     {
