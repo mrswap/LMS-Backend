@@ -13,6 +13,8 @@ use App\Modules\Trainee\Progress\Services\ProgressionService;
 use App\Models\Topic;
 use App\Models\Level;
 
+use Carbon\Carbon;
+
 class AttemptController extends Controller
 {
     protected $service;
@@ -28,14 +30,15 @@ class AttemptController extends Controller
         $userId = auth()->id();
 
         $assessment = Assessment::findOrFail($id);
-        
+
+        // 🔹 Topic content completion check
         if ($assessment->type === 'topic') {
 
             $topic = \App\Models\Topic::find($assessment->assessmentable_id);
 
             if ($topic) {
                 $isReady = app(\App\Modules\Trainee\Progress\Controllers\ProgressController::class)
-                    ->isTopicContentCompleted($topic, auth()->id());
+                    ->isTopicContentCompleted($topic, $userId);
 
                 if (!$isReady) {
                     return response()->json([
@@ -45,12 +48,20 @@ class AttemptController extends Controller
             }
         }
 
-        // 🧠 type-based config
+        // 🔹 max attempts config
         $maxAttempts = $assessment->type === 'level'
             ? config('assessment.exam.max_attempts', 2)
             : config('assessment.quiz.max_attempts', 5);
 
-        // 🔁 check active attempt
+        // 🔹 completed attempts count (IMPORTANT)
+        $completedAttempts = AssessmentAttempt::where('user_id', $userId)
+            ->where('assessment_id', $id)
+            ->whereIn('status', ['passed', 'failed'])
+            ->count();
+
+        $remainingAttempts = max(0, $maxAttempts - $completedAttempts);
+
+        // 🔁 active attempt check
         $activeAttempt = AssessmentAttempt::where('user_id', $userId)
             ->where('assessment_id', $id)
             ->where('status', 'in_progress')
@@ -58,31 +69,37 @@ class AttemptController extends Controller
             ->first();
 
         if ($activeAttempt) {
+
             return response()->json([
                 'message' => 'Resume existing attempt',
+
                 'attempt_id' => $activeAttempt->id,
                 'type' => $assessment->type,
                 'duration' => $assessment->duration,
                 'started_at' => $activeAttempt->started_at,
                 'expires_at' => $assessment->duration
                     ? $activeAttempt->started_at->addMinutes($assessment->duration)
-                    : null
+                    : null,
+
+                // 🆕 attempt stats
+                'total_attempts_allowed' => $maxAttempts,
+                'attempts_used' => $completedAttempts,
+                'attempts_remaining' => $remainingAttempts,
             ]);
         }
 
-        // 🔢 count completed attempts only
-        $attemptCount = AssessmentAttempt::where('user_id', $userId)
-            ->where('assessment_id', $id)
-            ->whereIn('status', ['passed', 'failed'])
-            ->count();
-
-        if ($attemptCount >= $maxAttempts) {
+        // 🚫 limit reached
+        if ($completedAttempts >= $maxAttempts) {
             return response()->json([
-                'message' => 'Max attempts reached'
+                'message' => 'Max attempts reached',
+
+                'total_attempts_allowed' => $maxAttempts,
+                'attempts_used' => $completedAttempts,
+                'attempts_remaining' => 0,
             ], 422);
         }
 
-        // ✅ create attempt
+        // ✅ create new attempt
         $attempt = AssessmentAttempt::create([
             'user_id' => $userId,
             'assessment_id' => $id,
@@ -91,13 +108,20 @@ class AttemptController extends Controller
         ]);
 
         return response()->json([
+            'message' => 'New attempt started',
+
             'attempt_id' => $attempt->id,
             'type' => $assessment->type,
             'duration' => $assessment->duration,
             'started_at' => $attempt->started_at,
             'expires_at' => $assessment->duration
                 ? $attempt->started_at->addMinutes($assessment->duration)
-                : null
+                : null,
+
+            // 🆕 attempt stats
+            'total_attempts_allowed' => $maxAttempts,
+            'attempts_used' => $completedAttempts,
+            'attempts_remaining' => $remainingAttempts,
         ]);
     }
 
@@ -107,34 +131,126 @@ class AttemptController extends Controller
         $attemptId = $request->attempt_id;
 
         $attempt = AssessmentAttempt::with('assessment')->findOrFail($attemptId);
-
         $assessment = Assessment::with('questions.options')->findOrFail($id);
 
+        // 🔹 Answers (for selection + progress)
         $answers = AssessmentAnswer::where('attempt_id', $attemptId)
             ->get()
             ->keyBy('question_id');
 
+        /*
+    |-----------------------------
+    | QUESTIONS TRANSFORM
+    |-----------------------------
+    */
         $questions = $assessment->questions->map(function ($q) use ($answers) {
 
             return [
                 'id' => $q->id,
                 'question_text' => $q->question_text,
                 'file' => $q->file,
+
                 'options' => $q->options->map(fn($opt) => [
                     'id' => $opt->id,
                     'text' => $opt->option_text
                 ]),
+
                 'selected_option_id' => $answers[$q->id]->selected_option_id ?? null
             ];
         });
 
+        /*
+        |-----------------------------
+        | ATTEMPT PROGRESS STATS
+        |-----------------------------
+        */
+        $totalQuestions = $assessment->questions->count();
+
+        $answeredCount = $answers->filter(function ($a) {
+            return !is_null($a->selected_option_id);
+        })->count();
+
+        $remainingCount = $totalQuestions - $answeredCount;
+
+        /*
+        |-----------------------------
+        | HIERARCHY (Topic / Level)
+        |-----------------------------
+        */
+        $context = null;
+
+        if ($assessment->assessmentable_type === \App\Models\Topic::class) {
+
+            $topic = \App\Models\Topic::with('chapter.module.level.program')
+                ->find($assessment->assessmentable_id);
+
+            $context = [
+                'type' => 'topic',
+                'topic' => [
+                    'id' => $topic->id,
+                    'title' => $topic->title,
+                ],
+                'chapter' => [
+                    'id' => $topic->chapter->id ?? null,
+                    'title' => $topic->chapter->title ?? null,
+                ],
+                'module' => [
+                    'id' => $topic->chapter->module->id ?? null,
+                    'title' => $topic->chapter->module->title ?? null,
+                ],
+                'level' => [
+                    'id' => $topic->chapter->module->level->id ?? null,
+                    'title' => $topic->chapter->module->level->title ?? null,
+                ],
+                'program' => [
+                    'id' => $topic->chapter->module->level->program->id ?? null,
+                    'title' => $topic->chapter->module->level->program->title ?? null,
+                ],
+            ];
+        }
+
+        if ($assessment->assessmentable_type === \App\Models\Level::class) {
+
+            $level = \App\Models\Level::with('program')
+                ->find($assessment->assessmentable_id);
+
+            $context = [
+                'type' => 'level',
+                'level' => [
+                    'id' => $level->id,
+                    'title' => $level->title,
+                ],
+                'program' => [
+                    'id' => $level->program->id ?? null,
+                    'title' => $level->program->title ?? null,
+                ],
+            ];
+        }
+
+        /*
+        |-----------------------------
+        | RESPONSE
+        |-----------------------------
+        */
         return response()->json([
             'attempt_id' => $attemptId,
+
+            'type' => $assessment->type,
+
             'duration' => $assessment->duration,
             'started_at' => $attempt->started_at,
             'expires_at' => $assessment->duration
                 ? $attempt->started_at->addMinutes($assessment->duration)
                 : null,
+
+            // 🆕 attempt progress
+            'total_questions' => $totalQuestions,
+            'answered_questions' => $answeredCount,
+            'remaining_questions' => $remainingCount,
+
+            // 🆕 context
+            'context' => $context,
+
             'questions' => $questions
         ]);
     }
@@ -191,8 +307,13 @@ class AttemptController extends Controller
     // 🔹 RESUME
     public function resume($id)
     {
-        $attempt = AssessmentAttempt::with('assessment', 'answers')
-            ->where('user_id', auth()->id())
+        $userId = auth()->id();
+
+        $attempt = AssessmentAttempt::with([
+            'assessment.questions.options',
+            'answers'
+        ])
+            ->where('user_id', $userId)
             ->where('assessment_id', $id)
             ->where('status', 'in_progress')
             ->latest()
@@ -204,14 +325,146 @@ class AttemptController extends Controller
             ], 404);
         }
 
-        $duration = $attempt->assessment->duration ?? null;
+        $assessment = $attempt->assessment;
 
+        /*
+        |-----------------------------
+        | TIME
+        |-----------------------------
+        */
+        $duration = $assessment->duration ?? null;
+        $expiresAt = $duration
+            ? $attempt->started_at->addMinutes($duration)
+            : null;
+
+        /*
+        |-----------------------------
+        | ANSWERS MAP
+        |-----------------------------
+        */
+        $answersMap = $attempt->answers->keyBy('question_id');
+
+        /*
+        |-----------------------------
+        | QUESTION LIST (WITH SELECTION)
+        |-----------------------------
+        */
+        $questions = $assessment->questions->map(function ($q) use ($answersMap) {
+
+            return [
+                'id' => $q->id,
+                'question_text' => $q->question_text,
+                'file' => $q->file,
+
+                'options' => $q->options->map(fn($opt) => [
+                    'id' => $opt->id,
+                    'text' => $opt->option_text
+                ]),
+
+                'selected_option_id' => $answersMap[$q->id]->selected_option_id ?? null
+            ];
+        });
+
+        /*
+        |-----------------------------
+        | ATTEMPT PROGRESS
+        |-----------------------------
+        */
+        $totalQuestions = $assessment->questions->count();
+
+        $answeredCount = $attempt->answers->filter(function ($a) {
+            return !is_null($a->selected_option_id);
+        })->count();
+
+        $remainingCount = $totalQuestions - $answeredCount;
+
+        /*
+        |-----------------------------
+        | CONTEXT (HIERARCHY)
+        |-----------------------------
+        */
+        $context = null;
+
+        if ($assessment->assessmentable_type === \App\Models\Topic::class) {
+
+            $topic = \App\Models\Topic::with('chapter.module.level.program')
+                ->find($assessment->assessmentable_id);
+
+            $context = [
+                'type' => 'topic',
+
+                'topic' => [
+                    'id' => $topic->id,
+                    'title' => $topic->title,
+                ],
+
+                'chapter' => [
+                    'id' => $topic->chapter->id ?? null,
+                    'title' => $topic->chapter->title ?? null,
+                ],
+
+                'module' => [
+                    'id' => $topic->chapter->module->id ?? null,
+                    'title' => $topic->chapter->module->title ?? null,
+                ],
+
+                'level' => [
+                    'id' => $topic->chapter->module->level->id ?? null,
+                    'title' => $topic->chapter->module->level->title ?? null,
+                ],
+
+                'program' => [
+                    'id' => $topic->chapter->module->level->program->id ?? null,
+                    'title' => $topic->chapter->module->level->program->title ?? null,
+                ],
+            ];
+        }
+
+        if ($assessment->assessmentable_type === \App\Models\Level::class) {
+
+            $level = \App\Models\Level::with('program')
+                ->find($assessment->assessmentable_id);
+
+            $context = [
+                'type' => 'level',
+
+                'level' => [
+                    'id' => $level->id,
+                    'title' => $level->title,
+                ],
+
+                'program' => [
+                    'id' => $level->program->id ?? null,
+                    'title' => $level->program->title ?? null,
+                ],
+            ];
+        }
+
+        /*
+        |-----------------------------
+        | RESPONSE
+        |-----------------------------
+        */
         return response()->json([
             'attempt_id' => $attempt->id,
+
+            'type' => $assessment->type,
+
             'started_at' => $attempt->started_at,
-            'expires_at' => $duration
-                ? $attempt->started_at->addMinutes($duration)
-                : null,
+            'expires_at' => $expiresAt,
+
+            // 🆕 attempt stats
+            'total_questions' => $totalQuestions,
+            'answered_questions' => $answeredCount,
+            'remaining_questions' => $remainingCount,
+
+            // 🆕 context (topic / level name)
+            'context' => $context,
+
+            // 🆕 full questions (resume ready)
+            'questions' => $questions,
+
+            // raw answers (optional, keep if needed)
             'answers' => $attempt->answers
         ]);
     }
@@ -219,47 +472,124 @@ class AttemptController extends Controller
 
     public function submit($id, Request $request)
     {
-        $attempt = AssessmentAttempt::with('answers')
+        /*
+    |--------------------------------------------------
+    | 🔐 VALIDATION
+    |--------------------------------------------------
+    */
+        $request->validate([
+            'attempt_id' => 'required|exists:assessment_attempts,id',
+            'submit_type' => 'nullable|in:manual,quit',
+            'time_taken_seconds' => 'nullable|numeric|min:0'
+        ]);
+
+        $userId = auth()->id();
+
+        $attempt = AssessmentAttempt::with(['answers', 'assessment.questions'])
             ->where('id', $request->attempt_id)
-            ->where('user_id', auth()->id())
+            ->where('user_id', $userId)
             ->firstOrFail();
 
+        // ❌ already submitted
         if ($attempt->status !== 'in_progress') {
             return response()->json([
                 'message' => 'Already submitted'
             ], 422);
         }
 
-        $assessment = Assessment::findOrFail($id);
+        $assessment = $attempt->assessment;
 
-        // ⏱ timer check
+        /*
+    |--------------------------------------------------
+    | ⏱ SUBMIT TYPE (manual / quit / timeout)
+    |--------------------------------------------------
+    */
+        $submitType = $request->submit_type ?? 'manual';
+
         if ($assessment->duration) {
+
             $expire = $attempt->started_at->addMinutes($assessment->duration);
 
             if (now()->greaterThan($expire)) {
-                // auto submit allowed
+                $submitType = 'timeout';
             }
         }
 
-        return DB::transaction(function () use ($attempt, $assessment) {
+        /*
+    |--------------------------------------------------
+    | 📊 QUESTION STATS
+    |--------------------------------------------------
+    */
+        $totalQuestions = $assessment->questions->count();
 
+        $answeredCount = $attempt->answers->filter(function ($a) {
+            return !is_null($a->selected_option_id);
+        })->count();
+
+        $remainingCount = $totalQuestions - $answeredCount;
+
+        /*
+    |--------------------------------------------------
+    | ⏱ TIME TAKEN (SAFE HYBRID)
+    |--------------------------------------------------
+    */
+        if ($request->filled('time_taken_seconds')) {
+
+            // ✅ frontend provided
+            $timeTaken = max(0, (int)$request->time_taken_seconds);
+        } else {
+
+            // ✅ backend fallback
+            $startedAt = Carbon::parse($attempt->started_at);
+            $now = now();
+
+            $timeTaken = $startedAt->lte($now)
+                ? $startedAt->diffInSeconds($now)
+                : 0;
+        }
+
+        // extra safety
+        if ($timeTaken < 0) {
+            $timeTaken = 0;
+        }
+
+        /*
+    |--------------------------------------------------
+    | 🧠 MAIN TRANSACTION
+    |--------------------------------------------------
+    */
+        return DB::transaction(function () use (
+            $attempt,
+            $assessment,
+            $submitType,
+            $timeTaken,
+            $totalQuestions,
+            $answeredCount,
+            $remainingCount,
+            $userId
+        ) {
+
+            // 🔍 evaluate
             $result = $this->service->evaluateAttempt($attempt);
 
-            // 🔥 determine pass/fail first
             $isPassed = $result['percentage'] >= $assessment->passing_score;
 
+            // 💾 update attempt
             $attempt->update([
                 'score' => $result['marks'],
                 'percentage' => $result['percentage'],
                 'submitted_at' => now(),
-                'status' => $isPassed ? 'passed' : 'failed'
+                'status' => $isPassed ? 'passed' : 'failed',
+
+                'time_taken' => $timeTaken,
+                'submit_type' => $submitType
             ]);
 
             /*
-            |--------------------------------------------------------------------------
-            | 🔥 PHASE 3 INTEGRATION (MOST IMPORTANT)
-            |--------------------------------------------------------------------------
-            */
+        |--------------------------------------------------
+        | 🔓 PROGRESSION ENGINE (PHASE 3)
+        |--------------------------------------------------
+        */
             if ($isPassed) {
 
                 $progressionService = app(ProgressionService::class);
@@ -267,14 +597,10 @@ class AttemptController extends Controller
                 // 🟢 Topic Quiz
                 if ($assessment->type === 'topic') {
 
-                    // ⚠️ make sure assessment me topic_id hai
                     $topic = Topic::find($assessment->assessmentable_id);
 
                     if ($topic) {
-                        $progressionService->handleTopicCompletion(
-                            auth()->id(),
-                            $topic
-                        );
+                        $progressionService->handleTopicCompletion($userId, $topic);
                     }
                 }
 
@@ -284,22 +610,35 @@ class AttemptController extends Controller
                     $level = Level::find($assessment->assessmentable_id);
 
                     if ($level) {
-                        $progressionService->handleLevelExamPass(
-                            auth()->id(),
-                            $level
-                        );
+                        $progressionService->handleLevelExamPass($userId, $level);
                     }
                 }
             }
 
+            /*
+        |--------------------------------------------------
+        | 📦 FINAL RESPONSE
+        |--------------------------------------------------
+        */
             return response()->json([
+
+                // 🎯 result
                 'score' => $result['marks'],
-                'total' => $result['total'],
+                'total' => $totalQuestions,
                 'percentage' => $result['percentage'],
                 'correct' => $result['correct'],
                 'wrong' => $result['wrong'],
                 'skipped' => $result['skipped'],
-                'status' => $attempt->status
+                'status' => $attempt->status,
+
+                // 📊 attempt stats
+                'answered_questions' => $answeredCount,
+                'remaining_questions' => $remainingCount,
+
+                // ⏱ behavior tracking
+                'submit_type' => $submitType,
+                'time_taken_seconds' => $timeTaken,
+                'time_taken_minutes' => round($timeTaken / 60, 2)
             ]);
         });
     }

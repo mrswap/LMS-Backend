@@ -247,6 +247,7 @@ class FinalLMSSeeder extends Seeder
                         'title'=>"Quiz",
                         'passing_score'=>60,
                         'total_marks'=>5,
+                        'duration'=>10,
                         'status'=>1,
                         'created_by'=>$createdBy
                     ]);

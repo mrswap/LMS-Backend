@@ -13,7 +13,9 @@ class AssessmentAttempt extends Model
         'submitted_at',
         'score',
         'percentage',
-        'status'
+        'status',
+        'time_taken',
+        'submit_type'
     ];
 
     protected $dates = ['started_at', 'submitted_at'];
