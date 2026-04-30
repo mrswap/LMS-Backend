@@ -12,7 +12,7 @@ use DB;
 use App\Modules\Trainee\Progress\Services\ProgressionService;
 use App\Models\Topic;
 use App\Models\Level;
-
+use App\Services\AuditService;
 use Carbon\Carbon;
 
 class AttemptController extends Controller
@@ -27,6 +27,8 @@ class AttemptController extends Controller
     // 🔹 START
     public function start($id)
     {
+        AuditService::log('assessment_started', 'User started an assessment', ['assessment_id' => $id]);
+
         $userId = auth()->id();
 
         $assessment = Assessment::findOrFail($id);
@@ -139,10 +141,10 @@ class AttemptController extends Controller
             ->keyBy('question_id');
 
         /*
-    |-----------------------------
-    | QUESTIONS TRANSFORM
-    |-----------------------------
-    */
+        |-----------------------------
+        | QUESTIONS TRANSFORM
+        |-----------------------------
+        */
         $questions = $assessment->questions->map(function ($q) use ($answers) {
 
             return [
@@ -472,11 +474,12 @@ class AttemptController extends Controller
 
     public function submit($id, Request $request)
     {
+            AuditService::log('assessment_submitted', 'User submitted an assessment', ['assessment_id' => $id]);    
         /*
-    |--------------------------------------------------
-    | 🔐 VALIDATION
-    |--------------------------------------------------
-    */
+        |--------------------------------------------------
+        | 🔐 VALIDATION
+        |--------------------------------------------------
+        */
         $request->validate([
             'attempt_id' => 'required|exists:assessment_attempts,id',
             'submit_type' => 'nullable|in:manual,quit',
@@ -500,10 +503,10 @@ class AttemptController extends Controller
         $assessment = $attempt->assessment;
 
         /*
-    |--------------------------------------------------
-    | ⏱ SUBMIT TYPE (manual / quit / timeout)
-    |--------------------------------------------------
-    */
+        |--------------------------------------------------
+        | ⏱ SUBMIT TYPE (manual / quit / timeout)
+        |--------------------------------------------------
+        */
         $submitType = $request->submit_type ?? 'manual';
 
         if ($assessment->duration) {
@@ -516,10 +519,10 @@ class AttemptController extends Controller
         }
 
         /*
-    |--------------------------------------------------
-    | 📊 QUESTION STATS
-    |--------------------------------------------------
-    */
+        |--------------------------------------------------
+        | 📊 QUESTION STATS
+        |--------------------------------------------------
+        */
         $totalQuestions = $assessment->questions->count();
 
         $answeredCount = $attempt->answers->filter(function ($a) {
@@ -529,10 +532,10 @@ class AttemptController extends Controller
         $remainingCount = $totalQuestions - $answeredCount;
 
         /*
-    |--------------------------------------------------
-    | ⏱ TIME TAKEN (SAFE HYBRID)
-    |--------------------------------------------------
-    */
+        |--------------------------------------------------
+        | ⏱ TIME TAKEN (SAFE HYBRID)
+        |--------------------------------------------------
+        */
         if ($request->filled('time_taken_seconds')) {
 
             // ✅ frontend provided
@@ -554,10 +557,10 @@ class AttemptController extends Controller
         }
 
         /*
-    |--------------------------------------------------
-    | 🧠 MAIN TRANSACTION
-    |--------------------------------------------------
-    */
+        |--------------------------------------------------
+        | 🧠 MAIN TRANSACTION
+        |--------------------------------------------------
+        */
         return DB::transaction(function () use (
             $attempt,
             $assessment,
@@ -586,10 +589,10 @@ class AttemptController extends Controller
             ]);
 
             /*
-        |--------------------------------------------------
-        | 🔓 PROGRESSION ENGINE (PHASE 3)
-        |--------------------------------------------------
-        */
+            |--------------------------------------------------
+            | 🔓 PROGRESSION ENGINE (PHASE 3)
+            |--------------------------------------------------
+            */
             if ($isPassed) {
 
                 $progressionService = app(ProgressionService::class);
@@ -616,11 +619,11 @@ class AttemptController extends Controller
             }
 
             /*
-        |--------------------------------------------------
-        | 📦 FINAL RESPONSE
-        |--------------------------------------------------
-        */
-            return response()->json([
+            |--------------------------------------------------
+            | 📦 FINAL RESPONSE
+            |--------------------------------------------------
+            */
+                return response()->json([
 
                 // 🎯 result
                 'score' => $result['marks'],

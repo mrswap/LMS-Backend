@@ -6,11 +6,13 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Models\AssessmentFeedback;
 use App\Models\AssessmentAttempt;
+use App\Services\AuditService;
 
 class FeedbackController extends Controller
 {
     public function store($id, Request $request)
     {
+        AuditService::log('feedback_submitted', 'User submitted feedback for assessment attempt ID: ' . $request->attempt_id);
         $request->validate([
             'attempt_id' => 'required|exists:assessment_attempts,id',
             'rating' => 'required|integer|min:1|max:5',

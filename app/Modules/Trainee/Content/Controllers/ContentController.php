@@ -6,6 +6,8 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Models\UserProgress;
 use App\Models\TopicContent;
+use App\Services\AuditService;
+
 
 class ContentController extends Controller
 {
@@ -157,6 +159,8 @@ class ContentController extends Controller
 
     public function single(Request $request, $topic_id, $content_id)
     {
+        AuditService::log('content_viewed', 'User viewed a content item', ['content_id' => $content_id]);
+
         $userId = auth()->id();
         $lang = $this->resolveLanguage($request);
 

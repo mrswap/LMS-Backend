@@ -72,4 +72,20 @@ class ContactController extends Controller
             'message' => 'Marked as unseen'
         ]);
     }
+
+    public function show($id)
+    {
+        $message = ContactMessage::findOrFail($id);
+
+        // 🔹 Auto mark as seen when opened
+        if (!$message->is_seen) {
+            $message->is_seen = true;
+            $message->save();
+        }
+
+        return response()->json([
+            'status' => true,
+            'data' => $message
+        ]);
+    }
 }

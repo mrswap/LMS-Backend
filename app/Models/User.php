@@ -90,6 +90,7 @@ class User extends Authenticatable
                 throw new \Exception('Superadmin cannot be deleted.');
             }
         });
+        
     }
 
     /*
@@ -111,6 +112,11 @@ class User extends Authenticatable
     public function designation()
     {
         return $this->belongsTo(Designation::class);
+    }
+
+    public function user()
+    {
+        return $this->belongsTo(\App\Models\User::class);
     }
     /*
     |--------------------------------------------------------------------------

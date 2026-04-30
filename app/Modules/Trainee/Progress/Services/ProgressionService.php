@@ -7,6 +7,7 @@ use App\Models\Topic;
 use App\Models\Chapter;
 use App\Models\Module;
 use Illuminate\Support\Facades\DB;
+use App\Services\AuditService;
 
 class ProgressionService
 {
@@ -14,6 +15,7 @@ class ProgressionService
     {
         DB::transaction(function () use ($userId, $topic) {
 
+            AuditService::log('lesson_completed', 'User completed a lesson', ['topic_id' => $topic->id]);
             // ✅ 1. Mark topic completed
             UserProgress::updateOrCreate(
                 [
@@ -30,6 +32,7 @@ class ProgressionService
                     'completed_at' => now(),
                 ]
             );
+
 
             // ✅ 2. Unlock next topic
             $nextTopic = Topic::where('chapter_id', $topic->chapter_id)
@@ -53,6 +56,8 @@ class ProgressionService
                     ]
                 );
             }
+            AuditService::log('lesson_unlocked', 'User unlocked the next lesson', ['topic_id' => $nextTopic->id ?? null]);
+
 
             // ✅ 3. Check chapter completion
             $this->handleChapterCompletion($userId, $topic->chapter_id);
@@ -71,6 +76,8 @@ class ProgressionService
         if ($total > 0 && $total == $completed) {
 
             $chapter = Chapter::find($chapterId);
+
+            AuditService::log('chapter_completed', 'User completed a chapter', ['chapter_id' => $chapter->id]);
 
             // 🔓 unlock next chapter
             $nextChapter = Chapter::where('module_id', $chapter->module_id)
@@ -97,6 +104,7 @@ class ProgressionService
                     );
                 }
             }
+            AuditService::log('chapter_unlocked', 'User unlocked the next chapter', ['chapter_id' => $nextChapter->id ?? null]);
 
             $this->handleModuleCompletion($userId, $chapter->module_id);
         }
@@ -104,6 +112,7 @@ class ProgressionService
 
     private function handleModuleCompletion($userId, $moduleId)
     {
+
         $chapters = Chapter::where('module_id', $moduleId)->pluck('id');
 
         $totalChapters = $chapters->count();
@@ -123,10 +132,11 @@ class ProgressionService
             }
         }
 
+
         if ($totalChapters > 0 && $totalChapters == $completedChapters) {
 
             $module = Module::find($moduleId);
-
+            AuditService::log('module_completed', 'User completed a module', ['module_id' => $module->id]);
             // 🔓 unlock next module
             $nextModule = Module::where('level_id', $module->level_id)
                 ->where('id', '>', $module->id)
@@ -135,7 +145,7 @@ class ProgressionService
 
             if ($nextModule) {
                 $firstTopic = Topic::where('module_id', $nextModule->id)->orderBy('id')->first();
-
+                AuditService::log('module_unlocked', 'User unlocked the next module', ['module_id' => $nextModule->id]);
                 if ($firstTopic) {
                     UserProgress::firstOrCreate(
                         [

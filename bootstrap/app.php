@@ -32,6 +32,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'auth' => \App\Http\Middleware\Authenticate::class,
             'role' => \App\Http\Middleware\RoleMiddleware::class,
             'smtp' => \App\Http\Middleware\ApplySmtpConfig::class,
+            'device' => \App\Http\Middleware\VerifyDevice::class,
 
         ]);
     })

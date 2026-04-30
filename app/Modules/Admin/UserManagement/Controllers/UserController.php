@@ -17,6 +17,7 @@ class UserController extends Controller
 
     public function index(Request $request)
     {
+        
         $query = User::whereHas('role', function ($q) {
             $q->where('name', User::ROLE_SALES);
         })
@@ -184,6 +185,7 @@ class UserController extends Controller
 
     public function profile(Request $request)
     {
+        AuditService::log('profile_viewed', 'User viewed their profile');
         return response()->json([
             'data' => $request->user()
         ]);
@@ -278,6 +280,21 @@ class UserController extends Controller
 
         return response()->json([
             'message' => 'Password changed successfully'
+        ]);
+    }
+
+    public function resetDevice($id)
+    {
+        $user = User::findOrFail($id);
+
+        $user->device_id = null;
+        $user->device_name = null;
+        $user->save();
+
+        audit_log(auth()->id(), 'reset_device', "Admin reset device for user {$user->id}");
+
+        return response()->json([
+            'message' => 'Device reset successfully'
         ]);
     }
 }

@@ -30,8 +30,7 @@ Route::prefix('v1/trainee')->group(function () {
     | 🔐 PROTECTED (ONLY TRAINEE / SALES)
     |--------------------------------------------------
     */
-    Route::middleware(['auth:sanctum', 'role:sales'])->group(function () {
-
+    Route::middleware(['auth:sanctum', 'role:sales', 'device'])->group(function () {
         Route::post('/logout', [AuthController::class, 'logout']);
 
         Route::get('/profile', [ProfileController::class, 'profile']);

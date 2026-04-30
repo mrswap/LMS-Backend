@@ -9,6 +9,8 @@ use App\Models\Level;
 use App\Models\Module;
 use App\Models\Chapter;
 use App\Models\Topic;
+use App\Services\AuditService;
+
 
 class FaqController extends Controller
 {
@@ -36,6 +38,8 @@ class FaqController extends Controller
     */
     public function single(Request $request, $type, $id)
     {
+        AuditService::log('faq_viewed', "User viewed FAQs for $type ID: $id");
+
         $lang = $this->resolveLanguage($request);
 
         $modelClass = $this->resolveModel($type);

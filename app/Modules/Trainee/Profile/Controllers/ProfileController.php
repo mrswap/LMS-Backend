@@ -5,6 +5,7 @@ namespace App\Modules\Trainee\Profile\Controllers;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use App\Services\AuditService;
 
 class ProfileController extends Controller
 {
@@ -13,12 +14,15 @@ class ProfileController extends Controller
 
     public function profile(Request $request)
     {
+        AuditService::log('profile_viewed', 'User viewed their profile');
         return response()->json(['data' => $request->user()]);
     }
 
 
     public function updateProfile(Request $request)
     {
+        AuditService::log('profile_updated', 'User updated their profile');
+
         $user = $request->user();
 
         /*
@@ -105,6 +109,8 @@ class ProfileController extends Controller
         $user->update([
             'password' => Hash::make($request->new_password)
         ]);
+
+        AuditService::log('password_changed', 'User changed their password');
 
         return response()->json(['message' => 'Password changed']);
     }

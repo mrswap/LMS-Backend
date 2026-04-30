@@ -10,6 +10,8 @@ use App\Models\Level;
 use App\Models\Module;
 use App\Models\Chapter;
 use App\Models\Topic;
+use App\Services\AuditService;
+
 
 class ProgressController extends Controller
 {
@@ -56,6 +58,8 @@ class ProgressController extends Controller
                     return ($progress[$topic->id]->is_completed ?? false);
                 });
 
+                AuditService::log('level_viewed', 'User viewed their progress for a level', ['level_id' => $request->level_id]);
+
                 return [
                     'id' => $module->id,
                     'title' => $module->title,
@@ -93,6 +97,8 @@ class ProgressController extends Controller
                 $isCompleted = $chapter->topics->every(function ($topic) use ($progress) {
                     return ($progress[$topic->id]->is_completed ?? false);
                 });
+
+                AuditService::log('module_viewed', 'User viewed their progress for a module', ['module_id' => $request->module_id]);
 
                 return [
                     'id' => $chapter->id,
@@ -134,6 +140,8 @@ class ProgressController extends Controller
                     'is_completed' => $p?->is_completed ?? false,
                 ];
             });
+
+            AuditService::log('chapter_viewed', 'User viewed their progress for a chapter', ['chapter_id' => $request->chapter_id]);
 
             return response()->json([
                 'success' => true,
@@ -371,6 +379,7 @@ class ProgressController extends Controller
                 'levels' => $program->levels->map(function ($level) use ($progress, $lang) {
 
                     $t = $this->getTranslated($level, $lang);
+                    AuditService::log('level_viewed', 'User viewed their progress for a level', ['level_id' => $level->id]);
 
                     return [
                         'type' => 'level',
@@ -385,7 +394,7 @@ class ProgressController extends Controller
                         'modules' => $level->modules->map(function ($module) use ($progress, $lang) {
 
                             $t = $this->getTranslated($module, $lang);
-
+                            AuditService::log('module_viewed', 'User viewed their progress for a module', ['module_id' => $module->id]);
                             $topics = $module->chapters->flatMap->topics;
 
                             $isUnlocked = $topics->contains(fn($topic) => $progress[$topic->id]->is_unlocked ?? false);
@@ -407,6 +416,8 @@ class ProgressController extends Controller
 
                                     $isUnlocked = $chapter->topics->contains(fn($topic) => $progress[$topic->id]->is_unlocked ?? false);
                                     $isCompleted = $chapter->topics->every(fn($topic) => $progress[$topic->id]->is_completed ?? false);
+
+                                    AuditService::log('chapter_viewed', 'User viewed their progress for a chapter', ['chapter_id' => $chapter->id]);
 
                                     return [
                                         'type' => 'chapter',
@@ -461,6 +472,8 @@ class ProgressController extends Controller
         switch ($type) {
 
             case 'level':
+                AuditService::log('level_viewed', 'User viewed their progress for a level', ['level_id' => $id]);
+
                 $level = Level::with('modules.chapters.topics')->findOrFail($id);
                 return response()->json([
                     'success' => true,
@@ -468,6 +481,8 @@ class ProgressController extends Controller
                 ]);
 
             case 'module':
+                AuditService::log('module_viewed', 'User viewed their progress for a module', ['module_id' => $id]);
+
                 $module = Module::with('chapters.topics')->findOrFail($id);
                 return response()->json([
                     'success' => true,
@@ -475,6 +490,8 @@ class ProgressController extends Controller
                 ]);
 
             case 'chapter':
+                AuditService::log('chapter_viewed', 'User viewed their progress for a chapter', ['chapter_id' => $id]);
+
                 $chapter = Chapter::with('topics')->findOrFail($id);
                 return response()->json([
                     'success' => true,

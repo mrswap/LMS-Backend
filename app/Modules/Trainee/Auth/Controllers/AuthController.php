@@ -14,6 +14,7 @@ use Carbon\Carbon;
 use App\Services\SmtpService;
 use App\Models\UserProgress;
 use App\Models\Topic;
+use App\Services\AuditService;
 
 
 class AuthController extends Controller
@@ -186,16 +187,39 @@ class AuthController extends Controller
             return response()->json(['message' => 'Verify email first'], 403);
         }
 
+        // 🔐 DEVICE CHECK
+        $deviceId = $request->header('X-Device-Id');
+
+        if (!$deviceId) {
+            return response()->json([
+                'message' => 'Device ID required'
+            ], 400);
+        }
+
+        if ($user->device_id && $user->device_id !== $deviceId) {
+            return response()->json([
+                'message' => 'Already logged in on another device. Contact admin.'
+            ], 403);
+        }
+
+        // ✅ Bind device
+        $user->device_id = $deviceId;
+        $user->device_name = $request->header('User-Agent');
+        $user->last_login_at = now();
+        $user->save();
+
+        // 🔑 Token create
         $token = $user->createToken('trainee_token')->plainTextToken;
+
+        // 🧾 AUDIT LOG (AFTER SUCCESS LOGIN)
+        audit_log($user->id, 'login', 'User logged in');
 
         $userId = $user->id;
 
-        // 🔍 check if already initialized
+        // 🔍 Progress init
         $exists = UserProgress::where('user_id', $userId)->exists();
 
         if (!$exists) {
-
-            // ⚠️ assuming single program / simple flow
             $firstTopic = Topic::orderBy('id')->first();
 
             if ($firstTopic) {
@@ -211,12 +235,12 @@ class AuthController extends Controller
                 ]);
             }
         }
+
         return response()->json([
             'token' => $token,
             'user' => $user
         ]);
     }
-
     /*
     |-----------------------------------------
     | LOGOUT
@@ -224,8 +248,29 @@ class AuthController extends Controller
     */
     public function logout(Request $request)
     {
-        $request->user()?->currentAccessToken()?->delete();
+        AuditService::log('logged_out', 'User logged out of the system');       
 
-        return response()->json(['message' => 'Logged out']);
+        $user = $request->user();
+
+        if (!$user) {       
+            return response()->json([
+                'message' => 'Unauthenticated'  
+            ], 401);
+        }
+
+        // 🔑 Delete current token
+        $request->user()->currentAccessToken()?->delete();
+
+        // 🔓 Unbind device
+        $user->device_id = null;
+        $user->device_name = null;
+        $user->save();
+
+        // 🧾 Audit log
+        audit_log($user->id, 'logout', 'User logged out');
+
+        return response()->json([
+            'message' => 'Logged out successfully'
+        ]);
     }
 }

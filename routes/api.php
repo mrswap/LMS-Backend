@@ -23,7 +23,7 @@ use App\Modules\Admin\Assessment\Controllers\OptionController;
 use App\Modules\Admin\Assessment\Controllers\FeedbackController;
 use App\Modules\Admin\Settings\Controllers\SiteSettingController;
 use App\Modules\Admin\Contact\Controllers\ContactController;
-
+use App\Modules\Admin\Reports\Controllers\AuditReportController;
 
 Route::prefix('v1')->group(function () {
 
@@ -68,6 +68,7 @@ Route::prefix('v1')->group(function () {
             Route::post('users/{id}', [UserController::class, 'update']);
             Route::delete('users/{id}', [UserController::class, 'destroy']);
             Route::post('users/{id}/toggle-status', [UserController::class, 'toggleStatus']);
+            Route::post('/users/{id}/reset-device', [UserController::class, 'resetDevice']);
             /*
             |--------------------------------------------------------------------------
             | PROGRAMS
@@ -191,6 +192,8 @@ Route::prefix('v1')->group(function () {
             Route::prefix('assessments')->group(function () {
 
                 Route::get('assessment-feedbacks', [FeedbackController::class, 'index']);
+                Route::get('assessment-feedbacks/{id}', [FeedbackController::class, 'show']);
+
                 Route::get('/', [AssessmentController::class, 'index']);
                 Route::post('/', [AssessmentController::class, 'store']);
                 Route::get('{id}', [AssessmentController::class, 'show']);
@@ -243,8 +246,14 @@ Route::prefix('v1')->group(function () {
                 Route::post('site', [SiteSettingController::class, 'update']);
                 //contact messages\
                 Route::get('contacts', [ContactController::class, 'index']);
+                Route::get('contacts/{id}', [ContactController::class, 'show']);
                 Route::post('contacts/{id}/mark-seen', [ContactController::class, 'markSeen']);
                 Route::post('contacts/{id}/mark-unseen', [ContactController::class, 'markUnseen']);
+            });
+
+
+            Route::prefix('reports')->group(function () {
+                Route::get('/audit-logs', [AuditReportController::class, 'index']);
             });
         });
     });
