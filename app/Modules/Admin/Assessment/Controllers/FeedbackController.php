@@ -83,4 +83,48 @@ class FeedbackController extends Controller
             'data' => $query->paginate($limit)
         ]);
     }
+
+    public function show($id)
+    {
+        $feedback = AssessmentFeedback::with([
+            'user:id,name,email',
+            'assessment:id,title,type,assessmentable_id',
+            'attempt:id,score,percentage,status',
+            'assessment.assessmentable'
+        ])->find($id);
+
+        if (!$feedback) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Feedback not found'
+            ], 404);
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'id' => $feedback->id,
+                'rating' => $feedback->rating,
+                'review' => $feedback->review,
+
+                'user' => $feedback->user,
+
+                'assessment' => [
+                    'id' => $feedback->assessment->id,
+                    'title' => $feedback->assessment->title,
+                    'type' => $feedback->assessment->type,
+                    'linked_to' => $feedback->assessment->assessmentable // topic or level
+                ],
+
+                'attempt' => [
+                    'id' => $feedback->attempt->id,
+                    'score' => $feedback->attempt->score,
+                    'percentage' => $feedback->attempt->percentage,
+                    'status' => $feedback->attempt->status
+                ],
+
+                'created_at' => $feedback->created_at
+            ]
+        ]);
+    }
 }

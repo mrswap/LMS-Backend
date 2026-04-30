@@ -6,6 +6,8 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Models\Assessment;
 use DB;
+use Illuminate\Database\Eloquent\Relations\MorphTo;
+
 
 class AssessmentController extends Controller
 {
@@ -21,10 +23,19 @@ class AssessmentController extends Controller
 
     public function index(Request $request)
     {
+
         $query = Assessment::with([
-            'assessmentable.chapter.module.level.program',
-            'assessmentable.program',
-            'questions:id,assessment_id'
+            'questions:id,assessment_id',
+            'assessmentable' => function (MorphTo $morphTo) {
+                $morphTo->morphWith([
+                    \App\Models\Topic::class => [
+                        'chapter.module.level.program'
+                    ],
+                    \App\Models\Level::class => [
+                        'program'
+                    ],
+                ]);
+            }
         ]);
 
         /*
