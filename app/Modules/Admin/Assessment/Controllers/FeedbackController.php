@@ -39,20 +39,31 @@ class FeedbackController extends Controller
             $query->where('rating', $request->rating);
         }
 
-        // 🔥 Topic filter
-        if ($request->filled('topic_id')) {
-            $query->whereHas('assessment', function ($q) use ($request) {
-                $q->where('type', 'topic')
-                    ->where('assessmentable_id', $request->topic_id);
-            });
-        }
+        if ($request->filled('type')) {
 
-        // 🔥 Level filter
-        if ($request->filled('level_id')) {
-            $query->whereHas('assessment', function ($q) use ($request) {
-                $q->where('type', 'level')
-                    ->where('assessmentable_id', $request->level_id);
-            });
+            $type = strtolower($request->type);
+
+            if ($type === 'topic') {
+
+                $query->whereHas('assessment', function ($q) use ($request) {
+                    $q->where('type', 'topic');
+
+                    // optional specific topic filter
+                    if ($request->filled('topic_id')) {
+                        $q->where('assessmentable_id', $request->topic_id);
+                    }
+                });
+            } elseif ($type === 'level') {
+
+                $query->whereHas('assessment', function ($q) use ($request) {
+                    $q->where('type', 'level');
+
+                    // optional specific level filter
+                    if ($request->filled('level_id')) {
+                        $q->where('assessmentable_id', $request->level_id);
+                    }
+                });
+            }
         }
 
         /*
