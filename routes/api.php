@@ -24,6 +24,16 @@ use App\Modules\Admin\Assessment\Controllers\FeedbackController;
 use App\Modules\Admin\Settings\Controllers\SiteSettingController;
 use App\Modules\Admin\Contact\Controllers\ContactController;
 use App\Modules\Admin\Reports\Controllers\AuditReportController;
+use App\Modules\Admin\Reports\Controllers\UserProgressReportController;
+use App\Modules\Admin\Reports\Controllers\AssessmentReportController;
+use App\Modules\Admin\Reports\Controllers\ContentStatusReportController;
+use App\Modules\Admin\Reports\Controllers\CertificationReportController;
+
+
+
+
+
+
 
 Route::prefix('v1')->group(function () {
 
@@ -254,6 +264,11 @@ Route::prefix('v1')->group(function () {
 
             Route::prefix('reports')->group(function () {
                 Route::get('/audit-logs', [AuditReportController::class, 'index']);
+                Route::get('/user-progress', [UserProgressReportController::class, 'index']);
+                Route::get('/assessment-report', [AssessmentReportController::class, 'index']);
+                Route::get('/content-status', [ContentStatusReportController::class, 'index']);
+                Route::get('/certifications', [CertificationReportController::class, 'index']);
+
             });
         });
     });

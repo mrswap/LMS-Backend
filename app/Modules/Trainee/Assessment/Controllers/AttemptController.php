@@ -14,10 +14,13 @@ use App\Models\Topic;
 use App\Models\Level;
 use App\Services\AuditService;
 use Carbon\Carbon;
+use App\Services\CertificationService;
+
 
 class AttemptController extends Controller
 {
     protected $service;
+    protected $certificationService;
 
     public function __construct(AssessmentService $service)
     {
@@ -474,7 +477,7 @@ class AttemptController extends Controller
 
     public function submit($id, Request $request)
     {
-            AuditService::log('assessment_submitted', 'User submitted an assessment', ['assessment_id' => $id]);    
+        AuditService::log('assessment_submitted', 'User submitted an assessment', ['assessment_id' => $id]);
         /*
         |--------------------------------------------------
         | 🔐 VALIDATION
@@ -604,6 +607,9 @@ class AttemptController extends Controller
 
                     if ($topic) {
                         $progressionService->handleTopicCompletion($userId, $topic);
+                        
+                        app(\App\Services\CertificationService::class)
+                            ->generate(auth()->user(), $topic, $attempt, 'topic');
                     }
                 }
 
@@ -614,6 +620,9 @@ class AttemptController extends Controller
 
                     if ($level) {
                         $progressionService->handleLevelExamPass($userId, $level);
+
+                        app(\App\Services\CertificationService::class)
+                            ->generate(auth()->user(), $level, $attempt, 'level');
                     }
                 }
             }
@@ -623,7 +632,7 @@ class AttemptController extends Controller
             | 📦 FINAL RESPONSE
             |--------------------------------------------------
             */
-                return response()->json([
+            return response()->json([
 
                 // 🎯 result
                 'score' => $result['marks'],

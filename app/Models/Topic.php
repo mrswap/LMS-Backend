@@ -96,4 +96,5 @@ class Topic extends Model
     {
         return $this->hasMany(TopicContent::class)->orderBy('order');
     }
+    
 }

@@ -24,6 +24,7 @@ class AssessmentAttempt extends Model
         'started_at' => 'datetime',
         'submitted_at' => 'datetime',
     ];
+    
     public function answers()
     {
         return $this->hasMany(AssessmentAnswer::class, 'attempt_id');
@@ -31,5 +32,9 @@ class AssessmentAttempt extends Model
     public function assessment()
     {
         return $this->belongsTo(\App\Models\Assessment::class, 'assessment_id');
+    }
+    public function user()
+    {
+        return $this->belongsTo(\App\Models\User::class, 'user_id');
     }
 }

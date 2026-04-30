@@ -36,4 +36,9 @@ class TopicContent extends Model
     {
         return $this->hasMany(TopicContentTranslation::class);
     }
+
+    public function creator()
+    {
+        return $this->belongsTo(User::class, 'created_by');
+    }
 }
