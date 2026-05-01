@@ -4,6 +4,7 @@ namespace App\Services\Reports;
 
 use Illuminate\Http\Request;
 use App\Models\AssessmentAttempt;
+use App\Models\AssessmentAnswer;
 
 class AssessmentReportService
 {
@@ -26,24 +27,20 @@ class AssessmentReportService
 
         /*
         |--------------------------------------------------
-        | 🔐 USER SCOPING (IMPORTANT)
+        | USER SCOPING
         |--------------------------------------------------
         */
         if ($userId) {
             $query->where('user_id', $userId);
+        } elseif ($request->filled('user_id')) {
+            $query->where('user_id', $request->user_id);
         }
 
         /*
         |--------------------------------------------------
-        | 🔍 FILTERS
+        | FILTERS
         |--------------------------------------------------
         */
-
-        // admin only
-        if (!$userId && $request->filled('user_id')) {
-            $query->where('user_id', $request->user_id);
-        }
-
         if ($request->filled('type')) {
             $query->whereHas('assessment', function ($q) use ($request) {
                 $q->where('type', $request->type);
@@ -63,62 +60,64 @@ class AssessmentReportService
 
         /*
         |--------------------------------------------------
-        | 🔽 SORTING
+        | SORTING
         |--------------------------------------------------
         */
-        $sortBy = $request->get('sort_by', 'submitted_at');
-        $sortOrder = $request->get('sort_order', 'desc');
-
-        $query->orderBy($sortBy, $sortOrder);
+        $query->orderBy(
+            $request->get('sort_by', 'submitted_at'),
+            $request->get('sort_order', 'desc')
+        );
 
         /*
         |--------------------------------------------------
-        | 📄 PAGINATION
+        | PAGINATION
         |--------------------------------------------------
         */
         $results = $query->paginate($perPage);
 
+        $collection = $results->getCollection();
+
         /*
         |--------------------------------------------------
-        | 🚀 BULK LOAD ATTEMPTS (NO N+1)
+        | BULK ATTEMPTS LOAD
         |--------------------------------------------------
         */
+        $userIds = $collection->pluck('user_id')->unique();
+        $assessmentIds = $collection->pluck('assessment_id')->unique();
 
-        // collect unique pairs
-        $pairs = $results->getCollection()->map(function ($item) {
-            return $item->user_id . '-' . $item->assessment_id;
-        })->unique();
-
-        // extract ids
-        $userIds = $results->pluck('user_id')->unique();
-        $assessmentIds = $results->pluck('assessment_id')->unique();
-
-        // fetch all attempts in one query
         $allAttempts = AssessmentAttempt::whereIn('user_id', $userIds)
             ->whereIn('assessment_id', $assessmentIds)
             ->select('id', 'user_id', 'assessment_id', 'score', 'percentage', 'status', 'submitted_at')
             ->get()
-            ->groupBy(function ($item) {
-                return $item->user_id . '-' . $item->assessment_id;
-            });
+            ->groupBy(fn($item) => $item->user_id . '-' . $item->assessment_id);
 
         /*
         |--------------------------------------------------
-        | 🎯 TRANSFORM
+        | BULK ANSWERS LOAD (CRITICAL FIX)
         |--------------------------------------------------
         */
-        $results->getCollection()->transform(function ($item) use ($allAttempts) {
+        $attemptIds = $allAttempts->flatten()->pluck('id');
+
+        $allAnswers = AssessmentAnswer::whereIn('attempt_id', $attemptIds)
+            ->get(['attempt_id', 'selected_option_id', 'is_correct'])
+            ->groupBy('attempt_id');
+
+        /*
+        |--------------------------------------------------
+        | TRANSFORM
+        |--------------------------------------------------
+        */
+        $collection->transform(function ($item) use ($allAttempts, $allAnswers) {
 
             $key = $item->user_id . '-' . $item->assessment_id;
 
-            $attempts = $allAttempts[$key] ?? collect();
-
-            // sort attempts
-            $attempts = $attempts->sortBy('submitted_at')->values();
+            $attempts = ($allAttempts[$key] ?? collect())
+                ->sortBy('submitted_at')
+                ->values();
 
             /*
             |-----------------------------------------
-            | ANSWER STATS
+            | CURRENT ATTEMPT STATS
             |-----------------------------------------
             */
             $answers = $item->answers;
@@ -135,16 +134,24 @@ class AssessmentReportService
 
             /*
             |-----------------------------------------
-            | ATTEMPTS DATA
+            | ALL ATTEMPTS DATA
             |-----------------------------------------
             */
-            $attemptsData = $attempts->map(function ($a) {
+            $attemptsData = $attempts->map(function ($a) use ($allAnswers) {
+
+                $answers = $allAnswers[$a->id] ?? collect();
+
                 return [
                     'id' => $a->id,
                     'score' => $a->score,
                     'percentage' => $a->percentage,
                     'status' => $a->status,
                     'submitted_at' => $a->submitted_at,
+
+                    'total_questions' => $answers->count(),
+                    'correct_answers' => $answers->where('is_correct', true)->count(),
+                    'incorrect_answers' => $answers->where('is_correct', false)->whereNotNull('selected_option_id')->count(),
+                    'skipped' => $answers->whereNull('selected_option_id')->count(),
                 ];
             });
 
@@ -153,9 +160,7 @@ class AssessmentReportService
             | PASSED ATTEMPT
             |-----------------------------------------
             */
-            $passedAttempt = $attempts
-                ->where('status', 'passed')
-                ->first(); // change to last() if needed
+            $passedAttempt = $attempts->where('status', 'passed')->first();
 
             return [
                 'user_name' => $item->user?->name,
@@ -164,7 +169,6 @@ class AssessmentReportService
 
                 'assessment_name' => $item->assessment?->title,
                 'assessment_type' => $item->assessment?->type,
-
                 'related_name' => $item->assessment?->assessmentable?->title,
 
                 'attempt_date' => $item->submitted_at,
@@ -172,15 +176,12 @@ class AssessmentReportService
                 'score' => $item->score,
                 'percentage' => $item->percentage,
                 'passing_score' => $item->assessment?->passing_score,
-
                 'status' => $item->status,
 
-                // 🔥 NEW
                 'attempt_count' => $attempts->count(),
                 'passed_attempt_id' => $passedAttempt?->id,
                 'attempts' => $attemptsData,
 
-                // question stats
                 'total_questions' => $totalQuestions,
                 'correct_answers' => $correct,
                 'incorrect_answers' => $incorrect,

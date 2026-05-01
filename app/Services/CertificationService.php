@@ -137,8 +137,10 @@ class CertificationService
         return Certification::create([
             'user_id' => $user->id,
             'program_id' => $context->program_id ?? null,
-            'level_id' => $type === 'level' ? $context->id : $context->level_id ?? null,
+
+            'level_id' => $type === 'level' ? $context->id : null,
             'topic_id' => $type === 'topic' ? $context->id : null,
+
             'type' => $type,
             'assessment_attempt_id' => $attempt->id,
             'certificate_id' => $certificateId,
