@@ -13,7 +13,6 @@ use App\Modules\Trainee\FAQ\Controllers\FaqController;
 use App\Modules\Trainee\Reports\Controllers\AuditReportController;
 use App\Modules\Trainee\Reports\Controllers\UserProgressReportController;
 use App\Modules\Trainee\Reports\Controllers\AssessmentReportController;
-use App\Modules\Trainee\Reports\Controllers\ContentStatusReportController;
 use App\Modules\Trainee\Reports\Controllers\CertificationReportController;
 
 Route::prefix('v1/trainee')->group(function () {
