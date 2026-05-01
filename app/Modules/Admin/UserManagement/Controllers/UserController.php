@@ -185,7 +185,6 @@ class UserController extends Controller
 
     public function profile(Request $request)
     {
-        AuditService::log('profile_viewed', 'User viewed their profile');
         return response()->json([
             'data' => $request->user()
         ]);

@@ -65,6 +65,17 @@ class UserProgressReportService
             }
         }
 
+        // 🔍 SEARCH
+        if ($request->filled('search')) {
+            $search = $request->search;
+
+            $query->whereHas('user', function ($q) use ($search) {
+                $q->where('name', 'LIKE', "%{$search}%")
+                    ->orWhere('email', 'LIKE', "%{$search}%")
+                    ->orWhere('employee_id', 'LIKE', "%{$search}%");
+            });
+        }
+        
         // date range filter
         if ($request->filled('from_date') && $request->filled('to_date')) {
             $query->whereBetween('updated_at', [
