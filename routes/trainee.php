@@ -10,7 +10,11 @@ use App\Modules\Trainee\Content\Controllers\ContentController;
 use App\Modules\Trainee\Content\Controllers\ContentProgressController;
 use App\Modules\Trainee\Assessment\Controllers\FeedbackController;
 use App\Modules\Trainee\FAQ\Controllers\FaqController;
-
+use App\Modules\Trainee\Reports\Controllers\AuditReportController;
+use App\Modules\Trainee\Reports\Controllers\UserProgressReportController;
+use App\Modules\Trainee\Reports\Controllers\AssessmentReportController;
+use App\Modules\Trainee\Reports\Controllers\ContentStatusReportController;
+use App\Modules\Trainee\Reports\Controllers\CertificationReportController;
 
 Route::prefix('v1/trainee')->group(function () {
 
@@ -56,6 +60,14 @@ Route::prefix('v1/trainee')->group(function () {
             Route::get('topics/{topic_id}', [ContentController::class, 'index']);
             Route::post('{id}/toggle-read', [ContentProgressController::class, 'toggle']);
             Route::get('single-preview/{topic_id}/{content_id}', [ContentController::class, 'single']);
+        });
+
+        Route::prefix('reports')->group(function () {
+            Route::get('/audit-logs', [AuditReportController::class, 'index']);
+            Route::get('/user-progress', [UserProgressReportController::class, 'index']);
+            Route::get('/assessment-report', [AssessmentReportController::class, 'index']);
+            Route::get('/certifications', [CertificationReportController::class, 'index']);
+            Route::get('/certificate/{attempt_id}', [CertificationReportController::class, 'show']);
         });
     });
 });

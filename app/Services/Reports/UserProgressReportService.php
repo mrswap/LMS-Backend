@@ -7,7 +7,7 @@ use Illuminate\Http\Request;
 
 class UserProgressReportService
 {
-    public function getReport(Request $request)
+    public function getReport(Request $request, $userId = null)
     {
         $perPage = $request->get('per_page', 10);
 
@@ -22,38 +22,38 @@ class UserProgressReportService
                 'topic:id,title',
             ]);
 
+        // 🔥 FORCE USER FILTER (trainee)
+        if ($userId) {
+            $query->where('user_id', $userId);
+        }
+
         /*
-        |--------------------------------------------------
-        | 🔍 FILTERS
-        |--------------------------------------------------
+        |-----------------------------------------
+        | FILTERS
+        |-----------------------------------------
         */
 
-        // user filter
-        if ($request->filled('user_id')) {
+        // admin only filter
+        if (!$userId && $request->filled('user_id')) {
             $query->where('user_id', $request->user_id);
         }
 
-        // program filter
         if ($request->filled('program_id')) {
             $query->where('program_id', $request->program_id);
         }
 
-        // level filter
         if ($request->filled('level_id')) {
             $query->where('level_id', $request->level_id);
         }
 
-        // module filter
         if ($request->filled('module_id')) {
             $query->where('module_id', $request->module_id);
         }
 
-        // topic filter
         if ($request->filled('topic_id')) {
             $query->where('topic_id', $request->topic_id);
         }
 
-        // status filter
         if ($request->filled('status')) {
             if ($request->status === 'completed') {
                 $query->where('is_completed', true);
@@ -65,8 +65,7 @@ class UserProgressReportService
             }
         }
 
-        // 🔍 SEARCH
-        if ($request->filled('search')) {
+        if ($request->filled('search') && !$userId) {
             $search = $request->search;
 
             $query->whereHas('user', function ($q) use ($search) {
@@ -75,8 +74,7 @@ class UserProgressReportService
                     ->orWhere('employee_id', 'LIKE', "%{$search}%");
             });
         }
-        
-        // date range filter
+
         if ($request->filled('from_date') && $request->filled('to_date')) {
             $query->whereBetween('updated_at', [
                 $request->from_date,
@@ -84,37 +82,21 @@ class UserProgressReportService
             ]);
         }
 
-        /*
-        |--------------------------------------------------
-        | 🔽 SORTING
-        |--------------------------------------------------
-        */
         $sortBy = $request->get('sort_by', 'updated_at');
         $sortOrder = $request->get('sort_order', 'desc');
 
         $query->orderBy($sortBy, $sortOrder);
 
-        /*
-        |--------------------------------------------------
-        | 📄 PAGINATION
-        |--------------------------------------------------
-        */
         $results = $query->paginate($perPage);
 
-        /*
-        |--------------------------------------------------
-        | 🎯 TRANSFORM DATA
-        |--------------------------------------------------
-        */
         $results->getCollection()->transform(function ($item) {
 
-            // completion status
             if ($item->is_completed) {
                 $status = 'Completed';
                 $percentage = 100;
             } elseif ($item->is_unlocked) {
                 $status = 'In Progress';
-                $percentage = 50; // 🔥 can improve later with real calc
+                $percentage = 50;
             } else {
                 $status = 'Not Started';
                 $percentage = 0;

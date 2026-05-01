@@ -7,36 +7,39 @@ use App\Models\AssessmentAttempt;
 
 class AssessmentReportService
 {
-    public function getReport(Request $request)
+    public function getReport(Request $request, $userId = null)
     {
         $perPage = $request->get('per_page', 10);
 
         $query = AssessmentAttempt::query()
             ->with([
                 'user:id,name,email,employee_id',
-                'assessment:id,title,passing_score,assessmentable_id,assessmentable_type',
-                'assessment.assessmentable:id,title'
+                'assessment:id,title,passing_score,assessmentable_id,assessmentable_type,type',
+                'assessment.assessmentable:id,title',
+                'answers:id,attempt_id,selected_option_id,is_correct'
             ]);
 
+        // 🔥 FORCE USER FILTER (trainee)
+        if ($userId) {
+            $query->where('user_id', $userId);
+        }
+
         /*
-        |--------------------------------------------------
-        | 🔍 FILTERS
-        |--------------------------------------------------
+        |-----------------------------------------
+        | FILTERS
+        |-----------------------------------------
         */
 
-        // user filter
-        if ($request->filled('user_id')) {
+        if (!$userId && $request->filled('user_id')) {
             $query->where('user_id', $request->user_id);
         }
 
-        // assessment type filter (topic / level)
         if ($request->filled('type')) {
             $query->whereHas('assessment', function ($q) use ($request) {
                 $q->where('type', $request->type);
             });
         }
 
-        // pass / fail filter
         if ($request->filled('status')) {
             if ($request->status === 'passed') {
                 $query->where('status', 'passed');
@@ -45,7 +48,6 @@ class AssessmentReportService
             }
         }
 
-        // date filter
         if ($request->filled('from_date') && $request->filled('to_date')) {
             $query->whereBetween('submitted_at', [
                 $request->from_date,
@@ -54,9 +56,9 @@ class AssessmentReportService
         }
 
         /*
-        |--------------------------------------------------
-        | 🔽 SORTING
-        |--------------------------------------------------
+        |-----------------------------------------
+        | SORTING
+        |-----------------------------------------
         */
         $sortBy = $request->get('sort_by', 'submitted_at');
         $sortOrder = $request->get('sort_order', 'desc');
@@ -64,20 +66,19 @@ class AssessmentReportService
         $query->orderBy($sortBy, $sortOrder);
 
         /*
-        |--------------------------------------------------
-        | 📄 PAGINATION
-        |--------------------------------------------------
+        |-----------------------------------------
+        | PAGINATION
+        |-----------------------------------------
         */
         $results = $query->paginate($perPage);
 
         /*
-        |--------------------------------------------------
-        | 🎯 TRANSFORM DATA
-        |--------------------------------------------------
+        |-----------------------------------------
+        | TRANSFORM
+        |-----------------------------------------
         */
         $results->getCollection()->transform(function ($item) {
 
-            // answers breakdown
             $answers = $item->answers;
 
             $correct = $answers->where('is_correct', true)->count();
@@ -90,7 +91,6 @@ class AssessmentReportService
 
             $totalQuestions = $answers->count();
 
-            // attempt count (same user + same assessment)
             $attemptCount = \App\Models\AssessmentAttempt::where('user_id', $item->user_id)
                 ->where('assessment_id', $item->assessment_id)
                 ->count();
@@ -101,8 +101,8 @@ class AssessmentReportService
                 'employee_id' => $item->user?->employee_id,
 
                 'assessment_name' => $item->assessment?->title,
+                'assessment_type' => $item->assessment?->type,
 
-                // dynamic relation (topic or level)
                 'related_name' => $item->assessment?->assessmentable?->title,
 
                 'attempt_date' => $item->submitted_at,
@@ -111,7 +111,7 @@ class AssessmentReportService
                 'percentage' => $item->percentage,
                 'passing_score' => $item->assessment?->passing_score,
 
-                'status' => $item->status, // passed / failed
+                'status' => $item->status,
 
                 'attempt_count' => $attemptCount,
 

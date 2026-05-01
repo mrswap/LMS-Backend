@@ -7,7 +7,7 @@ use App\Models\Certification;
 
 class CertificationReportService
 {
-    public function getReport(Request $request)
+    public function getReport(Request $request, $userId = null)
     {
         $perPage = $request->get('per_page', 10);
 
@@ -19,13 +19,18 @@ class CertificationReportService
                 'topic:id,title'
             ]);
 
+        // 🔥 FORCE USER FILTER (trainee)
+        if ($userId) {
+            $query->where('user_id', $userId);
+        }
+
         /*
         |-----------------------------------------
-        | 🔍 FILTERS
+        | FILTERS
         |-----------------------------------------
         */
 
-        if ($request->filled('user_id')) {
+        if (!$userId && $request->filled('user_id')) {
             $query->where('user_id', $request->user_id);
         }
 
@@ -42,11 +47,11 @@ class CertificationReportService
         }
 
         if ($request->filled('type')) {
-            $query->where('type', $request->type); // topic / level
+            $query->where('type', $request->type);
         }
 
         if ($request->filled('status')) {
-            $query->where('status', $request->status); // 1 / 0
+            $query->where('status', $request->status);
         }
 
         if ($request->filled('from_date') && $request->filled('to_date')) {
@@ -58,7 +63,7 @@ class CertificationReportService
 
         /*
         |-----------------------------------------
-        | 🔽 SORTING
+        | SORTING
         |-----------------------------------------
         */
 
@@ -69,7 +74,7 @@ class CertificationReportService
 
         /*
         |-----------------------------------------
-        | 📄 PAGINATION
+        | PAGINATION
         |-----------------------------------------
         */
 
@@ -77,7 +82,7 @@ class CertificationReportService
 
         /*
         |-----------------------------------------
-        | 🎯 TRANSFORM DATA
+        | TRANSFORM
         |-----------------------------------------
         */
 
@@ -90,7 +95,7 @@ class CertificationReportService
 
                 'program' => $item->program?->title,
 
-                'type' => $item->type, // topic / level
+                'type' => $item->type,
 
                 'level' => $item->level?->title,
                 'topic' => $item->topic?->title,

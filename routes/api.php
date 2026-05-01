@@ -28,7 +28,7 @@ use App\Modules\Admin\Reports\Controllers\UserProgressReportController;
 use App\Modules\Admin\Reports\Controllers\AssessmentReportController;
 use App\Modules\Admin\Reports\Controllers\ContentStatusReportController;
 use App\Modules\Admin\Reports\Controllers\CertificationReportController;
-
+use App\Modules\Admin\Settings\Controllers\CertificateSettingController;
 
 
 
@@ -254,6 +254,13 @@ Route::prefix('v1')->group(function () {
                 //site settings
                 Route::get('site', [SiteSettingController::class, 'get']);
                 Route::post('site', [SiteSettingController::class, 'update']);
+
+                Route::prefix('certificate-settings')->group(function () {
+                    Route::get('/', [CertificateSettingController::class, 'get']);
+                    Route::post('/', [CertificateSettingController::class, 'update']);
+                    Route::get('/variables', [CertificateSettingController::class, 'variables']);
+                });
+
                 //contact messages\
                 Route::get('contacts', [ContactController::class, 'index']);
                 Route::get('contacts/{id}', [ContactController::class, 'show']);
@@ -268,7 +275,6 @@ Route::prefix('v1')->group(function () {
                 Route::get('/assessment-report', [AssessmentReportController::class, 'index']);
                 Route::get('/content-status', [ContentStatusReportController::class, 'index']);
                 Route::get('/certifications', [CertificationReportController::class, 'index']);
-
             });
         });
     });
