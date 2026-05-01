@@ -3,10 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
-
-namespace App\Models;
-
-use Illuminate\Database\Eloquent\Model;
+use App\Models\AssessmentAttempt;
 
 class Assessment extends Model
 {
@@ -33,11 +30,16 @@ class Assessment extends Model
     {
         return $this->hasMany(AssessmentQuestion::class);
     }
-    
+
     public function getFileAttribute($value)
     {
         if (!$value) return null;
 
         return url('public/' . ltrim($value, '/'));
+    }
+
+    public function attempts()
+    {
+        return $this->hasMany(AssessmentAttempt::class);
     }
 }

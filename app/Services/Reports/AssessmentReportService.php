@@ -11,6 +11,11 @@ class AssessmentReportService
     {
         $perPage = $request->get('per_page', 10);
 
+        /*
+        |--------------------------------------------------
+        | BASE QUERY
+        |--------------------------------------------------
+        */
         $query = AssessmentAttempt::query()
             ->with([
                 'user:id,name,email,employee_id',
@@ -19,17 +24,22 @@ class AssessmentReportService
                 'answers:id,attempt_id,selected_option_id,is_correct'
             ]);
 
-        // 🔥 FORCE USER FILTER (trainee)
+        /*
+        |--------------------------------------------------
+        | 🔐 USER SCOPING (IMPORTANT)
+        |--------------------------------------------------
+        */
         if ($userId) {
             $query->where('user_id', $userId);
         }
 
         /*
-        |-----------------------------------------
-        | FILTERS
-        |-----------------------------------------
+        |--------------------------------------------------
+        | 🔍 FILTERS
+        |--------------------------------------------------
         */
 
+        // admin only
         if (!$userId && $request->filled('user_id')) {
             $query->where('user_id', $request->user_id);
         }
@@ -41,11 +51,7 @@ class AssessmentReportService
         }
 
         if ($request->filled('status')) {
-            if ($request->status === 'passed') {
-                $query->where('status', 'passed');
-            } elseif ($request->status === 'failed') {
-                $query->where('status', 'failed');
-            }
+            $query->where('status', $request->status);
         }
 
         if ($request->filled('from_date') && $request->filled('to_date')) {
@@ -56,9 +62,9 @@ class AssessmentReportService
         }
 
         /*
-        |-----------------------------------------
-        | SORTING
-        |-----------------------------------------
+        |--------------------------------------------------
+        | 🔽 SORTING
+        |--------------------------------------------------
         */
         $sortBy = $request->get('sort_by', 'submitted_at');
         $sortOrder = $request->get('sort_order', 'desc');
@@ -66,19 +72,55 @@ class AssessmentReportService
         $query->orderBy($sortBy, $sortOrder);
 
         /*
-        |-----------------------------------------
-        | PAGINATION
-        |-----------------------------------------
+        |--------------------------------------------------
+        | 📄 PAGINATION
+        |--------------------------------------------------
         */
         $results = $query->paginate($perPage);
 
         /*
-        |-----------------------------------------
-        | TRANSFORM
-        |-----------------------------------------
+        |--------------------------------------------------
+        | 🚀 BULK LOAD ATTEMPTS (NO N+1)
+        |--------------------------------------------------
         */
-        $results->getCollection()->transform(function ($item) {
 
+        // collect unique pairs
+        $pairs = $results->getCollection()->map(function ($item) {
+            return $item->user_id . '-' . $item->assessment_id;
+        })->unique();
+
+        // extract ids
+        $userIds = $results->pluck('user_id')->unique();
+        $assessmentIds = $results->pluck('assessment_id')->unique();
+
+        // fetch all attempts in one query
+        $allAttempts = AssessmentAttempt::whereIn('user_id', $userIds)
+            ->whereIn('assessment_id', $assessmentIds)
+            ->select('id', 'user_id', 'assessment_id', 'score', 'percentage', 'status', 'submitted_at')
+            ->get()
+            ->groupBy(function ($item) {
+                return $item->user_id . '-' . $item->assessment_id;
+            });
+
+        /*
+        |--------------------------------------------------
+        | 🎯 TRANSFORM
+        |--------------------------------------------------
+        */
+        $results->getCollection()->transform(function ($item) use ($allAttempts) {
+
+            $key = $item->user_id . '-' . $item->assessment_id;
+
+            $attempts = $allAttempts[$key] ?? collect();
+
+            // sort attempts
+            $attempts = $attempts->sortBy('submitted_at')->values();
+
+            /*
+            |-----------------------------------------
+            | ANSWER STATS
+            |-----------------------------------------
+            */
             $answers = $item->answers;
 
             $correct = $answers->where('is_correct', true)->count();
@@ -91,9 +133,29 @@ class AssessmentReportService
 
             $totalQuestions = $answers->count();
 
-            $attemptCount = \App\Models\AssessmentAttempt::where('user_id', $item->user_id)
-                ->where('assessment_id', $item->assessment_id)
-                ->count();
+            /*
+            |-----------------------------------------
+            | ATTEMPTS DATA
+            |-----------------------------------------
+            */
+            $attemptsData = $attempts->map(function ($a) {
+                return [
+                    'id' => $a->id,
+                    'score' => $a->score,
+                    'percentage' => $a->percentage,
+                    'status' => $a->status,
+                    'submitted_at' => $a->submitted_at,
+                ];
+            });
+
+            /*
+            |-----------------------------------------
+            | PASSED ATTEMPT
+            |-----------------------------------------
+            */
+            $passedAttempt = $attempts
+                ->where('status', 'passed')
+                ->first(); // change to last() if needed
 
             return [
                 'user_name' => $item->user?->name,
@@ -113,8 +175,12 @@ class AssessmentReportService
 
                 'status' => $item->status,
 
-                'attempt_count' => $attemptCount,
+                // 🔥 NEW
+                'attempt_count' => $attempts->count(),
+                'passed_attempt_id' => $passedAttempt?->id,
+                'attempts' => $attemptsData,
 
+                // question stats
                 'total_questions' => $totalQuestions,
                 'correct_answers' => $correct,
                 'incorrect_answers' => $incorrect,
