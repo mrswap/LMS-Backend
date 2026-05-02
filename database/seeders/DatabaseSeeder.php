@@ -20,6 +20,8 @@ class DatabaseSeeder extends Seeder
             SuperAdminSeeder::class,
             SalesUserSeeder::class,
             FinalLMSSeeder::class,
+            CertificateSettingSeeder::class,
+
         ]);
     }
 }

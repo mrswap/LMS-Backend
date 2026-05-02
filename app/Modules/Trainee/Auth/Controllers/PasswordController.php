@@ -12,6 +12,7 @@ use Illuminate\Support\Str;
 use Carbon\Carbon;
 use App\Services\SmtpService;
 
+
 class PasswordController extends Controller
 {
     protected $smtpService;
@@ -26,12 +27,23 @@ class PasswordController extends Controller
     | FORGOT PASSWORD
     |-----------------------------------------
     */
+
     public function forgotPassword(Request $request)
     {
+        /*
+        |-----------------------------------------
+        | VALIDATION
+        |-----------------------------------------
+        */
         $request->validate([
             'email' => 'required|email'
         ]);
 
+        /*
+        |-----------------------------------------
+        | CHECK USER
+        |-----------------------------------------
+        */
         $user = User::where('email', $request->email)->first();
 
         if (!$user) {
@@ -40,6 +52,11 @@ class PasswordController extends Controller
             ], 404);
         }
 
+        /*
+        |-----------------------------------------
+        | GENERATE TOKEN
+        |-----------------------------------------
+        */
         $token = Str::random(64);
 
         DB::table('password_reset_tokens')->updateOrInsert(
@@ -50,19 +67,45 @@ class PasswordController extends Controller
             ]
         );
 
-        $resetLink = env('FRONT_END_URL') . "/trainee/reset-password?token=$token";
+        /*
+        |-----------------------------------------
+        | DYNAMIC LINK (DEFAULT = MOBILE)
+        |-----------------------------------------
+        */
+        $source = $request->get('source'); // null OR 'web'
 
-        // Apply SMTP config dynamically
+        if ($source === 'web') {
+            $resetLink = rtrim(env('FRONT_END_URL'), '/') . "/trainee/reset-password?token=$token";
+        } else {
+            // DEFAULT → MOBILE APP
+            $resetLink = rtrim(env('APP_DEEP_LINK'), '/') . "/reset-password?token=$token";
+        }
+
+        /*
+        |-----------------------------------------
+        | APPLY SMTP CONFIG
+        |-----------------------------------------
+        */
         $smtp = \App\Models\SmtpSetting::first();
         if ($smtp) {
             $this->smtpService->applyConfig($smtp);
         }
 
+        /*
+        |-----------------------------------------
+        | SEND MAIL
+        |-----------------------------------------
+        */
         Mail::raw("Reset your password:\n$resetLink", function ($message) use ($user) {
             $message->to($user->email)
                 ->subject('Reset Password');
         });
 
+        /*
+        |-----------------------------------------
+        | RESPONSE
+        |-----------------------------------------
+        */
         return response()->json([
             'message' => 'Reset link sent to email'
         ]);
