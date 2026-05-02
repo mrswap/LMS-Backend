@@ -50,7 +50,7 @@ class PasswordController extends Controller
             ]
         );
 
-        $resetLink = env('FRONT_END_URL') . "trainee/reset-password?token=$token";
+        $resetLink = env('FRONT_END_URL') . "/trainee/reset-password?token=$token";
 
         // Apply SMTP config dynamically
         $smtp = \App\Models\SmtpSetting::first();

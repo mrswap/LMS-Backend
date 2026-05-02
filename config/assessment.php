@@ -9,7 +9,7 @@ return [
     */
 
     'global' => [
-        'max_attempts' => 3,          // fallback if type-specific not defined
+        'max_attempts' => 50,          // fallback if type-specific not defined
         'quiz_timer_enabled' => true, // overall toggle
     ],
 
@@ -20,7 +20,7 @@ return [
     */
 
     'quiz' => [
-        'max_attempts' => 5,
+        'max_attempts' => 50,
         'timer_enabled' => true,     // mostly practice based
     ],
 
@@ -31,7 +31,7 @@ return [
     */
 
     'exam' => [
-        'max_attempts' => 2,
+        'max_attempts' => 50,
         'timer_enabled' => true,      // strict exam
     ],
 

@@ -6,10 +6,13 @@ use Illuminate\Database\Eloquent\Model;
 
 class Certification extends Model
 {
+
     protected $fillable = [
         'user_id',
         'program_id',
         'level_id',
+        'topic_id',     
+        'type',         
         'assessment_attempt_id',
         'certificate_id',
         'score',
@@ -51,7 +54,7 @@ class Certification extends Model
     {
         return $this->belongsTo(\App\Models\Topic::class);
     }
-    
+
     // 🔗 file url
     public function getFileAttribute($value)
     {

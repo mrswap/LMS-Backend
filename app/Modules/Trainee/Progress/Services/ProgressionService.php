@@ -41,18 +41,19 @@ class ProgressionService
                 ->first();
 
             if ($nextTopic) {
-                UserProgress::firstOrCreate(
+                UserProgress::updateOrCreate(
                     [
                         'user_id' => $userId,
-                        'topic_id' => $nextTopic->id,
+                        'topic_id' => $topic->id,
                     ],
                     [
-                        'program_id' => $nextTopic->program_id,
-                        'level_id' => $nextTopic->level_id,
-                        'module_id' => $nextTopic->module_id,
-                        'chapter_id' => $nextTopic->chapter_id,
+                        'program_id' => $topic->program_id,
+                        'level_id' => $topic->level_id,
+                        'module_id' => $topic->module_id,
+                        'chapter_id' => $topic->chapter_id,
                         'is_unlocked' => true,
-                        'is_completed' => false,
+                        'is_completed' => true,
+                        'completed_at' => now(),
                     ]
                 );
             }
@@ -70,6 +71,7 @@ class ProgressionService
 
         $completed = UserProgress::where('user_id', $userId)
             ->where('chapter_id', $chapterId)
+            ->whereNotNull('topic_id') // 🔥 ADD THIS
             ->where('is_completed', true)
             ->count();
 
@@ -112,40 +114,89 @@ class ProgressionService
 
     private function handleModuleCompletion($userId, $moduleId)
     {
-
+        // 🔹 Get all chapters
         $chapters = Chapter::where('module_id', $moduleId)->pluck('id');
 
         $totalChapters = $chapters->count();
-
         $completedChapters = 0;
 
         foreach ($chapters as $chapterId) {
-            $totalTopics = Topic::where('chapter_id', $chapterId)->count();
 
-            $completedTopics = UserProgress::where('user_id', $userId)
-                ->where('chapter_id', $chapterId)
+            // 🔹 Total topics in chapter
+            $totalTopics = Topic::where('chapter_id', $chapterId)->pluck('id');
+
+            // 🔹 Completed topics (STRICT MATCH)
+            $completedTopicIds = UserProgress::where('user_id', $userId)
+                ->whereIn('topic_id', $totalTopics)
+                ->whereNotNull('topic_id') // 🔥 ADD THIS
                 ->where('is_completed', true)
-                ->count();
+                ->pluck('topic_id')
+                ->unique();
 
-            if ($totalTopics > 0 && $totalTopics == $completedTopics) {
+            // ✅ Compare by IDs (NOT count blindly)
+            if ($totalTopics->count() > 0 && $totalTopics->count() === $completedTopicIds->count()) {
                 $completedChapters++;
             }
         }
 
-
-        if ($totalChapters > 0 && $totalChapters == $completedChapters) {
+        /*
+        |--------------------------------------------------
+        | ✅ MODULE COMPLETED
+        |--------------------------------------------------
+        */
+        if ($totalChapters > 0 && $totalChapters === $completedChapters) {
 
             $module = Module::find($moduleId);
-            AuditService::log('module_completed', 'User completed a module', ['module_id' => $module->id]);
-            // 🔓 unlock next module
+
+            if (!$module) return;
+
+            AuditService::log(
+                'module_completed',
+                'User completed a module',
+                ['module_id' => $module->id]
+            );
+
+            /*
+        |--------------------------------------------
+        | 🔥 STORE MODULE COMPLETION (IMPORTANT)
+        |--------------------------------------------
+        */
+            UserProgress::updateOrCreate(
+                [
+                    'user_id' => $userId,
+                    'module_id' => $moduleId,
+                    'topic_id' => null // 🔥 important
+                ],
+                [
+                    'program_id' => $module->program_id ?? null,
+                    'level_id' => $module->level_id,
+                    'is_completed' => true,
+                    'completed_at' => now(),
+                ]
+            );
+
+            /*
+        |--------------------------------------------
+        | 🔓 UNLOCK NEXT MODULE
+        |--------------------------------------------
+        */
             $nextModule = Module::where('level_id', $module->level_id)
                 ->where('id', '>', $module->id)
                 ->orderBy('id')
                 ->first();
 
             if ($nextModule) {
-                $firstTopic = Topic::where('module_id', $nextModule->id)->orderBy('id')->first();
-                AuditService::log('module_unlocked', 'User unlocked the next module', ['module_id' => $nextModule->id]);
+
+                AuditService::log(
+                    'module_unlocked',
+                    'User unlocked next module',
+                    ['module_id' => $nextModule->id]
+                );
+
+                $firstTopic = Topic::where('module_id', $nextModule->id)
+                    ->orderBy('id')
+                    ->first();
+
                 if ($firstTopic) {
                     UserProgress::firstOrCreate(
                         [
@@ -162,6 +213,153 @@ class ProgressionService
                     );
                 }
             }
+
+            /*
+            |--------------------------------------------
+            | 🔥 LEVEL CHECK TRIGGER
+            |--------------------------------------------
+            */
+            //$this->handleLevelCompletion($userId, $module->level_id);
         }
+    }
+    private function handleLevelCompletion($userId, $levelId)
+    {
+        $modules = Module::where('level_id', $levelId)->pluck('id');
+
+        $totalModules = $modules->count();
+        $completedModules = 0;
+
+        foreach ($modules as $moduleId) {
+
+            $chapters = Chapter::where('module_id', $moduleId)->pluck('id');
+
+            $totalChapters = $chapters->count();
+            $completedChapters = 0;
+
+            foreach ($chapters as $chapterId) {
+
+                $totalTopics = Topic::where('chapter_id', $chapterId)->count();
+
+                $completedTopics = UserProgress::where('user_id', $userId)
+                    ->where('chapter_id', $chapterId)
+                    ->where('is_completed', true)
+                    ->count();
+
+                if ($totalTopics > 0 && $totalTopics == $completedTopics) {
+                    $completedChapters++;
+                }
+            }
+
+            if ($totalChapters > 0 && $totalChapters == $completedChapters) {
+                $completedModules++;
+            }
+        }
+
+        /*
+        |---------------------------------------
+        | ✅ LEVEL COMPLETED
+        |---------------------------------------
+        */
+        if ($totalModules > 0 && $totalModules == $completedModules) {
+
+            $level = \App\Models\Level::find($levelId);
+
+            \App\Services\AuditService::log(
+                'level_completed',
+                'User completed a level',
+                ['level_id' => $level->id]
+            );
+
+            // 🔓 unlock next level
+            $nextLevel = \App\Models\Level::where('program_id', $level->program_id)
+                ->where('id', '>', $level->id)
+                ->orderBy('id')
+                ->first();
+
+            if ($nextLevel) {
+
+                \App\Services\AuditService::log(
+                    'level_unlocked',
+                    'User unlocked next level',
+                    ['level_id' => $nextLevel->id]
+                );
+
+                $firstModule = Module::where('level_id', $nextLevel->id)->orderBy('id')->first();
+
+                if ($firstModule) {
+
+                    $firstTopic = Topic::where('module_id', $firstModule->id)->orderBy('id')->first();
+
+                    if ($firstTopic) {
+                        UserProgress::firstOrCreate(
+                            [
+                                'user_id' => $userId,
+                                'topic_id' => $firstTopic->id,
+                            ],
+                            [
+                                'program_id' => $firstTopic->program_id,
+                                'level_id' => $firstTopic->level_id,
+                                'module_id' => $firstTopic->module_id,
+                                'chapter_id' => $firstTopic->chapter_id,
+                                'is_unlocked' => true,
+                            ]
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    public function handleLevelExamPass($userId, $currentLevel)
+    {
+        $nextLevel = \App\Models\Level::where('program_id', $currentLevel->program_id)
+            ->where('id', '>', $currentLevel->id)
+            ->orderBy('id')
+            ->first();
+
+        if (!$nextLevel) return;
+
+        \App\Services\AuditService::log(
+            'level_unlocked',
+            'User unlocked next level',
+            ['level_id' => $nextLevel->id]
+        );
+
+        // 🔹 first module
+        $firstModule = \App\Models\Module::where('level_id', $nextLevel->id)
+            ->orderBy('id')
+            ->first();
+
+        if (!$firstModule) return;
+
+        // 🔹 first chapter
+        $firstChapter = \App\Models\Chapter::where('module_id', $firstModule->id)
+            ->orderBy('id')
+            ->first();
+
+        if (!$firstChapter) return;
+
+        // 🔹 first topic
+        $firstTopic = \App\Models\Topic::where('chapter_id', $firstChapter->id)
+            ->orderBy('id')
+            ->first();
+
+        if (!$firstTopic) return;
+
+        // 🔥 UNLOCK ENTRY
+        \App\Models\UserProgress::firstOrCreate(
+            [
+                'user_id' => $userId,
+                'topic_id' => $firstTopic->id,
+            ],
+            [
+                'program_id' => $firstTopic->program_id,
+                'level_id' => $firstTopic->level_id,
+                'module_id' => $firstTopic->module_id,
+                'chapter_id' => $firstTopic->chapter_id,
+                'is_unlocked' => true,
+                'is_completed' => false,
+            ]
+        );
     }
 }

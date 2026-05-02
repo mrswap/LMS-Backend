@@ -6,6 +6,11 @@ use Illuminate\Database\Eloquent\Model;
 
 class CertificateSetting extends Model
 {
+    /*
+    |--------------------------------------------------
+    | 📌 MASS ASSIGNABLE
+    |--------------------------------------------------
+    */
     protected $fillable = [
         'company_name',
         'company_logo',
@@ -18,6 +23,11 @@ class CertificateSetting extends Model
         'footer_text',
     ];
 
+    /*
+    |--------------------------------------------------
+    | 📌 AUTO APPEND (FRONTEND READY)
+    |--------------------------------------------------
+    */
     protected $appends = [
         'company_logo_url',
         'signer_signature_url'
@@ -25,39 +35,70 @@ class CertificateSetting extends Model
 
     /*
     |--------------------------------------------------
-    | 🔥 FULL URL GENERATOR (REUSABLE)
+    | 📌 FILE FIELDS (CENTRAL CONTROL 🔥)
     |--------------------------------------------------
     */
-    private function getFullUrl($path)
+    protected $fileFields = [
+        'company_logo',
+        'signer_signature'
+    ];
+
+    /*
+    |--------------------------------------------------
+    | 🔥 FULL URL GENERATOR (SMART HANDLER)
+    |--------------------------------------------------
+    */
+    protected function getFullUrl($path)
     {
         if (!$path) return null;
 
-        // already full url
+        // already full URL
         if (str_starts_with($path, 'http')) {
             return $path;
         }
 
-        // remove "public/" prefix if exists
-        $path = str_replace('public/', '', $path);
+        // normalize
+        $path = ltrim($path, '/');
+
+        // ensure public/ prefix
+        if (!str_starts_with($path, 'public/')) {
+            $path = 'public/' . $path;
+        }
 
         return url($path);
     }
 
     /*
     |--------------------------------------------------
-    | 🖼 COMPANY LOGO URL
+    | 🔄 GENERIC FILE ACCESSOR (ADVANCED 🔥)
     |--------------------------------------------------
     */
+    public function __get($key)
+    {
+        // handle *_url dynamically
+        if (str_ends_with($key, '_url')) {
+
+            $field = str_replace('_url', '', $key);
+
+            if (in_array($field, $this->fileFields)) {
+                return $this->getFullUrl($this->attributes[$field] ?? null);
+            }
+        }
+
+        return parent::__get($key);
+    }
+
+    /*
+    |--------------------------------------------------
+    | 🖼 EXPLICIT ACCESSORS (SAFE FALLBACK)
+    |--------------------------------------------------
+    */
+
     public function getCompanyLogoUrlAttribute()
     {
         return $this->getFullUrl($this->company_logo);
     }
 
-    /*
-    |--------------------------------------------------
-    | ✍️ SIGNATURE URL
-    |--------------------------------------------------
-    */
     public function getSignerSignatureUrlAttribute()
     {
         return $this->getFullUrl($this->signer_signature);

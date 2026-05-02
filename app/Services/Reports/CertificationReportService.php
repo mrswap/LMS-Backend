@@ -101,6 +101,7 @@ class CertificationReportService
                 'topic' => $item->topic?->title,
 
                 'certificate_id' => $item->certificate_id,
+                'passed_attempt_id' => $item->assessment_attempt_id,
 
                 'score' => $item->score,
                 'percentage' => $item->percentage,

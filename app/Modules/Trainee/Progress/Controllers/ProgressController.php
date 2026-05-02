@@ -359,13 +359,21 @@ class ProgressController extends Controller
         $userId = auth()->id();
         $lang = $this->resolveLanguage($request);
 
+        // 🔹 topic progress
         $progress = UserProgress::where('user_id', $userId)
+            ->whereNotNull('topic_id') // 🔥 IMPORTANT
             ->get()
             ->keyBy('topic_id');
+            
+        // 🔹 level certificates (IMPORTANT: type = level)
+        $certifications = \App\Models\Certification::where('user_id', $userId)
+            ->where('type', 'level')
+            ->get()
+            ->keyBy('level_id');
 
         $programs = Program::with('levels.modules.chapters.topics')->get();
 
-        $data = $programs->map(function ($program) use ($progress, $lang) {
+        $data = $programs->map(function ($program) use ($progress, $lang, $certifications) {
 
             $t = $this->getTranslated($program, $lang);
 
@@ -376,10 +384,34 @@ class ProgressController extends Controller
                 'description' => $t['description'],
                 'thumbnail' => $program->thumbnail,
 
-                'levels' => $program->levels->map(function ($level) use ($progress, $lang) {
+                'levels' => $program->levels->map(function ($level) use ($progress, $lang, $certifications) {
 
                     $t = $this->getTranslated($level, $lang);
+
                     AuditService::log('level_viewed', 'User viewed their progress for a level', ['level_id' => $level->id]);
+
+                    /*
+                |--------------------------------------------------
+                | 🔥 LEVEL CONTENT COMPLETION
+                |--------------------------------------------------
+                */
+                    $allTopics = $level->modules->flatMap(function ($module) {
+                        return $module->chapters->flatMap->topics;
+                    });
+
+                    $levelUnlocked = $allTopics->contains(fn($topic) => $progress[$topic->id]->is_unlocked ?? false);
+
+                    $levelCompleted = $allTopics->isNotEmpty() &&
+                        $allTopics->every(fn($topic) => $progress[$topic->id]->is_completed ?? false);
+
+                    /*
+                |--------------------------------------------------
+                | 🎓 CERTIFICATION CHECK (TYPE = LEVEL)
+                |--------------------------------------------------
+                */
+                    $cert = $certifications[$level->id] ?? null;
+
+                    $isPassed = $cert ? true : false;
 
                     return [
                         'type' => 'level',
@@ -388,17 +420,39 @@ class ProgressController extends Controller
                         'description' => $t['description'],
                         'thumbnail' => $level->thumbnail,
 
-                        'is_unlocked' => true, // future: level unlock logic
-                        'is_completed' => false,
+                        // 🔓 unlock
+                        'is_unlocked' => $levelUnlocked,
+
+                        // 📚 content status
+                        'is_content_completed' => $levelCompleted,
+
+                        // 🎯 exam eligibility
+                        'can_take_exam' => $levelCompleted && !$isPassed,
+
+                        // 🎓 result
+                        'is_passed' => $isPassed,
+
+                        // 📊 exam details
+                        'exam_details' => $cert ? [
+                            'certificate_id' => $cert->certificate_id,
+                            'score' => $cert->score,
+                            'percentage' => $cert->percentage,
+                            'issued_at' => $cert->issued_at,
+                            'passed_attempt_id' => $cert->assessment_attempt_id,
+                        ] : null,
 
                         'modules' => $level->modules->map(function ($module) use ($progress, $lang) {
 
                             $t = $this->getTranslated($module, $lang);
+
                             AuditService::log('module_viewed', 'User viewed their progress for a module', ['module_id' => $module->id]);
+
                             $topics = $module->chapters->flatMap->topics;
 
                             $isUnlocked = $topics->contains(fn($topic) => $progress[$topic->id]->is_unlocked ?? false);
-                            $isCompleted = $topics->every(fn($topic) => $progress[$topic->id]->is_completed ?? false);
+
+                            $isCompleted = $topics->isNotEmpty() &&
+                                $topics->every(fn($topic) => $progress[$topic->id]->is_completed ?? false);
 
                             return [
                                 'type' => 'module',
@@ -414,10 +468,12 @@ class ProgressController extends Controller
 
                                     $t = $this->getTranslated($chapter, $lang);
 
-                                    $isUnlocked = $chapter->topics->contains(fn($topic) => $progress[$topic->id]->is_unlocked ?? false);
-                                    $isCompleted = $chapter->topics->every(fn($topic) => $progress[$topic->id]->is_completed ?? false);
-
                                     AuditService::log('chapter_viewed', 'User viewed their progress for a chapter', ['chapter_id' => $chapter->id]);
+
+                                    $isUnlocked = $chapter->topics->contains(fn($topic) => $progress[$topic->id]->is_unlocked ?? false);
+
+                                    $isCompleted = $chapter->topics->isNotEmpty() &&
+                                        $chapter->topics->every(fn($topic) => $progress[$topic->id]->is_completed ?? false);
 
                                     return [
                                         'type' => 'chapter',
