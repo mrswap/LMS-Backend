@@ -2,9 +2,7 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
-
-class Faq extends Model
+class Faq extends BaseModel
 {
     /*
     |--------------------------------------------------------------------------
@@ -34,16 +32,19 @@ class Faq extends Model
     |--------------------------------------------------------------------------
     */
 
-    // 🔹 Polymorphic Relation
     public function faqable()
     {
-        return $this->morphTo();
+        return $this->morphTo()->withTrashed();
     }
 
-    // 🔹 Translations
     public function translations()
     {
         return $this->hasMany(FaqTranslation::class);
+    }
+
+    public function creator()
+    {
+        return $this->belongsTo(User::class, 'created_by')->withTrashed();
     }
 
     /*
@@ -61,12 +62,34 @@ class Faq extends Model
 
     /*
     |--------------------------------------------------------------------------
-    | Scopes (Optional but useful)
+    | Scopes
     |--------------------------------------------------------------------------
     */
 
     public function scopeActive($query)
     {
         return $query->where('status', true);
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Cascade Soft Delete
+    |--------------------------------------------------------------------------
+    */
+
+    public function cascadeSoftDelete()
+    {
+        $this->translations()->get()->each->delete();
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Cascade Restore
+    |--------------------------------------------------------------------------
+    */
+
+    public function cascadeRestore()
+    {
+        $this->translations()->withTrashed()->get()->each->restore();
     }
 }

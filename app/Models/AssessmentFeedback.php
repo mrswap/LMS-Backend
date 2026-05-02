@@ -2,9 +2,7 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
-
-class AssessmentFeedback extends Model
+class AssessmentFeedback extends BaseModel
 {
     protected $fillable = [
         'user_id',
@@ -14,18 +12,51 @@ class AssessmentFeedback extends Model
         'review'
     ];
 
+    protected $casts = [
+        'rating' => 'integer',
+    ];
+
+    /*
+    |--------------------------------------------------------------------------
+    | Relationships
+    |--------------------------------------------------------------------------
+    */
+
     public function user()
     {
-        return $this->belongsTo(User::class);
+        return $this->belongsTo(User::class)->withTrashed();
     }
 
     public function assessment()
     {
-        return $this->belongsTo(Assessment::class);
+        return $this->belongsTo(Assessment::class)->withTrashed();
     }
 
     public function attempt()
     {
-        return $this->belongsTo(AssessmentAttempt::class, 'attempt_id');
+        return $this->belongsTo(AssessmentAttempt::class, 'attempt_id')->withTrashed();
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Cascade Soft Delete
+    |--------------------------------------------------------------------------
+    */
+
+    public function cascadeSoftDelete()
+    {
+        // ❗ DO NOTHING
+        // Feedback should not delete attempts/users
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Cascade Restore
+    |--------------------------------------------------------------------------
+    */
+
+    public function cascadeRestore()
+    {
+        // nothing required
     }
 }

@@ -2,10 +2,9 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Builder;
 
-class Chapter extends Model
+class Chapter extends BaseModel
 {
     protected $fillable = [
         'program_id',
@@ -22,19 +21,25 @@ class Chapter extends Model
         'status' => 'boolean',
     ];
 
+    /*
+    |--------------------------------------------------------------------------
+    | Relationships
+    |--------------------------------------------------------------------------
+    */
+
     public function program()
     {
-        return $this->belongsTo(Program::class);
+        return $this->belongsTo(Program::class)->withTrashed();
     }
 
     public function level()
     {
-        return $this->belongsTo(Level::class);
+        return $this->belongsTo(Level::class)->withTrashed();
     }
 
     public function module()
     {
-        return $this->belongsTo(Module::class);
+        return $this->belongsTo(Module::class)->withTrashed();
     }
 
     public function topics()
@@ -47,41 +52,77 @@ class Chapter extends Model
         return $this->morphMany(\App\Models\Faq::class, 'faqable');
     }
 
-
     public function creator()
     {
-        return $this->belongsTo(User::class, 'created_by');
+        return $this->belongsTo(User::class, 'created_by')->withTrashed();
     }
 
-    // 🔥 REQUIRED
     public function translations()
     {
         return $this->hasMany(ChapterTranslation::class);
     }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Scopes
+    |--------------------------------------------------------------------------
+    */
 
     public function scopeActive(Builder $query)
     {
         return $query->where('status', true);
     }
 
+    /*
+    |--------------------------------------------------------------------------
+    | Accessor
+    |--------------------------------------------------------------------------
+    */
+
     public function getThumbnailAttribute($value)
     {
         return $value ? url('public/' . ltrim($value, '/')) : null;
     }
 
-    protected static function boot()
-    {
-        parent::boot();
+    /*
+    |--------------------------------------------------------------------------
+    | Cascade Soft Delete
+    |--------------------------------------------------------------------------
+    */
 
+    public function cascadeSoftDelete()
+    {
+        $this->topics()->get()->each->delete();
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Cascade Restore
+    |--------------------------------------------------------------------------
+    */
+
+    public function cascadeRestore()
+    {
+        $this->topics()->withTrashed()->get()->each->restore();
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Booted (Hierarchy Sync)
+    |--------------------------------------------------------------------------
+    */
+
+    protected static function booted()
+    {
         static::updated(function ($chapter) {
 
             if ($chapter->wasChanged('module_id')) {
 
-                $module = \App\Models\Module::with('level.program')->find($chapter->module_id);
+                $module = \App\Models\Module::withTrashed()->find($chapter->module_id);
 
                 if (!$module) return;
 
-                // 🔹 Update all topics of this chapter
+                // 🔹 Update topics
                 $chapter->topics()->update([
                     'module_id'  => $module->id,
                     'level_id'   => $module->level_id,

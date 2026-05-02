@@ -2,23 +2,12 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Storage;
 
-class Media extends Model
+class Media extends BaseModel
 {
-    /*
-    |--------------------------------------------------------------------------
-    | CONSTANTS
-    |--------------------------------------------------------------------------
-    */
     const UPLOAD_PATH = 'uploads/content-management/media';
 
-    /*
-    |--------------------------------------------------------------------------
-    | FILLABLE
-    |--------------------------------------------------------------------------
-    */
     protected $fillable = [
         'title',
         'description',
@@ -31,11 +20,10 @@ class Media extends Model
         'created_by',
     ];
 
-    /*
-    |--------------------------------------------------------------------------
-    | APPENDS (auto added in API response)
-    |--------------------------------------------------------------------------
-    */
+    protected $casts = [
+        'status' => 'boolean',
+    ];
+
     protected $appends = [
         'full_url',
         'creator_name',
@@ -43,24 +31,24 @@ class Media extends Model
 
     /*
     |--------------------------------------------------------------------------
-    | RELATIONS
+    | Relationships
     |--------------------------------------------------------------------------
     */
+
     public function creator()
     {
-        return $this->belongsTo(User::class, 'created_by');
+        return $this->belongsTo(User::class, 'created_by')->withTrashed();
     }
 
     /*
     |--------------------------------------------------------------------------
-    | ACCESSORS
+    | Accessors
     |--------------------------------------------------------------------------
     */
 
-    // 🔹 Full URL (local + S3 compatible)
     public function getFullUrlAttribute()
     {
-        // External (YouTube/Vimeo)
+        // External (YouTube/Vimeo etc.)
         if ($this->external_url) {
             return $this->external_url;
         }
@@ -69,10 +57,11 @@ class Media extends Model
             return null;
         }
 
-        return url(Storage::disk($this->disk)->url($this->file));
+        $disk = $this->disk ?? config('filesystems.default');
+
+        return url(Storage::disk($disk)->url($this->file));
     }
 
-    // 🔹 Creator Name
     public function getCreatorNameAttribute()
     {
         return $this->creator?->name;
@@ -80,11 +69,10 @@ class Media extends Model
 
     /*
     |--------------------------------------------------------------------------
-    | MUTATORS (optional future use)
+    | Mutators
     |--------------------------------------------------------------------------
     */
 
-    // Example: auto-trim title
     public function setTitleAttribute($value)
     {
         $this->attributes['title'] = trim($value);
@@ -92,13 +80,13 @@ class Media extends Model
 
     /*
     |--------------------------------------------------------------------------
-    | SCOPES (useful for filters)
+    | Scopes
     |--------------------------------------------------------------------------
     */
 
     public function scopeActive($query)
     {
-        return $query->where('status', 1);
+        return $query->where('status', true);
     }
 
     public function scopeType($query, $type)
@@ -108,13 +96,35 @@ class Media extends Model
 
     /*
     |--------------------------------------------------------------------------
-    | HELPERS (future usage)
+    | Helpers
     |--------------------------------------------------------------------------
     */
 
-    // Check if external media
     public function isExternal()
     {
         return !is_null($this->external_url);
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Cascade Soft Delete
+    |--------------------------------------------------------------------------
+    */
+
+    public function cascadeSoftDelete()
+    {
+        // ❗ DO NOT delete physical file
+        // Only DB soft delete
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Cascade Restore
+    |--------------------------------------------------------------------------
+    */
+
+    public function cascadeRestore()
+    {
+        // nothing required
     }
 }

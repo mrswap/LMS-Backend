@@ -2,17 +2,37 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
-
-class Setting extends Model
+class Setting extends BaseModel
 {
     protected $fillable = ['key', 'value'];
 
     /*
-    |--------------------------------------------------
-    | GET VALUE (CACHED)
-    |--------------------------------------------------
+    |--------------------------------------------------------------------------
+    | Boot Logic (Cache Safety)
+    |--------------------------------------------------------------------------
     */
+
+    protected static function booted()
+    {
+        static::saved(function ($setting) {
+            cache()->forget("setting_{$setting->key}");
+        });
+
+        static::deleted(function ($setting) {
+            cache()->forget("setting_{$setting->key}");
+        });
+
+        static::restored(function ($setting) {
+            cache()->forget("setting_{$setting->key}");
+        });
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | GET VALUE (CACHED)
+    |--------------------------------------------------------------------------
+    */
+
     public static function getValue($key, $default = null)
     {
         return cache()->remember("setting_$key", 3600, function () use ($key, $default) {
@@ -21,10 +41,11 @@ class Setting extends Model
     }
 
     /*
-    |--------------------------------------------------
+    |--------------------------------------------------------------------------
     | SET VALUE
-    |--------------------------------------------------
+    |--------------------------------------------------------------------------
     */
+
     public static function setValue($key, $value)
     {
         cache()->forget("setting_$key");
@@ -36,10 +57,11 @@ class Setting extends Model
     }
 
     /*
-    |--------------------------------------------------
-    | GET FULL URL (FOR FILES)
-    |--------------------------------------------------
+    |--------------------------------------------------------------------------
+    | GET FULL URL
+    |--------------------------------------------------------------------------
     */
+
     public static function getFullUrl($key)
     {
         $value = self::getValue($key);
@@ -48,7 +70,6 @@ class Setting extends Model
             return null;
         }
 
-        // already full URL
         if (str_starts_with($value, 'http')) {
             return $value;
         }
@@ -57,10 +78,11 @@ class Setting extends Model
     }
 
     /*
-    |--------------------------------------------------
-    | GET ALL SETTINGS (FORMATTED)
-    |--------------------------------------------------
+    |--------------------------------------------------------------------------
+    | GET ALL SETTINGS
+    |--------------------------------------------------------------------------
     */
+
     public static function getAllFormatted()
     {
         $keys = [
@@ -90,7 +112,6 @@ class Setting extends Model
 
             $value = self::getValue($key);
 
-            // 👇 only logo needs full URL
             if ($key === 'company_logo') {
                 $value = self::getFullUrl($key);
             }
@@ -99,5 +120,21 @@ class Setting extends Model
         }
 
         return $data;
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Cascade Soft Delete
+    |--------------------------------------------------------------------------
+    */
+
+    public function cascadeSoftDelete()
+    {
+        // ❗ DO NOTHING
+    }
+
+    public function cascadeRestore()
+    {
+        // nothing required
     }
 }

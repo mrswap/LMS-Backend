@@ -2,10 +2,7 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
-use App\Models\AssessmentAttempt;
-
-class Assessment extends Model
+class Assessment extends BaseModel
 {
     protected $fillable = [
         'assessmentable_id',
@@ -21,9 +18,22 @@ class Assessment extends Model
         'created_by'
     ];
 
+    protected $casts = [
+        'duration'      => 'integer',
+        'passing_score' => 'float',
+        'total_marks'   => 'float',
+        'status'        => 'boolean',
+    ];
+
+    /*
+    |--------------------------------------------------------------------------
+    | Relationships
+    |--------------------------------------------------------------------------
+    */
+
     public function assessmentable()
     {
-        return $this->morphTo();
+        return $this->morphTo()->withTrashed();
     }
 
     public function questions()
@@ -31,15 +41,50 @@ class Assessment extends Model
         return $this->hasMany(AssessmentQuestion::class);
     }
 
-    public function getFileAttribute($value)
-    {
-        if (!$value) return null;
-
-        return url('public/' . ltrim($value, '/'));
-    }
-
     public function attempts()
     {
         return $this->hasMany(AssessmentAttempt::class);
+    }
+
+    public function creator()
+    {
+        return $this->belongsTo(User::class, 'created_by')->withTrashed();
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Accessor
+    |--------------------------------------------------------------------------
+    */
+
+    public function getFileAttribute($value)
+    {
+        return $value ? url('public/' . ltrim($value, '/')) : null;
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Cascade Soft Delete
+    |--------------------------------------------------------------------------
+    */
+
+    public function cascadeSoftDelete()
+    {
+        // delete questions (structure)
+        $this->questions()->get()->each->delete();
+
+        // ❗ DO NOT delete attempts
+        // attempts = audit records
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Cascade Restore
+    |--------------------------------------------------------------------------
+    */
+
+    public function cascadeRestore()
+    {
+        $this->questions()->withTrashed()->get()->each->restore();
     }
 }

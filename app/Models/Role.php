@@ -2,9 +2,7 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
-
-class Role extends Model
+class Role extends BaseModel
 {
     protected $fillable = [
         'name',
@@ -13,20 +11,44 @@ class Role extends Model
         'is_active',
     ];
 
+    protected $casts = [
+        'is_system' => 'boolean',
+        'is_active' => 'boolean',
+    ];
+
+    /*
+    |--------------------------------------------------------------------------
+    | Relationships
+    |--------------------------------------------------------------------------
+    */
+
     public function users()
     {
         return $this->hasMany(User::class);
     }
 
+    public function usersWithTrashed()
+    {
+        return $this->hasMany(User::class)->withTrashed();
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Boot Logic (Soft Delete Safe)
+    |--------------------------------------------------------------------------
+    */
+
     protected static function booted()
     {
         static::deleting(function ($role) {
 
+            // ❗ Block system roles
             if ($role->is_system) {
                 throw new \Exception('System roles cannot be deleted.');
             }
 
-            if ($role->users()->count() > 0) {
+            // ❗ Check INCLUDING soft-deleted users
+            if ($role->usersWithTrashed()->count() > 0) {
                 throw new \Exception('Role is assigned to users.');
             }
         });

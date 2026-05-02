@@ -2,10 +2,9 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Builder;
 
-class Program extends Model
+class Program extends BaseModel
 {
     protected $fillable = [
         'title',
@@ -32,7 +31,12 @@ class Program extends Model
 
     public function creator()
     {
-        return $this->belongsTo(User::class, 'created_by');
+        return $this->belongsTo(User::class, 'created_by')->withTrashed();
+    }
+
+    public function translations()
+    {
+        return $this->hasMany(ProgramTranslation::class);
     }
 
     /*
@@ -44,11 +48,6 @@ class Program extends Model
     public function scopeActive(Builder $query)
     {
         return $query->where('status', true);
-    }
-
-    public function translations()
-    {
-        return $this->hasMany(ProgramTranslation::class);
     }
 
     /*
@@ -75,9 +74,36 @@ class Program extends Model
         return $translation;
     }
 
+    /*
+    |--------------------------------------------------------------------------
+    | Accessors
+    |--------------------------------------------------------------------------
+    */
 
     public function getThumbnailAttribute($value)
     {
         return $value ? url('public/' . ltrim($value, '/')) : null;
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Cascade Soft Delete
+    |--------------------------------------------------------------------------
+    */
+
+    public function cascadeSoftDelete()
+    {
+        $this->levels()->get()->each->delete();
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Cascade Restore
+    |--------------------------------------------------------------------------
+    */
+
+    public function cascadeRestore()
+    {
+        $this->levels()->withTrashed()->get()->each->restore();
     }
 }

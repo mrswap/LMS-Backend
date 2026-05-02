@@ -2,9 +2,7 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
-
-class TopicContent extends Model
+class TopicContent extends BaseModel
 {
     protected $fillable = [
         'topic_id',
@@ -22,9 +20,15 @@ class TopicContent extends Model
         'status' => 'boolean',
     ];
 
+    /*
+    |--------------------------------------------------------------------------
+    | Relationships
+    |--------------------------------------------------------------------------
+    */
+
     public function topic()
     {
-        return $this->belongsTo(Topic::class);
+        return $this->belongsTo(Topic::class)->withTrashed();
     }
 
     public function progress()
@@ -39,6 +43,42 @@ class TopicContent extends Model
 
     public function creator()
     {
-        return $this->belongsTo(User::class, 'created_by');
+        return $this->belongsTo(User::class, 'created_by')->withTrashed();
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Scopes (Optional but useful)
+    |--------------------------------------------------------------------------
+    */
+
+    public function scopeOrdered($query)
+    {
+        return $query->orderBy('order');
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Cascade Soft Delete
+    |--------------------------------------------------------------------------
+    */
+
+    public function cascadeSoftDelete()
+    {
+        // ❗ IMPORTANT:
+        // We DO NOT delete user progress
+        // Reason: audit + resume + reporting
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Cascade Restore
+    |--------------------------------------------------------------------------
+    */
+
+    public function cascadeRestore()
+    {
+        // Nothing required
+        // progress already exists
     }
 }

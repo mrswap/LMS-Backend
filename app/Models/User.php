@@ -4,18 +4,14 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
 
 class User extends Authenticatable
 {
-    use HasApiTokens, HasFactory, Notifiable;
+    use HasApiTokens, HasFactory, Notifiable, SoftDeletes;
 
-    /*
-    |--------------------------------------------------------------------------
-    | Mass Assignable
-    |--------------------------------------------------------------------------
-    */
     protected $fillable = [
         'name',
         'email',
@@ -32,21 +28,11 @@ class User extends Authenticatable
         'created_by',
     ];
 
-    /*
-    |--------------------------------------------------------------------------
-    | Hidden Fields
-    |--------------------------------------------------------------------------
-    */
     protected $hidden = [
         'password',
         'remember_token',
     ];
 
-    /*
-    |--------------------------------------------------------------------------
-    | Casting
-    |--------------------------------------------------------------------------
-    */
     protected function casts(): array
     {
         return [
@@ -56,25 +42,21 @@ class User extends Authenticatable
         ];
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | ROLE CONSTANTS (only for reference, not storage)
-    |--------------------------------------------------------------------------
-    */
     const ROLE_SUPERADMIN = 'superadmin';
     const ROLE_STAFF = 'staff';
     const ROLE_SALES = 'sales';
 
     /*
     |--------------------------------------------------------------------------
-    | Boot Logic
+    | Boot Logic (Soft Delete Safe)
     |--------------------------------------------------------------------------
     */
+
     protected static function booted()
     {
         static::deleting(function ($user) {
 
-            // 🔥 load role relation
+            // 🔥 Always load role (even if soft deleted)
             $user->load('role');
 
             if ($user->role?->name === self::ROLE_SUPERADMIN) {
@@ -89,8 +71,10 @@ class User extends Authenticatable
 
                 throw new \Exception('Superadmin cannot be deleted.');
             }
+
+            // ❗ DO NOT cascade delete anything
+            // user data = audit data
         });
-        
     }
 
     /*
@@ -101,23 +85,25 @@ class User extends Authenticatable
 
     public function role()
     {
-        return $this->belongsTo(Role::class);
-    }
-
-    public function creator()
-    {
-        return $this->belongsTo(User::class, 'created_by');
+        return $this->belongsTo(Role::class)->withTrashed();
     }
 
     public function designation()
     {
-        return $this->belongsTo(Designation::class);
+        return $this->belongsTo(Designation::class)->withTrashed();
     }
 
-    public function user()
+    public function creator()
     {
-        return $this->belongsTo(\App\Models\User::class);
+        return $this->belongsTo(User::class, 'created_by')->withTrashed();
     }
+
+    // Self reference (optional hierarchy)
+    public function parentUser()
+    {
+        return $this->belongsTo(User::class, 'created_by')->withTrashed();
+    }
+
     /*
     |--------------------------------------------------------------------------
     | Helper Methods
@@ -144,11 +130,6 @@ class User extends Authenticatable
     | Accessors
     |--------------------------------------------------------------------------
     */
-
-    public function getThumbnailAttribute($value)
-    {
-        return $value ? url('public/' . ltrim($value, '/')) : null;
-    }
 
     public function getProfileImageAttribute($value)
     {

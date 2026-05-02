@@ -2,9 +2,7 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
-
-class AssessmentQuestion extends Model
+class AssessmentQuestion extends BaseModel
 {
     protected $fillable = [
         'assessment_id',
@@ -15,9 +13,15 @@ class AssessmentQuestion extends Model
         'order'
     ];
 
+    /*
+    |--------------------------------------------------------------------------
+    | Relationships
+    |--------------------------------------------------------------------------
+    */
+
     public function assessment()
     {
-        return $this->belongsTo(Assessment::class);
+        return $this->belongsTo(Assessment::class)->withTrashed();
     }
 
     public function options()
@@ -25,10 +29,36 @@ class AssessmentQuestion extends Model
         return $this->hasMany(AssessmentOption::class, 'question_id');
     }
 
+    /*
+    |--------------------------------------------------------------------------
+    | Accessor
+    |--------------------------------------------------------------------------
+    */
+
     public function getFileAttribute($value)
     {
-        if (!$value) return null;
+        return $value ? url('public/' . ltrim($value, '/')) : null;
+    }
 
-        return url('public/' . ltrim($value, '/'));
+    /*
+    |--------------------------------------------------------------------------
+    | Cascade Soft Delete
+    |--------------------------------------------------------------------------
+    */
+
+    public function cascadeSoftDelete()
+    {
+        $this->options()->get()->each->delete();
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Cascade Restore
+    |--------------------------------------------------------------------------
+    */
+
+    public function cascadeRestore()
+    {
+        $this->options()->withTrashed()->get()->each->restore();
     }
 }

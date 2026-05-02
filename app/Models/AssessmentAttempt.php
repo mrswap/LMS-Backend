@@ -2,9 +2,7 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
-
-class AssessmentAttempt extends Model
+class AssessmentAttempt extends BaseModel
 {
     protected $fillable = [
         'user_id',
@@ -18,23 +16,54 @@ class AssessmentAttempt extends Model
         'submit_type'
     ];
 
-    protected $dates = ['started_at', 'submitted_at'];
-
     protected $casts = [
-        'started_at' => 'datetime',
+        'started_at'   => 'datetime',
         'submitted_at' => 'datetime',
+        'score'        => 'float',
+        'percentage'   => 'float',
     ];
-    
+
+    /*
+    |--------------------------------------------------------------------------
+    | Relationships
+    |--------------------------------------------------------------------------
+    */
+
     public function answers()
     {
         return $this->hasMany(AssessmentAnswer::class, 'attempt_id');
     }
+
     public function assessment()
     {
-        return $this->belongsTo(\App\Models\Assessment::class, 'assessment_id');
+        return $this->belongsTo(Assessment::class, 'assessment_id')->withTrashed();
     }
+
     public function user()
     {
-        return $this->belongsTo(\App\Models\User::class, 'user_id');
+        return $this->belongsTo(User::class, 'user_id')->withTrashed();
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Cascade Soft Delete
+    |--------------------------------------------------------------------------
+    */
+
+    public function cascadeSoftDelete()
+    {
+        // ❗ DO NOT delete answers
+        // Attempts are audit records
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Cascade Restore
+    |--------------------------------------------------------------------------
+    */
+
+    public function cascadeRestore()
+    {
+        // nothing required
     }
 }

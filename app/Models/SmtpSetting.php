@@ -2,9 +2,7 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
-
-class SmtpSetting extends Model
+class SmtpSetting extends BaseModel
 {
     protected $fillable = [
         'mailer',
@@ -16,4 +14,53 @@ class SmtpSetting extends Model
         'from_address',
         'from_name',
     ];
+
+    protected $casts = [
+        'port' => 'integer',
+    ];
+
+    /*
+    |--------------------------------------------------------------------------
+    | Accessors (Security)
+    |--------------------------------------------------------------------------
+    */
+
+    public function getPasswordAttribute($value)
+    {
+        // ❗ Optional: mask in API response
+        return $value ? '********' : null;
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Boot Logic (CRITICAL)
+    |--------------------------------------------------------------------------
+    */
+
+    protected static function booted()
+    {
+        static::creating(function ($model) {
+
+            // ❗ Ensure only one config exists
+            if (self::count() > 0) {
+                throw new \Exception('SMTP configuration already exists. Update instead.');
+            }
+        });
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Cascade Soft Delete
+    |--------------------------------------------------------------------------
+    */
+
+    public function cascadeSoftDelete()
+    {
+        // ❗ DO NOTHING
+    }
+
+    public function cascadeRestore()
+    {
+        // nothing required
+    }
 }

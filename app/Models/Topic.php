@@ -2,10 +2,9 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Builder;
 
-class Topic extends Model
+class Topic extends BaseModel
 {
     protected $fillable = [
         'program_id',
@@ -33,27 +32,27 @@ class Topic extends Model
 
     public function program()
     {
-        return $this->belongsTo(Program::class);
+        return $this->belongsTo(Program::class)->withTrashed();
     }
 
     public function level()
     {
-        return $this->belongsTo(Level::class);
+        return $this->belongsTo(Level::class)->withTrashed();
     }
 
     public function module()
     {
-        return $this->belongsTo(Module::class);
+        return $this->belongsTo(Module::class)->withTrashed();
     }
 
     public function chapter()
     {
-        return $this->belongsTo(Chapter::class);
+        return $this->belongsTo(Chapter::class)->withTrashed();
     }
 
     public function creator()
     {
-        return $this->belongsTo(User::class, 'created_by');
+        return $this->belongsTo(User::class, 'created_by')->withTrashed();
     }
 
     public function faqs()
@@ -63,8 +62,20 @@ class Topic extends Model
 
     public function progress()
     {
-        return $this->hasMany(UserProgress::class);
+        // explicit FK keeps it predictable
+        return $this->hasMany(UserProgress::class, 'topic_id');
     }
+
+    public function translations()
+    {
+        return $this->hasMany(TopicTranslation::class);
+    }
+
+    public function contents()
+    {
+        return $this->hasMany(TopicContent::class)->orderBy('order');
+    }
+
     /*
     |--------------------------------------------------------------------------
     | Scopes
@@ -87,14 +98,27 @@ class Topic extends Model
         return $value ? url('public/' . ltrim($value, '/')) : null;
     }
 
-    public function translations()
+    /*
+    |--------------------------------------------------------------------------
+    | Cascade Soft Delete
+    |--------------------------------------------------------------------------
+    */
+
+    public function cascadeSoftDelete()
     {
-        return $this->hasMany(TopicTranslation::class);
+        // delete all contents under this topic
+        $this->contents()->get()->each->delete();
     }
 
-    public function contents()
+    /*
+    |--------------------------------------------------------------------------
+    | Cascade Restore
+    |--------------------------------------------------------------------------
+    */
+
+    public function cascadeRestore()
     {
-        return $this->hasMany(TopicContent::class)->orderBy('order');
+        // restore all contents (including previously soft-deleted)
+        $this->contents()->withTrashed()->get()->each->restore();
     }
-    
 }
