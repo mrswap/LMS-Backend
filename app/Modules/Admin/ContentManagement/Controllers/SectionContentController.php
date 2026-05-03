@@ -142,6 +142,150 @@ class SectionContentController extends Controller
 
     /*
     |--------------------------------------------------------------------------
+    | BULK EDIT (Get all contents for update)
+    |--------------------------------------------------------------------------
+    */
+    public function bulkEdit(Request $request, $topicId)
+    {
+        $lang = $this->resolveLanguage($request);
+
+        $contents = TopicContent::where('topic_id', $topicId)
+            ->with('translations')
+            ->orderBy('order')
+            ->get();
+
+        $data = $contents->map(function ($item) use ($lang) {
+
+            $translation = $item->translations
+                ->where('language_code', $lang)
+                ->first();
+
+            return [
+                'id' => $item->id,
+                'type' => $item->type,
+                'title' => $translation->title ?? $item->title,
+                'content' => $translation->content ?? $item->content,
+                'meta' => $item->meta,
+                'order' => $item->order,
+                'status' => (bool)$item->status,
+
+                // 👇 important for frontend handling
+                'media_shortcode' => $item->meta['shortcode'] ?? null,
+            ];
+        })->values();
+
+        return response()->json([
+            'success' => true,
+            'topic_id' => (int)$topicId,
+            'count' => $data->count(),
+            'data' => $data
+        ]);
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | BULK UPDATE
+    |--------------------------------------------------------------------------
+    */
+    public function bulkUpdate(Request $request, $topicId)
+    {
+        $lang = $this->resolveLanguage($request);
+
+        $request->validate([
+            'sections' => 'required|array|min:1',
+            'sections.*.id' => [
+                'required',
+                'integer',
+                Rule::exists('topic_contents', 'id')->where(
+                    fn($q) => $q->where('topic_id', $topicId)
+                )
+            ],
+            'sections.*.type' => 'required|in:text,media,h5p,quiz',
+            'sections.*.title' => 'nullable|string',
+            'sections.*.content' => 'nullable|string',
+            'sections.*.order' => 'required|integer',
+            'sections.*.media_shortcode' => 'nullable|string',
+            'sections.*.meta' => 'nullable|array',
+        ]);
+
+        // ❗ Prevent duplicate order
+        $orders = collect($request->sections)->pluck('order');
+        if ($orders->duplicates()->isNotEmpty()) {
+            return response()->json([
+                'message' => 'Duplicate order values not allowed'
+            ], 422);
+        }
+
+        DB::beginTransaction();
+
+        try {
+            $updated = [];
+
+            foreach ($request->sections as $section) {
+
+                $content = TopicContent::where('topic_id', $topicId)
+                    ->findOrFail($section['id']);
+
+                // Normalize media meta
+                if ($section['type'] === 'media') {
+                    $section['meta'] = [
+                        'shortcode' => $section['media_shortcode']
+                            ?? ($section['meta']['shortcode'] ?? null)
+                    ];
+                }
+
+                $baseData = [
+                    'type' => $section['type'],
+                    'order' => $section['order'],
+                    'meta' => $section['meta'] ?? null,
+                ];
+
+                if ($lang === 'en') {
+
+                    $baseData['title'] = $section['title'] ?? null;
+                    $baseData['content'] = $section['content'] ?? null;
+
+                    $content->update($baseData);
+                } else {
+
+                    // update base (keep placeholder)
+                    $content->update($baseData);
+
+                    $translation = $content->translations()
+                        ->where('language_code', $lang)
+                        ->first();
+
+                    if ($translation) {
+                        $translation->update([
+                            'title' => $section['title'] ?? null,
+                            'content' => $section['content'] ?? null,
+                        ]);
+                    } else {
+                        $content->translations()->create([
+                            'language_code' => $lang,
+                            'title' => $section['title'] ?? null,
+                            'content' => $section['content'] ?? null,
+                        ]);
+                    }
+                }
+
+                $updated[] = $content;
+            }
+
+            DB::commit();
+
+            return response()->json([
+                'message' => 'Bulk content updated successfully',
+                'count' => count($updated),
+                'data' => $updated
+            ]);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            throw $e;
+        }
+    }
+    /*
+    |--------------------------------------------------------------------------
     | LIST (Admin)
     |--------------------------------------------------------------------------
     */

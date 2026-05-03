@@ -192,7 +192,8 @@ Route::prefix('v1')->group(function () {
             // 🔹 DELETE
             Route::delete('content-topics/{topic_id}/contents/{id}', [SectionContentController::class, 'destroy'])->whereNumber('id');
             Route::post('content-topics/{topic_id}/contents/bulk', [SectionContentController::class, 'bulkStore']);
-
+            Route::patch('content-topics/{topic_id}/contents/update-bulk', [SectionContentController::class, 'bulkUpdate']);
+            Route::get('content-topics/{topic_id}/contents/bulk-edit', [SectionContentController::class, 'bulkEdit']);
 
             /*
             |--------------------------------------------------------------------------
