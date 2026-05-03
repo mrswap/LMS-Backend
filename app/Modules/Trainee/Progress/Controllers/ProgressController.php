@@ -169,6 +169,15 @@ class ProgressController extends Controller
 
         $status = $this->getLevelStats($level, $progress, $userId);
 
+        /*
+        |--------------------------------------------------------------------------
+        | 🎯 LEVEL EXAM (ADD THIS)
+        |--------------------------------------------------------------------------
+        */
+        $assessment = \App\Models\Assessment::where('assessmentable_id', $level->id)
+            ->where('assessmentable_type', \App\Models\Level::class)
+            ->first();
+
         return [
             'id' => $level->id,
             'type' => 'level',
@@ -179,13 +188,21 @@ class ProgressController extends Controller
             'is_unlocked' => true,
             'is_completed' => $status['is_all_topics_completed'],
 
-            // ✅ NEW (LEVEL AGGREGATION)
+            // 📊 STATS
             'total_topics' => $status['total_topics'],
             'completed_topics' => $status['completed_topics'],
             'content_completed_topics' => $status['content_completed_topics'],
 
             'is_content_completed' => $status['is_content_completed'],
             'is_level_exam_available' => $status['is_level_exam_available'],
+
+            // 🎯 LEVEL EXAM
+            'assessment' => $assessment ? [
+                'id' => $assessment->id,
+                'type' => $assessment->type,
+                'duration' => $assessment->duration,
+                'passing_score' => $assessment->passing_score,
+            ] : null,
 
             'modules' => $level->modules->map(
                 fn($module) => $this->mapModule($module, $progress, $lang)
@@ -237,9 +254,13 @@ class ProgressController extends Controller
 
             $isContentDone = $totalContents > 0 && $totalContents === $readContents;
 
-            // assessment
+            /*
+            |--------------------------------------------------------------------------
+            | 🎯 FIXED ASSESSMENT (IMPORTANT)
+            |--------------------------------------------------------------------------
+            */
             $assessment = \App\Models\Assessment::where('assessmentable_id', $topic->id)
-                ->where('type', 'topic')
+                ->where('assessmentable_type', \App\Models\Topic::class)
                 ->first();
 
             $attempts = 0;
@@ -264,22 +285,28 @@ class ProgressController extends Controller
                 'is_unlocked' => $p?->is_unlocked ?? false,
                 'is_completed' => $p?->is_completed ?? false,
 
-                // CONTENT
+                // 📚 CONTENT
                 'total_contents' => $totalContents,
                 'read_contents' => $readContents,
                 'is_content_completed' => $isContentDone,
 
-                // ASSESSMENT
+                // 🎯 ASSESSMENT (FULL BLOCK)
+                'assessment' => $assessment ? [
+                    'id' => $assessment->id,
+                    'type' => $assessment->type,
+                    'duration' => $assessment->duration,
+                    'passing_score' => $assessment->passing_score,
+                ] : null,
+
                 'assessment_attempts' => $attempts,
                 'assessment_passed' => $passed,
+
                 'is_quiz_available' => $isContentDone,
 
                 'estimated_duration' => $topic->estimated_duration,
-
             ];
         });
 
-        // ✅ THIS WAS MISSING
         return [
             'id' => $chapter->id,
             'type' => 'chapter',
@@ -364,7 +391,7 @@ class ProgressController extends Controller
             ->whereNotNull('topic_id') // 🔥 IMPORTANT
             ->get()
             ->keyBy('topic_id');
-            
+
         // 🔹 level certificates (IMPORTANT: type = level)
         $certifications = \App\Models\Certification::where('user_id', $userId)
             ->where('type', 'level')
@@ -412,6 +439,11 @@ class ProgressController extends Controller
                     $cert = $certifications[$level->id] ?? null;
 
                     $isPassed = $cert ? true : false;
+                    
+                    // 🎯 LEVEL EXAM (ADD THIS)
+                    $assessment = \App\Models\Assessment::where('assessmentable_id', $level->id)
+                        ->where('assessmentable_type', \App\Models\Level::class)
+                        ->first();
 
                     return [
                         'type' => 'level',
@@ -432,7 +464,15 @@ class ProgressController extends Controller
                         // 🎓 result
                         'is_passed' => $isPassed,
 
-                        // 📊 exam details
+                        // 🎯 🔥 NEW — LEVEL EXAM DETAILS
+                        'assessment' => $assessment ? [
+                            'id' => $assessment->id,
+                            'type' => $assessment->type,
+                            'duration' => $assessment->duration,
+                            'passing_score' => $assessment->passing_score,
+                        ] : null,
+
+                        // 📊 exam result (certificate based)
                         'exam_details' => $cert ? [
                             'certificate_id' => $cert->certificate_id,
                             'score' => $cert->score,
@@ -522,6 +562,7 @@ class ProgressController extends Controller
         $userId = auth()->id();
 
         $progress = UserProgress::where('user_id', $userId)
+            ->whereNotNull('topic_id') // 🔥 MUST ADD
             ->get()
             ->keyBy('topic_id');
 

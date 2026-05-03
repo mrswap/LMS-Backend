@@ -40,6 +40,7 @@ class AuthController extends Controller
             'password' => 'required|min:6|confirmed',
             'designation_id' => 'required|exists:designations,id',
             'region' => 'required',
+            'source' => 'nullable|in:web,app' // 👈 IMPORTANT
         ]);
 
         DB::beginTransaction();
@@ -62,11 +63,7 @@ class AuthController extends Controller
                 'is_active' => true,
             ]);
 
-            /*
-            |-----------------------------------------
-            | CREATE EMAIL VERIFICATION TOKEN
-            |-----------------------------------------
-            */
+            // 🔹 TOKEN
             $token = Str::random(64);
 
             DB::table('email_verification_tokens')->updateOrInsert(
@@ -79,11 +76,27 @@ class AuthController extends Controller
                 ]
             );
 
-            $verifyLink = rtrim(env('FRONT_END_URL'), '/') . "trainee/verify-email?token=$token";
+            /*
+            |-----------------------------------------
+            | 🔥 VERIFY LINK LOGIC
+            |-----------------------------------------
+            */
+
+            $source = $request->get('source', 'web');
+
+            if ($source != 'web') {
+                // 👉 MOBILE APP DEEP LINK
+                $verifyLink = rtrim(env('APP_DEEP_LINK', 'avante://'), '/')
+                    . "/verify-email?token=$token";
+            } else {
+                // 👉 WEB LINK (DEFAULT)
+                $verifyLink = rtrim(env('FRONT_END_SALES_URL'), '/')
+                    . "/verify-email?token=$token";
+            }
 
             /*
             |-----------------------------------------
-            | APPLY SMTP + SEND MAIL
+            | SMTP + MAIL
             |-----------------------------------------
             */
             $smtp = \App\Models\SmtpSetting::first();
@@ -248,13 +261,13 @@ class AuthController extends Controller
     */
     public function logout(Request $request)
     {
-        AuditService::log('logged_out', 'User logged out of the system');       
+        AuditService::log('logged_out', 'User logged out of the system');
 
         $user = $request->user();
 
-        if (!$user) {       
+        if (!$user) {
             return response()->json([
-                'message' => 'Unauthenticated'  
+                'message' => 'Unauthenticated'
             ], 401);
         }
 

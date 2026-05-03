@@ -78,7 +78,7 @@ class PasswordController extends Controller
             $resetLink = rtrim(env('FRONT_END_URL'), '/') . "/trainee/reset-password?token=$token";
         } else {
             // DEFAULT → MOBILE APP
-            $resetLink = rtrim(env('APP_DEEP_LINK'), '/') . "/reset-password?token=$token";
+            $resetLink = rtrim(env('FRONT_END_SALES_URL'), '/') . "/reset-password?token=$token";
         }
 
         /*

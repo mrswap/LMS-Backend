@@ -32,7 +32,6 @@ class CertificationReportController extends Controller
         $userId = auth()->id();
 
         $certificate = Certification::where('assessment_attempt_id', $attemptId)
-            ->where('user_id', $userId)
             ->first();
 
         if (!$certificate) {
