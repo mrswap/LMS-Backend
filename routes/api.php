@@ -275,6 +275,7 @@ Route::prefix('v1')->group(function () {
                 Route::get('/assessment-report', [AssessmentReportController::class, 'index']);
                 Route::get('/content-status', [ContentStatusReportController::class, 'index']);
                 Route::get('/certifications', [CertificationReportController::class, 'index']);
+                Route::get('/certificate/{attempt_id}', [CertificationReportController::class, 'show']);
             });
         });
     });

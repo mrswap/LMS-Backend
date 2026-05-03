@@ -7,6 +7,8 @@ use Illuminate\Http\Request;
 use App\Models\UserProgress;
 use App\Models\TopicContent;
 use App\Services\AuditService;
+use App\Models\Assessment;
+use App\Models\AssessmentAttempt;
 
 
 class ContentController extends Controller
@@ -28,6 +30,7 @@ class ContentController extends Controller
     | 📚 Topic Content (Trainee)
     |--------------------------------------------------------------------------
     */
+    
     public function index(Request $request, $topic_id)
     {
         $userId = auth()->id();
@@ -88,7 +91,7 @@ class ContentController extends Controller
         | 🔁 TRANSFORM (LANGUAGE + READ STATUS)
         |--------------------------------------------------------------------------
         */
-        $contents->getCollection()->transform(function ($item) use ($lang, $userContentProgress) {
+            $contents->getCollection()->transform(function ($item) use ($lang, $userContentProgress) {
 
             $progress = $userContentProgress[$item->id] ?? null;
 
@@ -108,7 +111,6 @@ class ContentController extends Controller
                     'meta' => $item->meta,
                     'order' => $item->order,
 
-                    // ✅ NEW
                     'is_read' => $isRead,
                     'read_at' => $readAt,
                 ];
@@ -131,7 +133,6 @@ class ContentController extends Controller
                 'meta' => $item->meta,
                 'order' => $item->order,
 
-                // ✅ NEW
                 'is_read' => $isRead,
                 'read_at' => $readAt,
             ];
@@ -148,14 +149,51 @@ class ContentController extends Controller
 
         /*
         |--------------------------------------------------------------------------
+        | 🎯 ASSESSMENT STATUS (TOPIC LEVEL)
+        |--------------------------------------------------------------------------
+        */
+        $assessmentStatus = [
+            'status' => 'not_attempted',
+            'score' => null,
+            'percentage' => null,
+            'attempt_id' => null,
+        ];
+
+        $assessment = \App\Models\Assessment::where('assessmentable_id', $topic_id)
+            ->where('assessmentable_type', \App\Models\Topic::class)
+            ->first();
+
+        if ($assessment) {
+
+            $attempt = \App\Models\AssessmentAttempt::where('user_id', $userId)
+                ->where('assessment_id', $assessment->id)
+                ->whereIn('status', ['passed', 'failed'])
+                ->latest()
+                ->first();
+
+            if ($attempt) {
+                $assessmentStatus = [
+                    'status' => $attempt->status,
+                    'score' => $attempt->score,
+                    'percentage' => $attempt->percentage,
+                    'attempt_id' => $attempt->id,
+                ];
+            }
+        }
+
+        /*
+        |--------------------------------------------------------------------------
         | 📤 RESPONSE
         |--------------------------------------------------------------------------
         */
         return response()->json([
             'success' => true,
-            'data' => $contents
+            'data' => $contents,
+            'assessment_status' => $assessmentStatus
         ]);
     }
+
+
 
     public function single(Request $request, $topic_id, $content_id)
     {
