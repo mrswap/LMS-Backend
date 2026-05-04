@@ -14,7 +14,23 @@ class ProfileController extends Controller
 
     public function profile(Request $request)
     {
+
         AuditService::log('profile_viewed', 'User viewed their profile');
+        app(\App\Services\NotificationService::class)->send(
+            $user,
+            'AUTH',
+            [
+                'title'   => 'Test Notification',
+                'message' => 'Firebase test working',
+
+                'screen'  => 'HomeScreen',
+                'id'      => 1,
+
+                'image'   => null,
+                'link'    => null,
+                'meta'    => []
+            ]
+        );
         return response()->json(['data' => $request->user()]);
     }
 
