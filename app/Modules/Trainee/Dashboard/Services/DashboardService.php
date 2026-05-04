@@ -9,21 +9,22 @@ use App\Models\AssessmentAttempt;
 use App\Models\TopicContent;
 use App\Models\Certification;
 use App\Models\Level;
+use Illuminate\Support\Facades\DB;
 
 class DashboardService
 {
     public function getDashboard($userId)
     {
         /*
-        |-----------------------------------------
-        | 🔹 CURRENT + LAST COMPLETED
-        |-----------------------------------------
-        */
+    |-----------------------------------------
+    | 🔹 CURRENT + LAST COMPLETED
+    |-----------------------------------------
+    */
         $current = UserProgress::where('user_id', $userId)
             ->where('is_unlocked', true)
             ->whereNotNull('topic_id')
             ->with(['topic.program', 'topic.level', 'topic.module', 'topic.chapter'])
-            ->orderByDesc('updated_at')
+            ->latest('updated_at')
             ->first();
 
         $lastCompleted = UserProgress::where('user_id', $userId)
@@ -34,25 +35,71 @@ class DashboardService
             ->first();
 
         /*
-        |-----------------------------------------
-        | 🔹 LESSON STATS
-        |-----------------------------------------
-        */
-        $totalLessons = TopicContent::count();
+    |-----------------------------------------
+    | 🔹 COMPLETED TOPICS (CONTENT BASED)
+    |-----------------------------------------
+    */
+        $completedTopicIds = \DB::table('topic_contents as tc')
+            ->select('tc.topic_id')
+            ->join('user_content_progress as ucp', function ($join) use ($userId) {
+                $join->on('tc.id', '=', 'ucp.topic_content_id')
+                    ->where('ucp.user_id', $userId)
+                    ->where('ucp.is_read', 1);
+            })
+            ->groupBy('tc.topic_id')
+            ->havingRaw('COUNT(tc.id) = (
+            SELECT COUNT(*) FROM topic_contents 
+            WHERE topic_contents.topic_id = tc.topic_id
+        )')
+            ->pluck('topic_id');
 
-        $completedLessons = UserContentProgress::where('user_id', $userId)
-            ->where('is_read', true)
-            ->count();
+        /*
+|-----------------------------------------
+| 🔹 TOTAL TOPICS (MASTER BASED)
+|-----------------------------------------
+*/
 
+        // 1. Get ALL topics (master data)
+        $allTopicIds = \App\Models\Topic::pluck('id');
+
+        // 2. Total topics
+        $totalLessons = $allTopicIds->count();
+
+        /*
+|-----------------------------------------
+| 🔹 COMPLETED TOPICS (CONTENT BASED)
+|-----------------------------------------
+*/
+
+        // Topic wise completion check
+        $completedTopicIds = \DB::table('topic_contents as tc')
+            ->select('tc.topic_id')
+            ->leftJoin('user_content_progress as ucp', function ($join) use ($userId) {
+                $join->on('tc.id', '=', 'ucp.topic_content_id')
+                    ->where('ucp.user_id', $userId)
+                    ->where('ucp.is_read', 1);
+            })
+            ->groupBy('tc.topic_id')
+            ->havingRaw('COUNT(tc.id) = COUNT(ucp.id)') // 🔥 ALL content must be read
+            ->pluck('tc.topic_id');
+
+        // 3. Completed topics count
+        $completedLessons = $completedTopicIds->count();
+
+        /*
+|-----------------------------------------
+| 🔹 PROGRESS %
+|-----------------------------------------
+*/
         $progressPercent = $totalLessons > 0
             ? round(($completedLessons / $totalLessons) * 100, 2)
             : 0;
 
         /*
-        |-----------------------------------------
-        | 🔹 CURRENT TOPIC CONTENTS
-        |-----------------------------------------
-        */
+    |-----------------------------------------
+    | 🔹 CURRENT CONTENTS
+    |-----------------------------------------
+    */
         $contents = [];
 
         if ($current && $current->topic_id) {
@@ -63,33 +110,140 @@ class DashboardService
         }
 
         /*
-        |-----------------------------------------
-        | 🔹 LEVEL CARDS
-        |-----------------------------------------
-        */
+    |-----------------------------------------
+    | 🔹 LOAD FULL STRUCTURE
+    |-----------------------------------------
+    */
         $levels = Level::with('modules.chapters.topics')->get();
 
-        $levelCards = $levels->map(function ($level) use ($userId) {
+        $completedLevelIds = [];
+        $moduleStats = [];
+        $chapterStats = [];
 
-            $progress = UserProgress::where('user_id', $userId)
-                ->where('level_id', $level->id)
-                ->get();
+        /*
+    |-----------------------------------------
+    | 🔹 HIERARCHY PROGRESS CALCULATION
+    |-----------------------------------------
+    */
+        foreach ($levels as $level) {
 
-            $total = $progress->count();
-            $completed = $progress->where('is_completed', true)->count();
+            foreach ($level->modules as $module) {
 
-            $status = 'locked';
-            if ($total > 0 && $completed === $total) {
-                $status = 'completed';
-            } elseif ($progress->where('is_unlocked', true)->count() > 0) {
-                $status = 'unlocked';
+                foreach ($module->chapters as $chapter) {
+
+                    $topicIds = $chapter->topics->pluck('id')->toArray();
+
+                    $completed = count(array_intersect($topicIds, $completedTopicIds->toArray()));
+
+                    $chapterStats[] = [
+                        'chapter_id' => $chapter->id,
+                        'chapter_title' => $chapter->title,
+                        'module_id' => $module->id,
+                        'level_id' => $level->id,
+                        'total_topics' => count($topicIds),
+                        'completed_topics' => $completed,
+                        'progress_percent' => count($topicIds) > 0 ? round(($completed / count($topicIds)) * 100, 2) : 0
+                    ];
+                }
+
+                $moduleTopics = $module->chapters->flatMap->topics;
+                $moduleTopicIds = $moduleTopics->pluck('id')->toArray();
+
+                $completed = count(array_intersect($moduleTopicIds, $completedTopicIds->toArray()));
+
+                $moduleStats[] = [
+                    'module_id' => $module->id,
+                    'module_title' => $module->title,
+                    'level_id' => $level->id,
+                    'total_topics' => count($moduleTopicIds),
+                    'completed_topics' => $completed,
+                    'progress_percent' => count($moduleTopicIds) > 0 ? round(($completed / count($moduleTopicIds)) * 100, 2) : 0
+                ];
             }
 
-            $modules = $level->modules;
-            $chapters = $modules->flatMap->chapters;
-            $topics = $chapters->flatMap->topics;
+            $levelTopics = $level->modules->flatMap->chapters->flatMap->topics;
+            $levelTopicIds = $levelTopics->pluck('id')->toArray();
 
-            $lessonCount = TopicContent::whereIn('topic_id', $topics->pluck('id'))->count();
+            $completed = count(array_intersect($levelTopicIds, $completedTopicIds->toArray()));
+
+            if (count($levelTopicIds) > 0 && $completed === count($levelTopicIds)) {
+                $completedLevelIds[] = $level->id;
+            }
+        }
+
+        /*
+    |-----------------------------------------
+    | 🔹 NEXT NAVIGATION ENGINE
+    |-----------------------------------------
+    */
+        $nextAction = null;
+
+        foreach ($levels as $level) {
+            foreach ($level->modules as $module) {
+                foreach ($module->chapters as $chapter) {
+                    foreach ($chapter->topics as $topic) {
+
+                        if (!in_array($topic->id, $completedTopicIds->toArray())) {
+
+                            $nextAction = [
+                                'type' => 'next_topic',
+                                'program' => [
+                                    'id' => $topic->program_id,
+                                    'title' => $topic->program?->title
+                                ],
+                                'level' => [
+                                    'id' => $level->id,
+                                    'title' => $level->title
+                                ],
+                                'module' => [
+                                    'id' => $module->id,
+                                    'title' => $module->title
+                                ],
+                                'chapter' => [
+                                    'id' => $chapter->id,
+                                    'title' => $chapter->title
+                                ],
+                                'topic' => [
+                                    'id' => $topic->id,
+                                    'title' => $topic->title
+                                ]
+                            ];
+
+                            break 4;
+                        }
+                    }
+                }
+            }
+        }
+
+        /*
+    |-----------------------------------------
+    | 🔹 CERTIFICATE
+    |-----------------------------------------
+    */
+        $certificate = Certification::where('user_id', $userId)
+            ->latest('issued_at')
+            ->first();
+        $levelCards = $levels->map(function ($level) use ($completedTopicIds) {
+
+            $levelTopicIds = $level->modules
+                ->flatMap->chapters
+                ->flatMap->topics
+                ->pluck('id')
+                ->toArray();
+
+            $completed = count(array_intersect(
+                $levelTopicIds,
+                $completedTopicIds->toArray()
+            ));
+
+            $status = 'locked';
+
+            if ($completed === count($levelTopicIds) && count($levelTopicIds) > 0) {
+                $status = 'completed';
+            } elseif ($completed > 0) {
+                $status = 'unlocked';
+            }
 
             return [
                 'id' => $level->id,
@@ -98,192 +252,28 @@ class DashboardService
 
                 'status' => $status,
 
-                'total_modules' => $modules->count(),
-                'total_topics' => $topics->count(),
-                'total_lessons' => $lessonCount,
+                'total_modules' => $level->modules->count(),
+                'total_topics' => count($levelTopicIds),
 
-                'completion_percent' => $total > 0 ? round(($completed / $total) * 100, 2) : 0,
+                // ❗ topic ko lesson treat kar rahe hain (as per requirement)
+                'total_lessons' => count($levelTopicIds),
+
+                'completion_percent' => count($levelTopicIds) > 0
+                    ? round(($completed / count($levelTopicIds)) * 100, 2)
+                    : 0,
 
                 'cta' => $status === 'completed'
                     ? 'view_certificate'
                     : ($status === 'unlocked' ? 'continue' : 'start')
             ];
         });
-
         /*
-        |-----------------------------------------
-        | 🔹 STATS
-        |-----------------------------------------
-        */
-        $totalLevels = $levels->count();
-        $completedLevels = $levelCards->where('status', 'completed')->count();
-
-        $totalTopics = UserProgress::where('user_id', $userId)
-            ->whereNotNull('topic_id')
-            ->count();
-
-        $completedTopics = UserProgress::where('user_id', $userId)
-            ->where('is_completed', true)
-            ->whereNotNull('topic_id')
-            ->count();
-
-        $avgTopicScore = AssessmentAttempt::where('user_id', $userId)
-            ->where('status', 'passed')
-            ->whereHas('assessment', fn($q) => $q->where('type', 'topic'))
-            ->avg('percentage');
-
-        $avgExamScore = AssessmentAttempt::where('user_id', $userId)
-            ->where('status', 'passed')
-            ->whereHas('assessment', fn($q) => $q->where('type', 'level'))
-            ->avg('percentage');
-
-        /*
-        |-----------------------------------------
-        | 🔹 CERTIFICATE
-        |-----------------------------------------
-        */
-        $certificate = Certification::where('user_id', $userId)
-            ->latest('issued_at')
-            ->first();
-
-        /*
-        |-----------------------------------------
-        | 🔹 QUIZ / EXAM UNLOCK LOGIC (FINAL)
-        |-----------------------------------------
-        */
-
-        // 🔹 Completed Topics
-        $completedTopicIds = UserProgress::where('user_id', $userId)
-            ->where('is_completed', true)
-            ->whereNotNull('topic_id')
-            ->pluck('topic_id');
-
-        // 🔹 Topic Quiz Unlock
-        $pendingTopicQuiz = Assessment::where('type', 'topic')
-            ->whereIn('assessmentable_id', $completedTopicIds)
-            ->where('status', true)
-            ->whereDoesntHave('attempts', function ($q) use ($userId) {
-                $q->where('user_id', $userId)
-                  ->where('status', 'passed');
-            })
-            ->with('assessmentable')
-            ->first();
-
-        // 🔹 Level Completion Check
-        $levelIds = UserProgress::where('user_id', $userId)
-            ->whereNotNull('level_id')
-            ->pluck('level_id')
-            ->unique();
-
-        $completedLevelIds = [];
-
-        foreach ($levelIds as $levelId) {
-
-            $total = UserProgress::where('user_id', $userId)
-                ->where('level_id', $levelId)
-                ->whereNotNull('topic_id')
-                ->count();
-
-            $completed = UserProgress::where('user_id', $userId)
-                ->where('level_id', $levelId)
-                ->where('is_completed', true)
-                ->whereNotNull('topic_id')
-                ->count();
-
-            if ($total > 0 && $total === $completed) {
-                $completedLevelIds[] = $levelId;
-            }
-        }
-
-        // 🔹 Level Exam Unlock
-        $pendingLevelExam = Assessment::where('type', 'level')
-            ->whereIn('assessmentable_id', $completedLevelIds)
-            ->where('status', true)
-            ->whereDoesntHave('attempts', function ($q) use ($userId) {
-                $q->where('user_id', $userId)
-                  ->where('status', 'passed');
-            })
-            ->with('assessmentable')
-            ->first();
-
-        // 🔹 Next Topic
-        $nextTopic = UserProgress::where('user_id', $userId)
-            ->where('is_unlocked', true)
-            ->where('is_completed', false)
-            ->whereNotNull('topic_id')
-            ->with(['topic.program', 'topic.level', 'topic.module', 'topic.chapter'])
-            ->orderBy('id')
-            ->first();
-
-        /*
-        |-----------------------------------------
-        | 🔥 PRIORITY ENGINE
-        |-----------------------------------------
-        */
-        if ($pendingTopicQuiz) {
-
-            $topic = $pendingTopicQuiz->assessmentable;
-
-            $nextAction = [
-                'type' => 'topic_quiz',
-                'assessment_id' => $pendingTopicQuiz->id,
-                'assessment_title' => $pendingTopicQuiz->title,
-                'topic' => [
-                    'id' => $topic->id,
-                    'title' => $topic->title
-                ]
-            ];
-
-        } elseif ($pendingLevelExam) {
-
-            $level = $pendingLevelExam->assessmentable;
-
-            $nextAction = [
-                'type' => 'level_exam',
-                'assessment_id' => $pendingLevelExam->id,
-                'assessment_title' => $pendingLevelExam->title,
-                'level' => [
-                    'id' => $level->id,
-                    'title' => $level->title
-                ]
-            ];
-
-        } elseif ($nextTopic) {
-
-            $nextAction = [
-                'type' => 'next_topic',
-                'program' => [
-                    'id' => $nextTopic->topic?->program?->id,
-                    'title' => $nextTopic->topic?->program?->title
-                ],
-                'level' => [
-                    'id' => $nextTopic->topic?->level?->id,
-                    'title' => $nextTopic->topic?->level?->title
-                ],
-                'module' => [
-                    'id' => $nextTopic->topic?->module?->id,
-                    'title' => $nextTopic->topic?->module?->title
-                ],
-                'chapter' => [
-                    'id' => $nextTopic->topic?->chapter?->id,
-                    'title' => $nextTopic->topic?->chapter?->title
-                ],
-                'topic' => [
-                    'id' => $nextTopic->topic?->id,
-                    'title' => $nextTopic->topic?->title
-                ]
-            ];
-
-        } else {
-            $nextAction = null;
-        }
-
-        /*
-        |-----------------------------------------
-        | 🔹 FINAL RESPONSE
-        |-----------------------------------------
-        */
+    |-----------------------------------------
+    | 🔹 FINAL RESPONSE
+    |-----------------------------------------
+    */
         return [
+
             'current_learning' => [
                 'program' => [
                     'id' => $current?->topic?->program?->id,
@@ -314,7 +304,8 @@ class DashboardService
                 'progress_percent' => $progressPercent,
                 'completed_lessons' => $completedLessons,
                 'total_lessons' => $totalLessons,
-                'pending_quizzes' => $pendingTopicQuiz ? 1 : 0,
+                'pending_quizzes' => 0,
+
                 'last_activity_date' => $current?->updated_at,
 
                 'cta' => [
@@ -328,21 +319,20 @@ class DashboardService
             'current_topic_contents' => $contents,
 
             'stats' => [
-                'total_levels' => $totalLevels,
-                'completed_levels' => $completedLevels,
-                'remaining_levels' => $totalLevels - $completedLevels,
+                'total_levels' => $levels->count(),
+                'completed_levels' => count($completedLevelIds),
+                'remaining_levels' => $levels->count() - count($completedLevelIds),
 
-                'total_topics' => $totalTopics,
-                'completed_topics' => $completedTopics,
+                'total_topics' => $totalLessons,
+                'completed_topics' => $completedLessons,
 
-                'avg_topic_score' => round($avgTopicScore ?? 0, 2),
-                'avg_exam_score' => round($avgExamScore ?? 0, 2),
+                'modules_progress' => $moduleStats,
+                'chapters_progress' => $chapterStats,
 
                 'certificates_earned' => Certification::where('user_id', $userId)->count()
             ],
 
             'last_certificate' => $certificate,
-
             'next_action' => $nextAction
         ];
     }
