@@ -259,6 +259,7 @@ Route::prefix('v1')->group(function () {
                 //site settings
                 Route::get('site', [SiteSettingController::class, 'get']);
                 Route::post('site', [SiteSettingController::class, 'update']);
+                Route::post('firebase/config', [SiteSettingController::class, 'saveFirebase']);
 
                 Route::prefix('certificate-settings')->group(function () {
                     Route::get('/', [CertificateSettingController::class, 'get']);

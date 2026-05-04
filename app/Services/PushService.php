@@ -4,6 +4,8 @@ namespace App\Services;
 
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use App\Models\Setting;
+use Google\Client;
 
 class PushService
 {
@@ -18,59 +20,120 @@ class PushService
             return;
         }
 
+        $firebase = Setting::getFirebaseConfig();
+
+        if (!$firebase) {
+            Log::error('Firebase config missing');
+            return;
+        }
+
+        // 🔥 Generate once (not per token)
+        $accessToken = $this->getAccessToken($firebase);
+
+        if (!$accessToken) {
+            Log::error('FCM access token generation failed');
+            return;
+        }
+
         foreach ($tokens as $token) {
 
             try {
 
-                $response = Http::withHeaders([
-                    'Authorization' => 'key=' . config('services.fcm.key'),
-                    'Content-Type'  => 'application/json',
-                ])->post('https://fcm.googleapis.com/fcm/send', [
+                $response = Http::timeout(10)
+                    ->withHeaders([
+                        'Authorization' => 'Bearer ' . $accessToken,
+                        'Content-Type'  => 'application/json',
+                    ])
+                    ->post(
+                        "https://fcm.googleapis.com/v1/projects/{$firebase['project_id']}/messages:send",
+                        [
+                            'message' => [
+                                'token' => $token,
 
-                    'to' => $token,
+                                'notification' => [
+                                    'title' => $content['title'] ?? 'Notification',
+                                    'body'  => $content['message'] ?? '',
+                                ],
 
-                    'notification' => [
-                        'title' => $content['title'],
-                        'body'  => $content['message'],
-                        'image' => $content['image'] ?? null,
-                    ],
-
-                    'data' => [
-                        'type'   => $data['type'] ?? null,
-                        'screen' => $data['screen'] ?? null,
-                        'id'     => $data['id'] ?? null,
-                        'extra'  => json_encode($data['extra'] ?? []),
-                    ]
-                ]);
-
-                $result = $response->json();
+                                'data' => [
+                                    'type'   => (string) ($data['type'] ?? ''),
+                                    'screen' => (string) ($data['screen'] ?? ''),
+                                    'id'     => (string) ($data['id'] ?? ''),
+                                    'extra'  => json_encode($data['extra'] ?? []),
+                                ],
+                            ]
+                        ]
+                    );
 
                 /*
                 |--------------------------------------------------------------------------
-                | ❌ Handle Invalid Tokens (VERY IMPORTANT)
+                | ❌ Handle Errors Properly
                 |--------------------------------------------------------------------------
                 */
-                if (isset($result['failure']) && $result['failure'] == 1) {
+                if (!$response->successful()) {
 
-                    $error = $result['results'][0]['error'] ?? null;
+                    Log::error('FCM push failed', [
+                        'user_id' => $user->id,
+                        'token'   => $token,
+                        'status'  => $response->status(),
+                        'body'    => $response->body()
+                    ]);
 
-                    if (in_array($error, ['NotRegistered', 'InvalidRegistration'])) {
+                    $result = $response->json();
 
-                        // 🧹 Delete invalid token
+                    $errorCode = $result['error']['status'] ?? null;
+
+                    if (in_array($errorCode, ['NOT_FOUND', 'INVALID_ARGUMENT'])) {
+
+                        // 🧹 remove invalid token
                         $user->devices()
                             ->where('fcm_token', $token)
                             ->delete();
                     }
                 }
-
             } catch (\Throwable $e) {
 
-                Log::error('Push notification failed', [
+                Log::error('Push exception', [
                     'user_id' => $user->id ?? null,
                     'token'   => $token,
                     'error'   => $e->getMessage()
                 ]);
             }
         }
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | 🔐 Generate Access Token (Cached)
+    |--------------------------------------------------------------------------
+    */
+    private function getAccessToken($firebase)
+    {
+        return cache()->remember('fcm_access_token', 3000, function () use ($firebase) {
+
+            try {
+                $client = new Client();
+
+                $client->setAuthConfig([
+                    'type'         => 'service_account',
+                    'project_id'   => $firebase['project_id'],
+                    'private_key'  => $firebase['private_key'],
+                    'client_email' => $firebase['client_email'],
+                ]);
+
+                $client->addScope('https://www.googleapis.com/auth/firebase.messaging');
+
+                $token = $client->fetchAccessTokenWithAssertion();
+
+                return $token['access_token'] ?? null;
+            } catch (\Throwable $e) {
+
+                Log::error('FCM token error', [
+                    'error' => $e->getMessage()
+                ]);
+
+                return null;
+            }
+        });
     }
 }

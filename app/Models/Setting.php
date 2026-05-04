@@ -8,23 +8,14 @@ class Setting extends BaseModel
 
     /*
     |--------------------------------------------------------------------------
-    | Boot Logic (Cache Safety)
+    | Boot (Cache Clear)
     |--------------------------------------------------------------------------
     */
-
     protected static function booted()
     {
-        static::saved(function ($setting) {
-            cache()->forget("setting_{$setting->key}");
-        });
-
-        static::deleted(function ($setting) {
-            cache()->forget("setting_{$setting->key}");
-        });
-
-        static::restored(function ($setting) {
-            cache()->forget("setting_{$setting->key}");
-        });
+        static::saved(fn($setting) => cache()->forget("setting_{$setting->key}"));
+        static::deleted(fn($setting) => cache()->forget("setting_{$setting->key}"));
+        static::restored(fn($setting) => cache()->forget("setting_{$setting->key}"));
     }
 
     /*
@@ -32,7 +23,6 @@ class Setting extends BaseModel
     | GET VALUE (CACHED)
     |--------------------------------------------------------------------------
     */
-
     public static function getValue($key, $default = null)
     {
         return cache()->remember("setting_$key", 3600, function () use ($key, $default) {
@@ -45,7 +35,6 @@ class Setting extends BaseModel
     | SET VALUE
     |--------------------------------------------------------------------------
     */
-
     public static function setValue($key, $value)
     {
         cache()->forget("setting_$key");
@@ -58,31 +47,72 @@ class Setting extends BaseModel
 
     /*
     |--------------------------------------------------------------------------
-    | GET FULL URL
+    | 🔐 ENCRYPTION HELPERS
     |--------------------------------------------------------------------------
     */
-
-    public static function getFullUrl($key)
+    public static function setEncrypted($key, $value)
     {
-        $value = self::getValue($key);
+        return self::setValue($key, encrypt($value));
+    }
 
-        if (!$value) {
-            return null;
+    public static function getDecrypted($key, $default = null)
+    {
+        try {
+            $value = self::getValue($key);
+            return $value ? decrypt($value) : $default;
+        } catch (\Throwable $e) {
+            return $default;
         }
-
-        if (str_starts_with($value, 'http')) {
-            return $value;
-        }
-
-        return url(ltrim($value, '/'));
     }
 
     /*
     |--------------------------------------------------------------------------
-    | GET ALL SETTINGS
+    | 🔥 FIREBASE FULL JSON SUPPORT
     |--------------------------------------------------------------------------
     */
+    public static function setFirebaseJson($json)
+    {
+        $decoded = json_decode($json, true);
 
+        if (!$decoded) {
+            throw new \Exception('Invalid Firebase JSON');
+        }
+
+        return self::setEncrypted('firebase_service_account', $json);
+    }
+
+    public static function getFirebaseJson()
+    {
+        return self::getDecrypted('firebase_service_account');
+    }
+
+    public static function getFirebaseConfig()
+    {
+        $json = self::getFirebaseJson();
+        return $json ? json_decode($json, true) : null;
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | GET FULL URL
+    |--------------------------------------------------------------------------
+    */
+    public static function getFullUrl($key)
+    {
+        $value = self::getValue($key);
+
+        if (!$value) return null;
+
+        return str_starts_with($value, 'http')
+            ? $value
+            : url(ltrim($value, '/'));
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | GET ALL SETTINGS (PUBLIC)
+    |--------------------------------------------------------------------------
+    */
     public static function getAllFormatted()
     {
         $keys = [
@@ -124,17 +154,9 @@ class Setting extends BaseModel
 
     /*
     |--------------------------------------------------------------------------
-    | Cascade Soft Delete
+    | NO CASCADE
     |--------------------------------------------------------------------------
     */
-
-    public function cascadeSoftDelete()
-    {
-        // ❗ DO NOTHING
-    }
-
-    public function cascadeRestore()
-    {
-        // nothing required
-    }
+    public function cascadeSoftDelete() {}
+    public function cascadeRestore() {}
 }
