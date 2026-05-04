@@ -15,7 +15,7 @@ use App\Services\SmtpService;
 use App\Models\UserProgress;
 use App\Models\Topic;
 use App\Services\AuditService;
-
+use App\Models\UserDevice;
 
 class AuthController extends Controller
 {
@@ -179,7 +179,10 @@ class AuthController extends Controller
     {
         $request->validate([
             'email' => 'required|email',
-            'password' => 'required'
+            'password' => 'required',
+            'fcm_token' => 'nullable|string',
+            'device_type' => 'nullable|string',
+            'device_name' => 'nullable|string',
         ]);
 
         $user = User::where('email', $request->email)->first();
@@ -248,6 +251,35 @@ class AuthController extends Controller
                 ]);
             }
         }
+        if ($request->fcm_token) {
+            UserDevice::updateOrCreate(
+                [
+                    'user_id'   => $user->id,
+                    'device_id' => $deviceId,
+                ],
+                [
+                    'fcm_token'   => $request->fcm_token,
+                    'device_type' => $request->device_type ?? 'android',
+                    'device_name' => $request->header('User-Agent'),
+                    'last_used_at' => now()
+                ]
+            );
+        }
+        app(\App\Services\NotificationService::class)->send(
+            $user,
+            'TRAINING_ASSIGNED',
+            [
+                'title'   => 'Test Notification',
+                'message' => 'Firebase test working',
+
+                'screen'  => 'HomeScreen',
+                'id'      => 1,
+
+                'image'   => null,
+                'link'    => null,
+                'meta'    => []
+            ]
+        );
 
         return response()->json([
             'token' => $token,
@@ -281,6 +313,12 @@ class AuthController extends Controller
 
         // 🧾 Audit log
         audit_log($user->id, 'logout', 'User logged out');
+
+        $deviceId = $request->header('X-Device-Id');
+
+        UserDevice::where('user_id', $user->id)
+            ->where('device_id', $deviceId)
+            ->delete();
 
         return response()->json([
             'message' => 'Logged out successfully'

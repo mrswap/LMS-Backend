@@ -15,6 +15,9 @@ use App\Modules\Trainee\Reports\Controllers\UserProgressReportController;
 use App\Modules\Trainee\Reports\Controllers\AssessmentReportController;
 use App\Modules\Trainee\Reports\Controllers\CertificationReportController;
 use App\Modules\Trainee\Dashboard\Controllers\DashboardController;
+use App\Modules\Trainee\Notification\Controllers\NotificationController;
+
+
 
 Route::prefix('v1/trainee')->group(function () {
 
@@ -70,6 +73,13 @@ Route::prefix('v1/trainee')->group(function () {
             Route::get('/assessment-report', [AssessmentReportController::class, 'index']);
             Route::get('/certifications', [CertificationReportController::class, 'index']);
             Route::get('/certificate/{attempt_id}', [CertificationReportController::class, 'show']);
+        });
+
+        Route::prefix('notifications')->group(function () {
+            Route::get('/', [NotificationController::class, 'index']);
+            Route::post('/read/{id}', [NotificationController::class, 'markRead']);
+            Route::post('/read-all', [NotificationController::class, 'markAllRead']);
+            Route::get('/unread-count', [NotificationController::class, 'unreadCount']);
         });
     });
 });

@@ -125,6 +125,15 @@ class User extends Authenticatable
         return $this->role?->name === self::ROLE_SALES;
     }
 
+    public function devices()
+    {
+        return $this->hasMany(UserDevice::class);
+    }
+
+    public function notifications()
+    {
+        return $this->hasMany(Notification::class);
+    }
     /*
     |--------------------------------------------------------------------------
     | Accessors
