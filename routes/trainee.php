@@ -14,6 +14,7 @@ use App\Modules\Trainee\Reports\Controllers\AuditReportController;
 use App\Modules\Trainee\Reports\Controllers\UserProgressReportController;
 use App\Modules\Trainee\Reports\Controllers\AssessmentReportController;
 use App\Modules\Trainee\Reports\Controllers\CertificationReportController;
+use App\Modules\Trainee\Dashboard\Controllers\DashboardController;
 
 Route::prefix('v1/trainee')->group(function () {
 
@@ -34,6 +35,8 @@ Route::prefix('v1/trainee')->group(function () {
     |--------------------------------------------------
     */
     Route::middleware(['auth:sanctum', 'role:sales', 'device'])->group(function () {
+        Route::get('/dashboard', [DashboardController::class, 'index']);
+
         Route::post('/logout', [AuthController::class, 'logout']);
 
         Route::get('/profile', [ProfileController::class, 'profile']);

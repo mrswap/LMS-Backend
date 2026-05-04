@@ -7,15 +7,24 @@ use Illuminate\Support\Facades\DB;
 use App\Models\User;
 
 use App\Models\{
-    Program, ProgramTranslation,
-    Level, LevelTranslation,
-    Module, ModuleTranslation,
-    Chapter, ChapterTranslation,
-    Topic, TopicTranslation,
-    TopicContent, TopicContentTranslation,
-    Faq, FaqTranslation,
+    Program,
+    ProgramTranslation,
+    Level,
+    LevelTranslation,
+    Module,
+    ModuleTranslation,
+    Chapter,
+    ChapterTranslation,
+    Topic,
+    TopicTranslation,
+    TopicContent,
+    TopicContentTranslation,
+    Faq,
+    FaqTranslation,
     Media,
-    Assessment, AssessmentQuestion, AssessmentOption
+    Assessment,
+    AssessmentQuestion,
+    AssessmentOption
 };
 
 class FinalLMSSeeder extends Seeder
@@ -24,26 +33,28 @@ class FinalLMSSeeder extends Seeder
     {
         DB::statement('SET FOREIGN_KEY_CHECKS=0;');
 
-        foreach ([
-            AssessmentOption::class,
-            AssessmentQuestion::class,
-            Assessment::class,
-            FaqTranslation::class,
-            Faq::class,
-            TopicContentTranslation::class,
-            TopicContent::class,
-            TopicTranslation::class,
-            Topic::class,
-            ChapterTranslation::class,
-            Chapter::class,
-            ModuleTranslation::class,
-            Module::class,
-            LevelTranslation::class,
-            Level::class,
-            ProgramTranslation::class,
-            Program::class,
-            Media::class,
-        ] as $model) {
+        foreach (
+            [
+                AssessmentOption::class,
+                AssessmentQuestion::class,
+                Assessment::class,
+                FaqTranslation::class,
+                Faq::class,
+                TopicContentTranslation::class,
+                TopicContent::class,
+                TopicTranslation::class,
+                Topic::class,
+                ChapterTranslation::class,
+                Chapter::class,
+                ModuleTranslation::class,
+                Module::class,
+                LevelTranslation::class,
+                Level::class,
+                ProgramTranslation::class,
+                Program::class,
+                Media::class,
+            ] as $model
+        ) {
             $model::truncate();
         }
 
@@ -53,262 +64,190 @@ class FinalLMSSeeder extends Seeder
         if (!$user) throw new \Exception('No users found');
         $createdBy = $user->id;
 
-        /*
-        |--------------------------------------------------------------------------
-        | PROGRAM
-        |--------------------------------------------------------------------------
-        */
-
+        // ================= PROGRAM =================
         $program = Program::create([
             'title' => 'Pace Maker',
-            'description' => 'Complete pacemaker training system',
+            'description' => 'Training system',
             'status' => 1,
             'created_by' => $createdBy
         ]);
 
-        ProgramTranslation::insert([
-            ['program_id'=>$program->id,'language_code'=>'en','title'=>'Pace Maker','description'=>'Pacemaker training'],
-            ['program_id'=>$program->id,'language_code'=>'hi','title'=>'पेसमेकर','description'=>'पेसमेकर प्रशिक्षण'],
-        ]);
-
-        /*
-        |--------------------------------------------------------------------------
-        | LEVEL
-        |--------------------------------------------------------------------------
-        */
-
+        // ================= LEVEL =================
         $level = Level::create([
-            'program_id'=>$program->id,
-            'title'=>'Level 1',
-            'description'=>'Basic pacemaker understanding',
-            'status'=>1,
-            'created_by'=>$createdBy
+            'program_id' => $program->id,
+            'title' => 'Level 1',
+            'status' => 1,
+            'created_by' => $createdBy
         ]);
 
-        LevelTranslation::insert([
-            ['level_id'=>$level->id,'language_code'=>'en','title'=>'Level 1','description'=>'Basic level'],
-            ['level_id'=>$level->id,'language_code'=>'hi','title'=>'स्तर 1','description'=>'मूल स्तर'],
+        // ================= MEDIA =================
+        $media = Media::create([
+            'title' => "Media",
+            'file' => "uploads/media/sample.jpg",
+            'shortcode' => "media-1",
+            'created_by' => $createdBy
         ]);
 
-        /*
-        |--------------------------------------------------------------------------
-        | MEDIA (GLOBAL)
-        |--------------------------------------------------------------------------
-        */
-
-        $mediaItems = [];
-        for ($i=1;$i<=5;$i++) {
-            $mediaItems[] = Media::create([
-                'title'=>"Media $i",
-                'file'=>"uploads/media/$i.jpg",
-                'shortcode'=>"media-$i",
-                'created_by'=>$createdBy
-            ]);
-        }
-
-        /*
-        |--------------------------------------------------------------------------
-        | MODULE LOOP (3 modules)
-        |--------------------------------------------------------------------------
-        */
-
-        for ($m=1;$m<=3;$m++) {
+        // ================= MODULE LOOP (2) =================
+        for ($m = 1; $m <= 2; $m++) {
 
             $module = Module::create([
-                'program_id'=>$program->id,
-                'level_id'=>$level->id,
-                'title'=>"Module $m",
-                'description'=>"Module $m description",
-                'status'=>1,
-                'created_by'=>$createdBy
+                'program_id' => $program->id,
+                'level_id' => $level->id,
+                'title' => "Module $m",
+                'status' => 1,
+                'created_by' => $createdBy
             ]);
 
-            ModuleTranslation::insert([
-                ['module_id'=>$module->id,'language_code'=>'en','title'=>"Module $m",'description'=>'Details'],
-                ['module_id'=>$module->id,'language_code'=>'hi','title'=>"मॉड्यूल $m",'description'=>'विवरण'],
-            ]);
-
-            /*
-            |--------------------------------------------------------------------------
-            | CHAPTER LOOP (3 each)
-            |--------------------------------------------------------------------------
-            */
-
-            for ($c=1;$c<=3;$c++) {
+            // ================= CHAPTER LOOP (2) =================
+            for ($c = 1; $c <= 2; $c++) {
 
                 $chapter = Chapter::create([
-                    'program_id'=>$program->id,
-                    'level_id'=>$level->id,
-                    'module_id'=>$module->id,
-                    'title'=>"Chapter $c",
-                    'description'=>"Chapter $c description",
-                    'status'=>1,
-                    'created_by'=>$createdBy
+                    'program_id' => $program->id,
+                    'level_id' => $level->id,
+                    'module_id' => $module->id,
+                    'title' => "Chapter $c",
+                    'status' => 1,
+                    'created_by' => $createdBy
                 ]);
 
-                ChapterTranslation::insert([
-                    ['chapter_id'=>$chapter->id,'language_code'=>'en','title'=>"Chapter $c",'description'=>'Details'],
-                    ['chapter_id'=>$chapter->id,'language_code'=>'hi','title'=>"अध्याय $c",'description'=>'विवरण'],
-                ]);
-
-                /*
-                |--------------------------------------------------------------------------
-                | TOPIC LOOP (3 each)
-                |--------------------------------------------------------------------------
-                */
-
-                for ($t=1;$t<=3;$t++) {
+                // ================= TOPIC LOOP (2) =================
+                for ($t = 1; $t <= 2; $t++) {
 
                     $topic = Topic::create([
-                        'program_id'=>$program->id,
-                        'level_id'=>$level->id,
-                        'module_id'=>$module->id,
-                        'chapter_id'=>$chapter->id,
-                        'title'=>"Topic $t",
-                        'description'=>"Topic $t explanation",
-                        'estimated_duration'=>10,
-                        'status'=>1,
-                        'created_by'=>$createdBy
+                        'program_id' => $program->id,
+                        'level_id' => $level->id,
+                        'module_id' => $module->id,
+                        'chapter_id' => $chapter->id,
+                        'title' => "Topic $t",
+                        'estimated_duration' => 10,
+                        'status' => 1,
+                        'created_by' => $createdBy
                     ]);
 
-                    TopicTranslation::insert([
-                        ['topic_id'=>$topic->id,'language_code'=>'en','title'=>"Topic $t",'description'=>'Topic details'],
-                        ['topic_id'=>$topic->id,'language_code'=>'hi','title'=>"विषय $t",'description'=>'विवरण'],
+                    // ---------- CONTENT ----------
+                    TopicContent::create([
+                        'topic_id' => $topic->id,
+                        'type' => 'text',
+                        'title' => "Intro",
+                        'content' => "<p>Topic content</p>",
+                        'order' => 1,
+                        'status' => 1,
+                        'created_by' => $createdBy
                     ]);
-
-                    /*
-                    |--------------------------------------------------------------------------
-                    | CONTENT (MATCH CONTROLLER)
-                    |--------------------------------------------------------------------------
-                    */
-
-                    // TEXT
-                    for ($i=1;$i<=2;$i++) {
-
-                        $text = TopicContent::create([
-                            'topic_id'=>$topic->id,
-                            'type'=>'text',
-                            'title'=>"Text $i",
-                            'content'=>"<p>Content $i for topic $t</p>",
-                            'order'=>$i,
-                            'status'=>1,
-                            'created_by'=>$createdBy
-                        ]);
-
-                        TopicContentTranslation::create([
-                            'topic_content_id'=>$text->id,
-                            'language_code'=>'hi',
-                            'title'=>"टेक्स्ट $i",
-                            'content'=>"<p>विषय $t कंटेंट $i</p>"
-                        ]);
-                    }
-
-                    // MEDIA
-                    $media = $mediaItems[array_rand($mediaItems)];
 
                     TopicContent::create([
-                        'topic_id'=>$topic->id,
-                        'type'=>'media',
-                        'title'=>'Media Block',
-                        'meta'=>['shortcode'=>$media->shortcode],
-                        'order'=>3,
-                        'status'=>1,
-                        'created_by'=>$createdBy
+                        'topic_id' => $topic->id,
+                        'type' => 'media',
+                        'title' => 'Media',
+                        'meta' => ['shortcode' => $media->shortcode],
+                        'order' => 2,
+                        'status' => 1,
+                        'created_by' => $createdBy
                     ]);
 
-                    /*
-                    |--------------------------------------------------------------------------
-                    | FAQ
-                    |--------------------------------------------------------------------------
-                    */
-
+                    // ---------- FAQ ----------
                     $faq = Faq::create([
-                        'faqable_id'=>$topic->id,
-                        'faqable_type'=>Topic::class,
-                        'status'=>1,
-                        'created_by'=>$createdBy
+                        'faqable_id' => $topic->id,
+                        'faqable_type' => Topic::class,
+                        'status' => 1,
+                        'created_by' => $createdBy
                     ]);
 
-                    FaqTranslation::insert([
-                        ['faq_id'=>$faq->id,'language_code'=>'en','question'=>'What is this?','answer'=>'Explanation'],
-                        ['faq_id'=>$faq->id,'language_code'=>'hi','question'=>'यह क्या है?','answer'=>'विवरण'],
+                    FaqTranslation::create([
+                        'faq_id' => $faq->id,
+                        'language_code' => 'en',
+                        'question' => 'What is this?',
+                        'answer' => 'Answer'
                     ]);
 
-                    /*
-                    |--------------------------------------------------------------------------
-                    | QUIZ
-                    |--------------------------------------------------------------------------
-                    */
-
+                    // ================= QUIZ (5 QUESTIONS) =================
                     $quiz = Assessment::create([
-                        'assessmentable_id'=>$topic->id,
-                        'assessmentable_type'=>Topic::class,
-                        'type'=>'topic',
-                        'title'=>"Quiz",
-                        'passing_score'=>60,
-                        'total_marks'=>5,
-                        'duration'=>10,
-                        'status'=>1,
-                        'created_by'=>$createdBy
+                        'assessmentable_id' => $topic->id,
+                        'assessmentable_type' => Topic::class,
+                        'type' => 'topic',
+                        'title' => "Quiz",
+                        'passing_score' => 60,
+                        'duration' => 10,
+                        'total_marks' => 0, // REQUIRED
+                        'status' => 1,
+                        'created_by' => $createdBy
                     ]);
 
-                    for ($q=1;$q<=5;$q++) {
+                    $totalMarks = 0;
+
+                    for ($q = 1; $q <= 5; $q++) {
+
+                        $marks = 1; // changeable later
 
                         $question = AssessmentQuestion::create([
-                            'assessment_id'=>$quiz->id,
-                            'question_text'=>"Question $q",
-                            'question_type'=>'mcq',
-                            'marks'=>1,
-                            'order'=>$q
+                            'assessment_id' => $quiz->id,
+                            'question_text' => "Question $q",
+                            'question_type' => 'mcq',
+                            'marks' => $marks,
+                            'order' => $q
                         ]);
 
-                        foreach (['A','B','C','D'] as $k=>$opt) {
+                        $totalMarks += $marks;
+
+                        foreach (['A', 'B', 'C', 'D'] as $k => $opt) {
                             AssessmentOption::create([
-                                'question_id'=>$question->id,
-                                'option_text'=>"Option $opt",
-                                'is_correct'=>$k===0
+                                'question_id' => $question->id,
+                                'option_text' => "Option $opt",
+                                'is_correct' => $k === 0
                             ]);
                         }
                     }
+
+                    // FINAL UPDATE
+                    $quiz->update([
+                        'total_marks' => $totalMarks
+                    ]);
                 }
             }
         }
 
-        /*
-        |--------------------------------------------------------------------------
-        | LEVEL EXAM
-        |--------------------------------------------------------------------------
-        */
-
+        // ================= LEVEL EXAM (5 QUESTIONS) =================
         $exam = Assessment::create([
-            'assessmentable_id'=>$level->id,
-            'assessmentable_type'=>Level::class,
-            'type'=>'level',
-            'title'=>'Final Exam',
-            'duration'=>30,
-            'passing_score'=>80,
-            'total_marks'=>15,
-            'status'=>1,
-            'created_by'=>$createdBy
+            'assessmentable_id' => $level->id,
+            'assessmentable_type' => Level::class,
+            'type' => 'level',
+            'title' => 'Final Exam',
+            'duration' => 20,
+            'passing_score' => 80,
+            'total_marks' => 0, // REQUIRED
+            'status' => 1,
+            'created_by' => $createdBy
         ]);
 
-        for ($i=1;$i<=15;$i++) {
+        $totalMarks = 0;
+
+        for ($i = 1; $i <= 5; $i++) {
+
+            $marks = 1;
 
             $q = AssessmentQuestion::create([
-                'assessment_id'=>$exam->id,
-                'question_text'=>"Final Question $i",
-                'question_type'=>'mcq',
-                'marks'=>1,
-                'order'=>$i
+                'assessment_id' => $exam->id,
+                'question_text' => "Final Question $i",
+                'question_type' => 'mcq',
+                'marks' => $marks,
+                'order' => $i
             ]);
 
-            foreach (['A','B','C','D'] as $k=>$opt) {
+            $totalMarks += $marks;
+
+            foreach (['A', 'B', 'C', 'D'] as $k => $opt) {
                 AssessmentOption::create([
-                    'question_id'=>$q->id,
-                    'option_text'=>"Option $opt",
-                    'is_correct'=>$k===1
+                    'question_id' => $q->id,
+                    'option_text' => "Option $opt",
+                    'is_correct' => $k === 1
                 ]);
             }
         }
+
+        // FINAL UPDATE
+        $exam->update([
+            'total_marks' => $totalMarks
+        ]);
     }
 }

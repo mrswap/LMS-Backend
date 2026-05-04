@@ -15,56 +15,91 @@ class ProgressionService
     {
         DB::transaction(function () use ($userId, $topic) {
 
-            AuditService::log('lesson_completed', 'User completed a lesson', ['topic_id' => $topic->id]);
-            // ✅ 1. Mark topic completed
-            UserProgress::updateOrCreate(
-                [
+            /*
+        |--------------------------------------------------
+        | ✅ 1. COMPLETE CURRENT TOPIC (SAFE)
+        |--------------------------------------------------
+        */
+            $progress = UserProgress::where('user_id', $userId)
+                ->where('topic_id', $topic->id)
+                ->first();
+
+            if (!$progress) {
+
+                UserProgress::create([
                     'user_id' => $userId,
-                    'topic_id' => $topic->id,
-                ],
-                [
                     'program_id' => $topic->program_id,
                     'level_id' => $topic->level_id,
                     'module_id' => $topic->module_id,
                     'chapter_id' => $topic->chapter_id,
+                    'topic_id' => $topic->id,
                     'is_unlocked' => true,
                     'is_completed' => true,
                     'completed_at' => now(),
-                ]
+                ]);
+            } else {
+
+                if (!$progress->is_completed) {
+                    $progress->update([
+                        'is_completed' => true,
+                        'completed_at' => now(),
+                    ]);
+                }
+            }
+
+            AuditService::log(
+                'lesson_completed',
+                'User completed topic',
+                ['topic_id' => $topic->id]
             );
 
 
-            // ✅ 2. Unlock next topic
+            /*
+        |--------------------------------------------------
+        | ✅ 2. UNLOCK NEXT TOPIC (STRICT)
+        |--------------------------------------------------
+        */
             $nextTopic = Topic::where('chapter_id', $topic->chapter_id)
                 ->where('id', '>', $topic->id)
                 ->orderBy('id')
                 ->first();
 
             if ($nextTopic) {
-                UserProgress::updateOrCreate(
-                    [
+
+                $exists = UserProgress::where('user_id', $userId)
+                    ->where('topic_id', $nextTopic->id)
+                    ->exists();
+
+                if (!$exists) {
+
+                    UserProgress::create([
                         'user_id' => $userId,
-                        'topic_id' => $topic->id,
-                    ],
-                    [
-                        'program_id' => $topic->program_id,
-                        'level_id' => $topic->level_id,
-                        'module_id' => $topic->module_id,
-                        'chapter_id' => $topic->chapter_id,
+                        'program_id' => $nextTopic->program_id,
+                        'level_id' => $nextTopic->level_id,
+                        'module_id' => $nextTopic->module_id,
+                        'chapter_id' => $nextTopic->chapter_id,
+                        'topic_id' => $nextTopic->id,
                         'is_unlocked' => true,
-                        'is_completed' => true,
-                        'completed_at' => now(),
-                    ]
-                );
+                        'is_completed' => false,
+                    ]);
+
+                    AuditService::log(
+                        'lesson_unlocked',
+                        'User unlocked next topic',
+                        ['topic_id' => $nextTopic->id]
+                    );
+                }
+            } else {
+
+                /*
+            |--------------------------------------------------
+            | ✅ 3. NO NEXT TOPIC → CHECK CHAPTER
+            |--------------------------------------------------
+            */
+                $this->handleChapterCompletion($userId, $topic->chapter_id);
             }
-            AuditService::log('lesson_unlocked', 'User unlocked the next lesson', ['topic_id' => $nextTopic->id ?? null]);
-
-
-            // ✅ 3. Check chapter completion
-            $this->handleChapterCompletion($userId, $topic->chapter_id);
         });
     }
-
     private function handleChapterCompletion($userId, $chapterId)
     {
         $total = Topic::where('chapter_id', $chapterId)->count();
@@ -79,7 +114,6 @@ class ProgressionService
 
             $chapter = Chapter::find($chapterId);
 
-            AuditService::log('chapter_completed', 'User completed a chapter', ['chapter_id' => $chapter->id]);
 
             // 🔓 unlock next chapter
             $nextChapter = Chapter::where('module_id', $chapter->module_id)
@@ -105,8 +139,9 @@ class ProgressionService
                         ]
                     );
                 }
+
+                AuditService::log('chapter_unlocked', 'User unlocked the next chapter', ['chapter_id' => $nextChapter->id ?? null]);
             }
-            AuditService::log('chapter_unlocked', 'User unlocked the next chapter', ['chapter_id' => $nextChapter->id ?? null]);
 
             $this->handleModuleCompletion($userId, $chapter->module_id);
         }
@@ -150,11 +185,6 @@ class ProgressionService
 
             if (!$module) return;
 
-            AuditService::log(
-                'module_completed',
-                'User completed a module',
-                ['module_id' => $module->id]
-            );
 
             /*
         |--------------------------------------------
@@ -212,6 +242,8 @@ class ProgressionService
                         ]
                     );
                 }
+
+                AuditService::log('module_unlocked', 'User unlocked next module', ['module_id' => $nextModule->id ?? null]);
             }
 
             /*

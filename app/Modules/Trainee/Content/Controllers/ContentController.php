@@ -30,17 +30,27 @@ class ContentController extends Controller
     | 📚 Topic Content (Trainee)
     |--------------------------------------------------------------------------
     */
-    
+
     public function index(Request $request, $topic_id)
     {
         $userId = auth()->id();
         $lang = $this->resolveLanguage($request);
 
         /*
-        |--------------------------------------------------------------------------
-        | 🔒 LOCK CHECK
-        |--------------------------------------------------------------------------
-        */
+    |--------------------------------------------------------------------------
+    | 📦 LOAD TOPIC WITH FULL HIERARCHY
+    |--------------------------------------------------------------------------
+    */
+        $topic = \App\Models\Topic::with([
+            'chapter.module.level.program',
+            'translations'
+        ])->findOrFail($topic_id);
+
+        /*
+    |--------------------------------------------------------------------------
+    | 🔒 LOCK CHECK
+    |--------------------------------------------------------------------------
+    */
         $progress = UserProgress::where('user_id', $userId)
             ->where('topic_id', $topic_id)
             ->first();
@@ -53,10 +63,10 @@ class ContentController extends Controller
         }
 
         /*
-        |--------------------------------------------------------------------------
-        | 📦 CONTENT QUERY
-        |--------------------------------------------------------------------------
-        */
+    |--------------------------------------------------------------------------
+    | 📦 CONTENT QUERY
+    |--------------------------------------------------------------------------
+    */
         $query = TopicContent::with('translations')
             ->where('topic_id', $topic_id)
             ->where('status', true)
@@ -66,39 +76,33 @@ class ContentController extends Controller
             $query->where('type', $request->type);
         }
 
-        /*
-        |--------------------------------------------------------------------------
-        | 🔥 PAGINATION
-        |--------------------------------------------------------------------------
-        */
         $limit = (int) $request->get('limit', 5);
         $limit = ($limit > 0 && $limit <= 20) ? $limit : 5;
 
         $contents = $query->paginate($limit);
 
         /*
-        |--------------------------------------------------------------------------
-        | 🧠 LOAD USER CONTENT PROGRESS (NO N+1)
-        |--------------------------------------------------------------------------
-        */
+    |--------------------------------------------------------------------------
+    | 🧠 USER CONTENT PROGRESS
+    |--------------------------------------------------------------------------
+    */
         $userContentProgress = \App\Models\UserContentProgress::where('user_id', $userId)
             ->whereIn('topic_content_id', $contents->pluck('id'))
             ->get()
             ->keyBy('topic_content_id');
 
         /*
-        |--------------------------------------------------------------------------
-        | 🔁 TRANSFORM (LANGUAGE + READ STATUS)
-        |--------------------------------------------------------------------------
-        */
-            $contents->getCollection()->transform(function ($item) use ($lang, $userContentProgress) {
+    |--------------------------------------------------------------------------
+    | 🔁 TRANSFORM CONTENT
+    |--------------------------------------------------------------------------
+    */
+        $contents->getCollection()->transform(function ($item) use ($lang, $userContentProgress) {
 
             $progress = $userContentProgress[$item->id] ?? null;
 
             $isRead = $progress?->is_read ?? false;
             $readAt = $progress?->read_at ?? null;
 
-            // 🟢 ENGLISH MODE
             if ($lang === 'en') {
 
                 if ($item->title === 'BASE_RECORD') return null;
@@ -110,13 +114,11 @@ class ContentController extends Controller
                     'content' => $item->type === 'text' ? $item->content : null,
                     'meta' => $item->meta,
                     'order' => $item->order,
-
                     'is_read' => $isRead,
                     'read_at' => $readAt,
                 ];
             }
 
-            // 🔵 TRANSLATION MODE
             $translation = $item->translations
                 ->where('language_code', $lang)
                 ->first();
@@ -132,26 +134,20 @@ class ContentController extends Controller
                 'content' => $item->type === 'text' ? $translation->content : null,
                 'meta' => $item->meta,
                 'order' => $item->order,
-
                 'is_read' => $isRead,
                 'read_at' => $readAt,
             ];
         });
 
-        /*
-        |--------------------------------------------------------------------------
-        | 🔥 REMOVE NULLS (missing translation)
-        |--------------------------------------------------------------------------
-        */
         $contents->setCollection(
             $contents->getCollection()->filter()->values()
         );
 
         /*
-        |--------------------------------------------------------------------------
-        | 🎯 ASSESSMENT STATUS (TOPIC LEVEL)
-        |--------------------------------------------------------------------------
-        */
+    |--------------------------------------------------------------------------
+    | 🎯 ASSESSMENT STATUS
+    |--------------------------------------------------------------------------
+    */
         $assessmentStatus = [
             'status' => 'not_attempted',
             'score' => null,
@@ -159,13 +155,12 @@ class ContentController extends Controller
             'attempt_id' => null,
         ];
 
-        $assessment = \App\Models\Assessment::where('assessmentable_id', $topic_id)
+        $assessment = Assessment::where('assessmentable_id', $topic_id)
             ->where('assessmentable_type', \App\Models\Topic::class)
             ->first();
 
         if ($assessment) {
-
-            $attempt = \App\Models\AssessmentAttempt::where('user_id', $userId)
+            $attempt = AssessmentAttempt::where('user_id', $userId)
                 ->where('assessment_id', $assessment->id)
                 ->whereIn('status', ['passed', 'failed'])
                 ->latest()
@@ -182,18 +177,52 @@ class ContentController extends Controller
         }
 
         /*
-        |--------------------------------------------------------------------------
-        | 📤 RESPONSE
-        |--------------------------------------------------------------------------
-        */
+    |--------------------------------------------------------------------------
+    | 🌐 CONTEXT (HIERARCHY)
+    |--------------------------------------------------------------------------
+    */
+        $context = [
+            'type' => 'topic',
+
+            'topic' => [
+                'id' => $topic->id,
+                'title' => $topic->title,
+                'estimated_duration' => $topic->estimated_duration,
+            ],
+
+            'chapter' => [
+                'id' => $topic->chapter->id ?? null,
+                'title' => $topic->chapter->title ?? null,
+            ],
+
+            'module' => [
+                'id' => $topic->chapter->module->id ?? null,
+                'title' => $topic->chapter->module->title ?? null,
+            ],
+
+            'level' => [
+                'id' => $topic->chapter->module->level->id ?? null,
+                'title' => $topic->chapter->module->level->title ?? null,
+            ],
+
+            'program' => [
+                'id' => $topic->chapter->module->level->program->id ?? null,
+                'title' => $topic->chapter->module->level->program->title ?? null,
+            ],
+        ];
+
+        /*
+    |--------------------------------------------------------------------------
+    | 📤 RESPONSE
+    |--------------------------------------------------------------------------
+    */
         return response()->json([
             'success' => true,
+            'context' => $context,
             'data' => $contents,
             'assessment_status' => $assessmentStatus
         ]);
     }
-
-
 
     public function single(Request $request, $topic_id, $content_id)
     {
@@ -203,9 +232,7 @@ class ContentController extends Controller
         $lang = $this->resolveLanguage($request);
 
         /*
-        |--------------------------------------------------------------------------
         | 🔒 LOCK CHECK
-        |--------------------------------------------------
         */
         $progress = UserProgress::where('user_id', $userId)
             ->where('topic_id', $topic_id)
@@ -219,9 +246,13 @@ class ContentController extends Controller
         }
 
         /*
-        |--------------------------------------------------
-        | 📦 ALL CONTENTS (ORDERED)
-        |--------------------------------------------------
+        | 📦 LOAD TOPIC WITH FULL RELATION
+        */
+        $topic = \App\Models\Topic::with('chapter.module.level.program')
+            ->findOrFail($topic_id);
+
+        /*
+        | 📦 ALL CONTENTS
         */
         $contents = TopicContent::with('translations')
             ->where('topic_id', $topic_id)
@@ -237,9 +268,7 @@ class ContentController extends Controller
         }
 
         /*
-        |--------------------------------------------------
-        | 📍 FIND CURRENT INDEX
-        |--------------------------------------------------
+        | 📍 FIND CURRENT
         */
         $currentIndex = $contents->search(fn($c) => $c->id == $content_id);
 
@@ -253,17 +282,13 @@ class ContentController extends Controller
         $current = $contents[$currentIndex];
 
         /*
-        |--------------------------------------------------
-        | 🔁 NEXT / PREVIOUS
-        |--------------------------------------------------
+        | 🔁 NAVIGATION
         */
         $previous = $contents[$currentIndex - 1] ?? null;
         $next = $contents[$currentIndex + 1] ?? null;
 
         /*
-        |--------------------------------------------------
         | 🧠 USER READ STATUS
-        |--------------------------------------------------
         */
         $userProgress = \App\Models\UserContentProgress::where('user_id', $userId)
             ->where('topic_content_id', $current->id)
@@ -273,9 +298,7 @@ class ContentController extends Controller
         $readAt = $userProgress?->read_at ?? null;
 
         /*
-        |--------------------------------------------------
         | 🌐 LANGUAGE TRANSFORM
-        |--------------------------------------------------
         */
         if ($lang === 'en') {
 
@@ -323,7 +346,9 @@ class ContentController extends Controller
             ];
         }
 
-        $topic = \App\Models\Topic::findOrFail($topic_id);
+        /*
+        | 🌐 TOPIC TRANSLATION
+        */
         $topicTranslation = method_exists($topic, 'getTranslation')
             ? $topic->getTranslation($lang)
             : null;
@@ -335,15 +360,39 @@ class ContentController extends Controller
             'thumbnail' => $topic->thumbnail,
             'estimated_duration' => $topic->estimated_duration,
         ];
+
         /*
-        |--------------------------------------------------
+        | 🌐 CONTEXT (HIERARCHY)
+        */
+        $context = [
+            'chapter' => [
+                'id' => $topic->chapter->id ?? null,
+                'title' => $topic->chapter->title ?? null,
+            ],
+            'module' => [
+                'id' => $topic->chapter->module->id ?? null,
+                'title' => $topic->chapter->module->title ?? null,
+            ],
+            'level' => [
+                'id' => $topic->chapter->module->level->id ?? null,
+                'title' => $topic->chapter->module->level->title ?? null,
+            ],
+            'program' => [
+                'id' => $topic->chapter->module->level->program->id ?? null,
+                'title' => $topic->chapter->module->level->program->title ?? null,
+            ],
+        ];
+
+        /*
         | 📤 RESPONSE
-        |--------------------------------------------------
         */
         return response()->json([
             'success' => true,
             'data' => [
                 'topic' => $topicData,
+
+                // ✅ ADDED CONTEXT HERE
+                'context' => $context,
 
                 'current' => $data,
 
@@ -356,4 +405,6 @@ class ContentController extends Controller
             ]
         ]);
     }
+
+    
 }

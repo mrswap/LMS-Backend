@@ -9,6 +9,11 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use App\Modules\Admin\ContentManagement\Requests\SectionContentRequest;
+use App\Models\UserProgress;
+use App\Services\AuditService;
+use App\Models\Assessment;
+use App\Models\AssessmentAttempt;
+
 
 class SectionContentController extends Controller
 {
@@ -150,9 +155,18 @@ class SectionContentController extends Controller
         $lang = $this->resolveLanguage($request);
 
         $contents = TopicContent::where('topic_id', $topicId)
-            ->with('translations')
+            ->with([
+                'translations',
+                'topic.program:id,title',
+                'topic.level:id,title',
+                'topic.module:id,title',
+                'topic.chapter:id,title',
+            ])
             ->orderBy('order')
             ->get();
+
+        // 🔥 Get topic info from first record (safe because same topic_id)
+        $topic = optional($contents->first())->topic;
 
         $data = $contents->map(function ($item) use ($lang) {
 
@@ -169,7 +183,6 @@ class SectionContentController extends Controller
                 'order' => $item->order,
                 'status' => (bool)$item->status,
 
-                // 👇 important for frontend handling
                 'media_shortcode' => $item->meta['shortcode'] ?? null,
             ];
         })->values();
@@ -178,6 +191,30 @@ class SectionContentController extends Controller
             'success' => true,
             'topic_id' => (int)$topicId,
             'count' => $data->count(),
+
+            // 🔥 FULL HIERARCHY
+            'topic' => $topic ? [
+                'id' => $topic->id,
+                'title' => $topic->title,
+
+                'program' => [
+                    'id' => $topic->program->id ?? null,
+                    'title' => $topic->program->title ?? null,
+                ],
+                'level' => [
+                    'id' => $topic->level->id ?? null,
+                    'title' => $topic->level->title ?? null,
+                ],
+                'module' => [
+                    'id' => $topic->module->id ?? null,
+                    'title' => $topic->module->title ?? null,
+                ],
+                'chapter' => [
+                    'id' => $topic->chapter->id ?? null,
+                    'title' => $topic->chapter->title ?? null,
+                ],
+            ] : null,
+
             'data' => $data
         ]);
     }
@@ -193,19 +230,15 @@ class SectionContentController extends Controller
 
         $request->validate([
             'sections' => 'required|array|min:1',
-            'sections.*.id' => [
-                'required',
-                'integer',
-                Rule::exists('topic_contents', 'id')->where(
-                    fn($q) => $q->where('topic_id', $topicId)
-                )
-            ],
+            'sections.*.id' => 'nullable|integer',
             'sections.*.type' => 'required|in:text,media,h5p,quiz',
             'sections.*.title' => 'nullable|string',
             'sections.*.content' => 'nullable|string',
             'sections.*.order' => 'required|integer',
             'sections.*.media_shortcode' => 'nullable|string',
             'sections.*.meta' => 'nullable|array',
+            'sections.*.is_deleted' => 'nullable|boolean',
+            'sections.*.is_new' => 'nullable|boolean',
         ]);
 
         // ❗ Prevent duplicate order
@@ -219,14 +252,19 @@ class SectionContentController extends Controller
         DB::beginTransaction();
 
         try {
-            $updated = [];
+            $result = [];
+
+            // 🔥 preload all contents (performance)
+            $ids = collect($request->sections)->pluck('id')->filter();
+            $contents = TopicContent::withTrashed()
+                ->where('topic_id', $topicId)
+                ->whereIn('id', $ids)
+                ->get()
+                ->keyBy('id');
 
             foreach ($request->sections as $section) {
 
-                $content = TopicContent::where('topic_id', $topicId)
-                    ->findOrFail($section['id']);
-
-                // Normalize media meta
+                // 🔹 Normalize media
                 if ($section['type'] === 'media') {
                     $section['meta'] = [
                         'shortcode' => $section['media_shortcode']
@@ -235,20 +273,90 @@ class SectionContentController extends Controller
                 }
 
                 $baseData = [
+                    'topic_id' => $topicId,
                     'type' => $section['type'],
                     'order' => $section['order'],
                     'meta' => $section['meta'] ?? null,
+                    'created_by' => auth()->id(),
                 ];
 
+                /*
+            |--------------------------------------------------------------------------
+            | 🆕 CREATE NEW
+            |--------------------------------------------------------------------------
+            */
+                if (empty($section['id']) || !empty($section['is_new'])) {
+
+                    if ($lang === 'en') {
+                        $baseData['title'] = $section['title'] ?? null;
+                        $baseData['content'] = $section['content'] ?? null;
+
+                        $content = TopicContent::create($baseData);
+                    } else {
+
+                        $content = TopicContent::create([
+                            ...$baseData,
+                            'title' => 'BASE_RECORD',
+                            'content' => null,
+                        ]);
+
+                        $content->translations()->create([
+                            'language_code' => $lang,
+                            'title' => $section['title'] ?? null,
+                            'content' => $section['content'] ?? null,
+                        ]);
+                    }
+
+                    $result[] = $content;
+                    continue;
+                }
+
+                /*
+            |--------------------------------------------------------------------------
+            | 🔍 EXISTING
+            |--------------------------------------------------------------------------
+            */
+                $content = $contents[$section['id']] ?? null;
+
+                if (!$content) {
+                    continue;
+                }
+
+                /*
+            |--------------------------------------------------------------------------
+            | ❌ DELETE
+            |--------------------------------------------------------------------------
+            */
+                if (!empty($section['is_deleted'])) {
+                    if (!$content->trashed()) {
+                        $content->delete();
+                    }
+                    continue;
+                }
+
+                /*
+            |--------------------------------------------------------------------------
+            | ♻️ RESTORE
+            |--------------------------------------------------------------------------
+            */
+                if ($content->trashed()) {
+                    $content->restore();
+                }
+
+                /*
+            |--------------------------------------------------------------------------
+            | ✏️ UPDATE
+            |--------------------------------------------------------------------------
+            */
                 if ($lang === 'en') {
 
-                    $baseData['title'] = $section['title'] ?? null;
-                    $baseData['content'] = $section['content'] ?? null;
-
-                    $content->update($baseData);
+                    $content->update([
+                        ...$baseData,
+                        'title' => $section['title'] ?? null,
+                        'content' => $section['content'] ?? null,
+                    ]);
                 } else {
 
-                    // update base (keep placeholder)
                     $content->update($baseData);
 
                     $translation = $content->translations()
@@ -269,15 +377,15 @@ class SectionContentController extends Controller
                     }
                 }
 
-                $updated[] = $content;
+                $result[] = $content;
             }
 
             DB::commit();
 
             return response()->json([
-                'message' => 'Bulk content updated successfully',
-                'count' => count($updated),
-                'data' => $updated
+                'message' => 'Bulk operation successful',
+                'count' => count($result),
+                'data' => $result
             ]);
         } catch (\Exception $e) {
             DB::rollBack();
@@ -656,4 +764,188 @@ class SectionContentController extends Controller
             'status' => $content->status
         ]);
     }
+
+
+    public function single(Request $request, $topic_id, $content_id)
+    {
+        AuditService::log('content_viewed', 'User viewed a content item', ['content_id' => $content_id]);
+
+        $userId = auth()->id();
+        $lang = $this->resolveLanguage($request);
+
+        /*
+        | 🔒 LOCK CHECK
+        */
+        $progress = UserProgress::where('user_id', $userId)
+            ->where('topic_id', $topic_id)
+            ->first();
+
+        if (!$progress || !$progress->is_unlocked) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Topic is locked'
+            ], 403);
+        }
+
+        /*
+        | 📦 LOAD TOPIC WITH FULL RELATION
+        */
+        $topic = \App\Models\Topic::with('chapter.module.level.program')
+            ->findOrFail($topic_id);
+
+        /*
+        | 📦 ALL CONTENTS
+        */
+        $contents = TopicContent::with('translations')
+            ->where('topic_id', $topic_id)
+            ->where('status', true)
+            ->orderBy('order')
+            ->get();
+
+        if ($contents->isEmpty()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No content found'
+            ], 404);
+        }
+
+        /*
+        | 📍 FIND CURRENT
+        */
+        $currentIndex = $contents->search(fn($c) => $c->id == $content_id);
+
+        if ($currentIndex === false) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Content not found in this topic'
+            ], 404);
+        }
+
+        $current = $contents[$currentIndex];
+
+        /*
+        | 🔁 NAVIGATION
+        */
+        $previous = $contents[$currentIndex - 1] ?? null;
+        $next = $contents[$currentIndex + 1] ?? null;
+
+        /*
+        | 🧠 USER READ STATUS
+        */
+        $userProgress = \App\Models\UserContentProgress::where('user_id', $userId)
+            ->where('topic_content_id', $current->id)
+            ->first();
+
+        $isRead = $userProgress?->is_read ?? false;
+        $readAt = $userProgress?->read_at ?? null;
+
+        /*
+        | 🌐 LANGUAGE TRANSFORM
+        */
+        if ($lang === 'en') {
+
+            if ($current->title === 'BASE_RECORD') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Content not available'
+                ], 404);
+            }
+
+            $data = [
+                'id' => $current->id,
+                'type' => $current->type,
+                'title' => $current->title,
+                'content' => $current->type === 'text' ? $current->content : null,
+                'meta' => $current->meta,
+                'order' => $current->order,
+                'is_read' => $isRead,
+                'read_at' => $readAt,
+            ];
+        } else {
+
+            $translation = $current->translations
+                ->where('language_code', $lang)
+                ->first();
+
+            if (!$translation) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Translation not available'
+                ], 404);
+            }
+
+            $data = [
+                'id' => $current->id,
+                'translation_id' => $translation->id,
+                'language_code' => $lang,
+                'type' => $current->type,
+                'title' => $translation->title,
+                'content' => $current->type === 'text' ? $translation->content : null,
+                'meta' => $current->meta,
+                'order' => $current->order,
+                'is_read' => $isRead,
+                'read_at' => $readAt,
+            ];
+        }
+
+        /*
+        | 🌐 TOPIC TRANSLATION
+        */
+        $topicTranslation = method_exists($topic, 'getTranslation')
+            ? $topic->getTranslation($lang)
+            : null;
+
+        $topicData = [
+            'id' => $topic->id,
+            'title' => $topicTranslation->title ?? $topic->title,
+            'description' => $topicTranslation->description ?? $topic->description,
+            'thumbnail' => $topic->thumbnail,
+            'estimated_duration' => $topic->estimated_duration,
+        ];
+
+        /*
+        | 🌐 CONTEXT (HIERARCHY)
+        */
+        $context = [
+            'chapter' => [
+                'id' => $topic->chapter->id ?? null,
+                'title' => $topic->chapter->title ?? null,
+            ],
+            'module' => [
+                'id' => $topic->chapter->module->id ?? null,
+                'title' => $topic->chapter->module->title ?? null,
+            ],
+            'level' => [
+                'id' => $topic->chapter->module->level->id ?? null,
+                'title' => $topic->chapter->module->level->title ?? null,
+            ],
+            'program' => [
+                'id' => $topic->chapter->module->level->program->id ?? null,
+                'title' => $topic->chapter->module->level->program->title ?? null,
+            ],
+        ];
+
+        /*
+        | 📤 RESPONSE
+        */
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'topic' => $topicData,
+
+                // ✅ ADDED CONTEXT HERE
+                'context' => $context,
+
+                'current' => $data,
+
+                'navigation' => [
+                    'previous_content_id' => $previous?->id,
+                    'next_content_id' => $next?->id,
+                    'has_previous' => $previous !== null,
+                    'has_next' => $next !== null,
+                ]
+            ]
+        ]);
+    }
+    
 }

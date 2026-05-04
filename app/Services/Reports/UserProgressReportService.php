@@ -26,7 +26,16 @@ class UserProgressReportService
         if ($userId) {
             $query->where('user_id', $userId);
         }
-
+        /*
+        |--------------------------------------------------
+        | ❌ SKIP INVALID HIERARCHY (NULL IDs)
+        |--------------------------------------------------
+        */
+        $query->whereNotNull('program_id')
+            ->whereNotNull('level_id')
+            ->whereNotNull('module_id')
+            ->whereNotNull('chapter_id')
+            ->whereNotNull('topic_id');
         /*
         |-----------------------------------------
         | FILTERS

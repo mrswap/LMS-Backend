@@ -29,7 +29,7 @@ use App\Modules\Admin\Reports\Controllers\AssessmentReportController;
 use App\Modules\Admin\Reports\Controllers\ContentStatusReportController;
 use App\Modules\Admin\Reports\Controllers\CertificationReportController;
 use App\Modules\Admin\Settings\Controllers\CertificateSettingController;
-
+use App\Modules\Admin\Dashboard\Controllers\DashboardController;
 
 
 
@@ -56,6 +56,8 @@ Route::prefix('v1')->group(function () {
 
         // 🔒 SUPERADMIN ONLY
         Route::middleware(['auth:sanctum', 'role:superadmin'])->group(function () {
+            Route::get('/dashboard', [DashboardController::class, 'index']);
+
             /*
             |--------------------------------------------------------------------------
             | LANGUAGES
@@ -194,6 +196,8 @@ Route::prefix('v1')->group(function () {
             Route::post('content-topics/{topic_id}/contents/bulk', [SectionContentController::class, 'bulkStore']);
             Route::patch('content-topics/{topic_id}/contents/update-bulk', [SectionContentController::class, 'bulkUpdate']);
             Route::get('content-topics/{topic_id}/contents/bulk-edit', [SectionContentController::class, 'bulkEdit']);
+            Route::get('content/single-preview/{topic_id}/{content_id}', [SectionContentController::class, 'single']);
+
 
             /*
             |--------------------------------------------------------------------------
