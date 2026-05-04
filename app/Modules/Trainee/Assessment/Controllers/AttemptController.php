@@ -728,5 +728,5 @@ class AttemptController extends Controller
                 'certificate_id' => $certificate->certificate_id ?? null,
             ]);
         });
-    }   
+    }
 }

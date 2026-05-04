@@ -22,18 +22,29 @@ class DashboardService
     */
         $current = UserProgress::where('user_id', $userId)
             ->where('is_unlocked', true)
+            ->where('is_completed', false) // 🔥 MOST IMPORTANT
             ->whereNotNull('topic_id')
             ->with(['topic.program', 'topic.level', 'topic.module', 'topic.chapter'])
-            ->latest('updated_at')
+            ->orderBy('id') // sequence wise
             ->first();
 
-        $lastCompleted = UserProgress::where('user_id', $userId)
-            ->where('is_completed', true)
-            ->whereNotNull('topic_id')
-            ->with('topic')
-            ->latest('completed_at')
-            ->first();
 
+        if (!$current) {
+            $current = UserProgress::where('user_id', $userId)
+                ->where('is_completed', true)
+                ->latest('completed_at')
+                ->with(['topic.program', 'topic.level', 'topic.module', 'topic.chapter'])
+                ->first();
+        }
+
+        $lastCompleted = AssessmentAttempt::where('user_id', $userId)
+            ->where('status', 'passed')
+            ->whereHas('assessment', function ($q) {
+                $q->where('type', 'topic');
+            })
+            ->with(['assessment.assessmentable']) // topic relation
+            ->latest('submitted_at')
+            ->first();
         /*
     |-----------------------------------------
     | 🔹 COMPLETED TOPICS (CONTENT BASED)
@@ -267,6 +278,69 @@ class DashboardService
                     : ($status === 'unlocked' ? 'continue' : 'start')
             ];
         });
+
+
+        /*
+|-----------------------------------------
+| 🔹 AVG SCORES
+|-----------------------------------------
+*/
+
+        // Topic Quiz Avg
+        $avgTopicScore = AssessmentAttempt::where('user_id', $userId)
+            ->where('status', 'passed')
+            ->whereHas('assessment', function ($q) {
+                $q->where('type', 'topic');
+            })
+            ->avg('percentage');
+
+        // Level Exam Avg
+        $avgExamScore = AssessmentAttempt::where('user_id', $userId)
+            ->where('status', 'passed')
+            ->whereHas('assessment', function ($q) {
+                $q->where('type', 'level');
+            })
+            ->avg('percentage');
+
+        // Overall Avg (optional but useful)
+        $overallAvgScore = AssessmentAttempt::where('user_id', $userId)
+            ->where('status', 'passed')
+            ->avg('percentage');
+
+
+        /*
+|-----------------------------------------
+| 🔹 CURRENT TOPIC PROGRESS (CONTENT BASED)
+|-----------------------------------------
+*/
+        $currentTopicProgress = null;
+
+        if ($current && $current->topic_id) {
+
+            $topicId = $current->topic_id;
+
+            // total content in topic
+            $totalContent = TopicContent::where('topic_id', $topicId)->count();
+
+            // read content
+            $readContent = UserContentProgress::where('user_id', $userId)
+                ->whereIn('topic_content_id', function ($q) use ($topicId) {
+                    $q->select('id')
+                        ->from('topic_contents')
+                        ->where('topic_id', $topicId);
+                })
+                ->where('is_read', 1)
+                ->count();
+
+            $currentTopicProgress = [
+                'topic_id' => $topicId,
+                'total_contents' => $totalContent,
+                'read_contents' => $readContent,
+                'progress_percent' => $totalContent > 0
+                    ? round(($readContent / $totalContent) * 100, 2)
+                    : 0
+            ];
+        }
         /*
     |-----------------------------------------
     | 🔹 FINAL RESPONSE
@@ -326,8 +400,13 @@ class DashboardService
                 'total_topics' => $totalLessons,
                 'completed_topics' => $completedLessons,
 
+                'avg_topic_score' => round($avgTopicScore ?? 0, 2),
+                'avg_exam_score' => round($avgExamScore ?? 0, 2),
+                'overall_avg_score' => round($overallAvgScore ?? 0, 2),
+
                 'modules_progress' => $moduleStats,
                 'chapters_progress' => $chapterStats,
+                'current_topic_progress' => $currentTopicProgress,
 
                 'certificates_earned' => Certification::where('user_id', $userId)->count()
             ],
