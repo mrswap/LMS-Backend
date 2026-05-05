@@ -773,20 +773,7 @@ class SectionContentController extends Controller
         $userId = auth()->id();
         $lang = $this->resolveLanguage($request);
 
-        /*
-        | 🔒 LOCK CHECK
-        */
-        $progress = UserProgress::where('user_id', $userId)
-            ->where('topic_id', $topic_id)
-            ->first();
-
-        if (!$progress || !$progress->is_unlocked) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Topic is locked'
-            ], 403);
-        }
-
+       
         /*
         | 📦 LOAD TOPIC WITH FULL RELATION
         */
