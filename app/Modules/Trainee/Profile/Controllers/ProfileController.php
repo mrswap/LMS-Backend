@@ -16,6 +16,8 @@ class ProfileController extends Controller
     {
 
         AuditService::log('profile_viewed', 'User viewed their profile');
+
+        $user = auth()->id();
         app(\App\Services\NotificationService::class)->send(
             $user,
             'AUTH',
