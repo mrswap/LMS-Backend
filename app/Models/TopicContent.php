@@ -4,6 +4,12 @@ namespace App\Models;
 
 class TopicContent extends BaseModel
 {
+    protected $hasPublishStatus = true;
+    const PUBLISH_DRAFT = 'draft';
+    const PUBLISH_PUBLISHED = 'published';
+    const PUBLISH_UNPUBLISHED = 'unpublished';
+
+
     protected $fillable = [
         'topic_id',
         'type',
@@ -12,12 +18,14 @@ class TopicContent extends BaseModel
         'meta',
         'order',
         'status',
+        'publish_status',
         'created_by'
     ];
 
     protected $casts = [
         'meta' => 'array',
         'status' => 'boolean',
+        'publish_status' => 'string',
     ];
 
     /*
@@ -80,5 +88,20 @@ class TopicContent extends BaseModel
     {
         // Nothing required
         // progress already exists
+    }
+
+    public function isPublished(): bool
+    {
+        return $this->publish_status === self::PUBLISH_PUBLISHED;
+    }
+
+    public function isDraft(): bool
+    {
+        return $this->publish_status === self::PUBLISH_DRAFT;
+    }
+
+    public function isUnpublished(): bool
+    {
+        return $this->publish_status === self::PUBLISH_UNPUBLISHED;
     }
 }

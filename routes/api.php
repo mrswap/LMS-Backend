@@ -30,6 +30,7 @@ use App\Modules\Admin\Reports\Controllers\ContentStatusReportController;
 use App\Modules\Admin\Reports\Controllers\CertificationReportController;
 use App\Modules\Admin\Settings\Controllers\CertificateSettingController;
 use App\Modules\Admin\Dashboard\Controllers\DashboardController;
+use App\Modules\Admin\CommonPublishStatusController;
 
 
 
@@ -57,6 +58,7 @@ Route::prefix('v1')->group(function () {
         // 🔒 SUPERADMIN ONLY
         Route::middleware(['auth:sanctum', 'role:superadmin'])->group(function () {
             Route::get('/dashboard', [DashboardController::class, 'index']);
+            Route::post('publish-status/update', [CommonPublishStatusController::class, 'update']);
 
             /*
             |--------------------------------------------------------------------------

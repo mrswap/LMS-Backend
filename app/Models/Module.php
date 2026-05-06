@@ -6,6 +6,11 @@ use Illuminate\Database\Eloquent\Builder;
 
 class Module extends BaseModel
 {
+    protected $hasPublishStatus = true;
+    const PUBLISH_DRAFT = 'draft';
+    const PUBLISH_PUBLISHED = 'published';
+    const PUBLISH_UNPUBLISHED = 'unpublished';
+
     protected $fillable = [
         'program_id',
         'level_id',
@@ -14,10 +19,12 @@ class Module extends BaseModel
         'thumbnail',
         'status',
         'created_by',
+        'publish_status',
     ];
 
     protected $casts = [
         'status' => 'boolean',
+        'publish_status' => 'string',
     ];
 
     /*
@@ -65,6 +72,14 @@ class Module extends BaseModel
     public function scopeActive(Builder $query)
     {
         return $query->where('status', true);
+    }
+    
+    public function scopePublished(Builder $query)
+    {
+        return $query->where(
+            'publish_status',
+            self::PUBLISH_PUBLISHED
+        );
     }
 
     /*
@@ -129,5 +144,21 @@ class Module extends BaseModel
                 ]);
             }
         });
+    }
+
+
+    public function isPublished(): bool
+    {
+        return $this->publish_status === self::PUBLISH_PUBLISHED;
+    }
+
+    public function isDraft(): bool
+    {
+        return $this->publish_status === self::PUBLISH_DRAFT;
+    }
+
+    public function isUnpublished(): bool
+    {
+        return $this->publish_status === self::PUBLISH_UNPUBLISHED;
     }
 }

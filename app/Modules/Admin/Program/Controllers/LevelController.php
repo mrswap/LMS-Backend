@@ -138,6 +138,8 @@ class LevelController extends Controller
                     'description' => $level->description,
                     'thumbnail' => $level->thumbnail,
                     'status' => (bool) $level->status,
+
+                    'publish_status' => $level->publish_status,
                     'program' => $level->program,
                     'creator' => $level->creator,
                     'created_at' => $level->created_at,
@@ -158,6 +160,7 @@ class LevelController extends Controller
                 'description' => $translation->description,
                 'thumbnail' => $level->thumbnail,
                 'status' => (bool) $level->status,
+                'publish_status' => $level->publish_status,
                 'program' => $level->program,
                 'creator' => $level->creator,
                 'created_at' => $level->created_at,
@@ -259,6 +262,8 @@ class LevelController extends Controller
                     'description' => $level->description,
                     'thumbnail' => $level->thumbnail,
                     'status' => (bool) $level->status,
+
+                    'publish_status' => $level->publish_status,
                     'program' => $level->program,
                     'creator' => $level->creator,
                 ]
@@ -286,6 +291,8 @@ class LevelController extends Controller
                 'description' => $translation->description,
                 'thumbnail' => $level->thumbnail,
                 'status' => (bool) $level->status,
+
+                'publish_status' => $level->publish_status,
                 'program' => $level->program,
                 'creator' => $level->creator,
             ]

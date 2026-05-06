@@ -13,23 +13,82 @@ class BaseModel extends Model
 
     /*
     |--------------------------------------------------------------------------
-    | Prevent accidental hard delete
+    | STATUS MUTATOR
     |--------------------------------------------------------------------------
     */
+
+    public function setStatusAttribute($value)
+    {
+        $status = (bool) $value;
+
+        $this->attributes['status'] = $status;
+
+        /*
+        |--------------------------------------------------------------------------
+        | AUTO SYNC publish_status
+        |--------------------------------------------------------------------------
+        */
+
+        $this->attributes['publish_status'] =
+
+            $status
+
+            ? 'published'
+
+            : 'unpublished';
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | PUBLISH STATUS MUTATOR
+    |--------------------------------------------------------------------------
+    */
+
+    public function setPublishStatusAttribute($value)
+    {
+        $this->attributes['publish_status'] = $value;
+
+        /*
+        |--------------------------------------------------------------------------
+        | AUTO SYNC status
+        |--------------------------------------------------------------------------
+        */
+
+        $this->attributes['status'] =
+
+            $value === 'published';
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | BOOTED
+    |--------------------------------------------------------------------------
+    */
+
     protected static function booted()
     {
+        /*
+        |--------------------------------------------------------------------------
+        | PREVENT ACCIDENTAL HARD DELETE
+        |--------------------------------------------------------------------------
+        */
+
         static::deleting(function ($model) {
 
-            // Allow force delete explicitly only
             if ($model->isForceDeleting()) {
                 return;
             }
 
-            // Hook for cascade (child classes override)
             if (method_exists($model, 'cascadeSoftDelete')) {
                 $model->cascadeSoftDelete();
             }
         });
+
+        /*
+        |--------------------------------------------------------------------------
+        | RESTORE
+        |--------------------------------------------------------------------------
+        */
 
         static::restoring(function ($model) {
 

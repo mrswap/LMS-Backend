@@ -6,16 +6,23 @@ use Illuminate\Database\Eloquent\Builder;
 
 class Program extends BaseModel
 {
+    protected $hasPublishStatus = true;
+    const PUBLISH_DRAFT = 'draft';
+    const PUBLISH_PUBLISHED = 'published';
+    const PUBLISH_UNPUBLISHED = 'unpublished';
+
     protected $fillable = [
         'title',
         'description',
         'thumbnail',
         'status',
         'created_by',
+        'publish_status',
     ];
 
     protected $casts = [
         'status' => 'boolean',
+        'publish_status' => 'string',
     ];
 
     /*
@@ -48,6 +55,15 @@ class Program extends BaseModel
     public function scopeActive(Builder $query)
     {
         return $query->where('status', true);
+    }
+
+
+    public function scopePublished(Builder $query)
+    {
+        return $query->where(
+            'publish_status',
+            self::PUBLISH_PUBLISHED
+        );
     }
 
     /*
@@ -105,5 +121,21 @@ class Program extends BaseModel
     public function cascadeRestore()
     {
         $this->levels()->withTrashed()->get()->each->restore();
+    }
+
+
+    public function isPublished(): bool
+    {
+        return $this->publish_status === self::PUBLISH_PUBLISHED;
+    }
+
+    public function isDraft(): bool
+    {
+        return $this->publish_status === self::PUBLISH_DRAFT;
+    }
+
+    public function isUnpublished(): bool
+    {
+        return $this->publish_status === self::PUBLISH_UNPUBLISHED;
     }
 }

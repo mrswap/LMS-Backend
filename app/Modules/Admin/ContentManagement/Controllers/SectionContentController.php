@@ -182,6 +182,8 @@ class SectionContentController extends Controller
                 'meta' => $item->meta,
                 'order' => $item->order,
                 'status' => (bool)$item->status,
+                'publish_status' => $item->publish_status,
+
 
                 'media_shortcode' => $item->meta['shortcode'] ?? null,
             ];
@@ -511,6 +513,8 @@ class SectionContentController extends Controller
                 'meta' => $item->meta,
                 'order' => $item->order,
                 'status' => (bool)$item->status,
+                'publish_status' => $item->publish_status,
+
                 'topic' => [
                     'id' => $item->topic->id ?? null,
                     'title' => $item->topic->title ?? null,
@@ -587,6 +591,8 @@ class SectionContentController extends Controller
                 'meta' => $item->meta,
                 'order' => $item->order,
                 'status' => (bool)$item->status,
+                'publish_status' => $item->publish_status,
+
                 'topic' => [
                     'id' => $item->topic->id ?? null,
                     'title' => $item->topic->title ?? null,
@@ -773,7 +779,7 @@ class SectionContentController extends Controller
         $userId = auth()->id();
         $lang = $this->resolveLanguage($request);
 
-       
+
         /*
         | 📦 LOAD TOPIC WITH FULL RELATION
         */
@@ -934,5 +940,4 @@ class SectionContentController extends Controller
             ]
         ]);
     }
-    
 }
