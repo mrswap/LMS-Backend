@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.avante.salestraining",
+      "sha256_cert_fingerprints": [
+        "60:52:EC:79:63:97:8A:0D:5C:F9:55:8E:DD:7D:BD:22:C1:F2:5C:E6:D8:31:31:F1:B2:97:27:A7:9F:8F:D3:14"
+      ]
+    }
+  }
+]
