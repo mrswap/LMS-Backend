@@ -128,6 +128,8 @@ class Chapter extends BaseModel
 
     protected static function booted()
     {
+            parent::booted();
+
         static::updated(function ($chapter) {
 
             if ($chapter->wasChanged('module_id')) {

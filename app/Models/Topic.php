@@ -2,120 +2,153 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Database\Eloquent\Builder;
 
-class BaseModel extends Model
+class Topic extends BaseModel
 {
-    use SoftDeletes;
+    protected $hasPublishStatus = true;
+    const PUBLISH_DRAFT = 'draft';
+    const PUBLISH_PUBLISHED = 'published';
+    const PUBLISH_UNPUBLISHED = 'unpublished';
 
-    protected $dates = ['deleted_at'];
+    protected $fillable = [
+        'program_id',
+        'level_id',
+        'module_id',
+        'chapter_id',
+        'title',
+        'description',
+        'thumbnail',
+        'estimated_duration',
+        'status',
+        'created_by',
+        'publish_status',
+    ];
+
+    protected $casts = [
+        'status' => 'boolean',
+        'estimated_duration' => 'integer',
+        'publish_status' => 'string',
+    ];
 
     /*
     |--------------------------------------------------------------------------
-    | ENABLE PUBLISH STATUS
+    | Relationships
     |--------------------------------------------------------------------------
     */
 
-    protected $hasPublishStatus = false;
-
-    /*
-    |--------------------------------------------------------------------------
-    | STATUS MUTATOR
-    |--------------------------------------------------------------------------
-    */
-
-    public function setStatusAttribute($value)
+    public function program()
     {
-        $status = (bool) $value;
+        return $this->belongsTo(Program::class)->withTrashed();
+    }
 
-        $this->attributes['status'] = $status;
+    public function level()
+    {
+        return $this->belongsTo(Level::class)->withTrashed();
+    }
 
-        /*
-        |--------------------------------------------------------------------------
-        | AUTO SYNC publish_status
-        |--------------------------------------------------------------------------
-        */
+    public function module()
+    {
+        return $this->belongsTo(Module::class)->withTrashed();
+    }
 
-        if ($this->hasPublishStatus) {
+    public function chapter()
+    {
+        return $this->belongsTo(Chapter::class)->withTrashed();
+    }
 
-            $this->attributes['publish_status'] =
+    public function creator()
+    {
+        return $this->belongsTo(User::class, 'created_by')->withTrashed();
+    }
 
-                $status
+    public function faqs()
+    {
+        return $this->morphMany(\App\Models\Faq::class, 'faqable');
+    }
 
-                ? 'published'
+    public function progress()
+    {
+        // explicit FK keeps it predictable
+        return $this->hasMany(UserProgress::class, 'topic_id');
+    }
 
-                : 'unpublished';
-        }
+    public function translations()
+    {
+        return $this->hasMany(TopicTranslation::class);
+    }
+
+    public function contents()
+    {
+        return $this->hasMany(TopicContent::class)->orderBy('order');
     }
 
     /*
     |--------------------------------------------------------------------------
-    | PUBLISH STATUS MUTATOR
+    | Scopes
     |--------------------------------------------------------------------------
     */
 
-    public function setPublishStatusAttribute($value)
+    public function scopeActive(Builder $query)
     {
-        /*
-        |--------------------------------------------------------------------------
-        | IGNORE IF MODEL DOESN'T SUPPORT IT
-        |--------------------------------------------------------------------------
-        */
+        return $query->where('status', true);
+    }
 
-        if (!$this->hasPublishStatus) {
-            return;
-        }
-
-        $this->attributes['publish_status'] = $value;
-
-        /*
-        |--------------------------------------------------------------------------
-        | AUTO SYNC status
-        |--------------------------------------------------------------------------
-        */
-
-        $this->attributes['status'] =
-
-            $value === 'published';
+    public function scopePublished(Builder $query)
+    {
+        return $query->where(
+            'publish_status',
+            self::PUBLISH_PUBLISHED
+        );
     }
 
     /*
     |--------------------------------------------------------------------------
-    | BOOTED
+    | Accessor
     |--------------------------------------------------------------------------
     */
 
-    protected static function booted()
+    public function getThumbnailAttribute($value)
     {
-        /*
-        |--------------------------------------------------------------------------
-        | PREVENT ACCIDENTAL HARD DELETE
-        |--------------------------------------------------------------------------
-        */
+        return $value ? url('public/' . ltrim($value, '/')) : null;
+    }
 
-        static::deleting(function ($model) {
+    /*
+    |--------------------------------------------------------------------------
+    | Cascade Soft Delete
+    |--------------------------------------------------------------------------
+    */
 
-            if ($model->isForceDeleting()) {
-                return;
-            }
+    public function cascadeSoftDelete()
+    {
+        // delete all contents under this topic
+        $this->contents()->get()->each->delete();
+    }
 
-            if (method_exists($model, 'cascadeSoftDelete')) {
-                $model->cascadeSoftDelete();
-            }
-        });
+    /*
+    |--------------------------------------------------------------------------
+    | Cascade Restore
+    |--------------------------------------------------------------------------
+    */
 
-        /*
-        |--------------------------------------------------------------------------
-        | RESTORE
-        |--------------------------------------------------------------------------
-        */
+    public function cascadeRestore()
+    {
+        // restore all contents (including previously soft-deleted)
+        $this->contents()->withTrashed()->get()->each->restore();
+    }
 
-        static::restoring(function ($model) {
+    public function isPublished(): bool
+    {
+        return $this->publish_status === self::PUBLISH_PUBLISHED;
+    }
 
-            if (method_exists($model, 'cascadeRestore')) {
-                $model->cascadeRestore();
-            }
-        });
+    public function isDraft(): bool
+    {
+        return $this->publish_status === self::PUBLISH_DRAFT;
+    }
+
+    public function isUnpublished(): bool
+    {
+        return $this->publish_status === self::PUBLISH_UNPUBLISHED;
     }
 }

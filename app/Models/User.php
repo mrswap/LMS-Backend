@@ -54,6 +54,8 @@ class User extends Authenticatable
 
     protected static function booted()
     {
+        parent::booted();
+
         static::deleting(function ($user) {
 
             // 🔥 Always load role (even if soft deleted)
@@ -143,5 +145,25 @@ class User extends Authenticatable
     public function getProfileImageAttribute($value)
     {
         return $value ? url('public/' . ltrim($value, '/')) : null;
+    }
+
+    public function progress()
+    {
+        return $this->hasMany(UserProgress::class);
+    }
+
+    public function contentProgress()
+    {
+        return $this->hasMany(UserContentProgress::class);
+    }
+
+    public function assessmentAttempts()
+    {
+        return $this->hasMany(AssessmentAttempt::class);
+    }
+
+    public function certifications()
+    {
+        return $this->hasMany(Certification::class);
     }
 }

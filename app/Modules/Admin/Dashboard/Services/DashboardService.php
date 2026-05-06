@@ -2,13 +2,17 @@
 
 namespace App\Modules\Admin\Dashboard\Services;
 
-use App\Models\User;
-use App\Models\Level;
-use App\Models\Topic;
-use App\Models\TopicContent;
 use App\Models\Assessment;
 use App\Models\AssessmentAttempt;
 use App\Models\Certification;
+use App\Models\Chapter;
+use App\Models\Level;
+use App\Models\Module;
+use App\Models\Program;
+use App\Models\Topic;
+use App\Models\TopicContent;
+use App\Models\User;
+use App\Models\UserContentProgress;
 use App\Models\UserProgress;
 use Illuminate\Support\Facades\DB;
 
@@ -17,189 +21,614 @@ class DashboardService
     public function getDashboard()
     {
         return [
-            'kpis' => $this->getKPIs(),
+
+            /*
+            |--------------------------------------------------------------------------
+            | 🔹 EXECUTIVE OVERVIEW
+            |--------------------------------------------------------------------------
+            */
+            'overview' => $this->getOverview(),
+
+            /*
+            |--------------------------------------------------------------------------
+            | 🔹 LEARNING FUNNEL
+            |--------------------------------------------------------------------------
+            */
             'learning_funnel' => $this->getLearningFunnel(),
-            'engagement' => $this->getEngagementStats(),
-            'assessment' => $this->getAssessmentInsights(),
-            'content' => $this->getContentInsights(),
-            'levels' => $this->getLevelAnalytics(),
+
+            /*
+            |--------------------------------------------------------------------------
+            | 🔹 ENGAGEMENT ANALYTICS
+            |--------------------------------------------------------------------------
+            */
+            'engagement' => $this->getEngagementAnalytics(),
+
+            /*
+            |--------------------------------------------------------------------------
+            | 🔹 CONTENT GOVERNANCE
+            |--------------------------------------------------------------------------
+            */
+            'publishing_pipeline' => $this->getPublishingPipeline(),
+
+            /*
+            |--------------------------------------------------------------------------
+            | 🔹 ASSESSMENT ANALYTICS
+            |--------------------------------------------------------------------------
+            */
+            'assessment_analytics' => $this->getAssessmentAnalytics(),
+
+            /*
+            |--------------------------------------------------------------------------
+            | 🔹 CERTIFICATION ANALYTICS
+            |--------------------------------------------------------------------------
+            */
+            'certification_analytics' => $this->getCertificationAnalytics(),
+
+            /*
+            |--------------------------------------------------------------------------
+            | 🔹 PROGRAM ANALYTICS
+            |--------------------------------------------------------------------------
+            */
+            'program_analytics' => $this->getProgramAnalytics(),
+
+            /*
+            |--------------------------------------------------------------------------
+            | 🔹 RISK INDICATORS
+            |--------------------------------------------------------------------------
+            */
+            'risk_indicators' => $this->getRiskIndicators(),
+
+            /*
+            |--------------------------------------------------------------------------
+            | 🔹 TOP PERFORMERS
+            |--------------------------------------------------------------------------
+            */
             'top_performers' => $this->getTopPerformers(),
-            'at_risk_users' => $this->getAtRiskUsers(),
         ];
     }
 
     /*
-    |-----------------------------------------
-    | 🔹 KPI BLOCK (Dashboard Cards)
-    |-----------------------------------------
+    |--------------------------------------------------------------------------
+    | 🔹 OVERVIEW
+    |--------------------------------------------------------------------------
     */
-    private function getKPIs()
+
+    private function getOverview()
     {
         return [
+
+            /*
+            |--------------------------------------------------------------------------
+            | USERS
+            |--------------------------------------------------------------------------
+            */
             'total_users' => User::count(),
+
             'active_users' => User::where('is_active', true)->count(),
 
-            'total_levels' => Level::count(),
-            'total_topics' => Topic::count(),
-            'total_lessons' => TopicContent::count(),
+            'inactive_users' => User::where('is_active', false)->count(),
 
+            /*
+            |--------------------------------------------------------------------------
+            | LMS STRUCTURE
+            |--------------------------------------------------------------------------
+            */
+            'total_programs' => Program::count(),
+
+            'total_levels' => Level::count(),
+
+            'total_modules' => Module::count(),
+
+            'total_chapters' => Chapter::count(),
+
+            'total_topics' => Topic::count(),
+
+            'total_contents' => TopicContent::count(),
+
+            /*
+            |--------------------------------------------------------------------------
+            | LEARNING ENGINE
+            |--------------------------------------------------------------------------
+            */
             'total_assessments' => Assessment::count(),
-            'certificates_issued' => Certification::count(),
+
+            'total_certificates' => Certification::count(),
         ];
     }
 
     /*
-    |-----------------------------------------
-    | 🔹 LEARNING FUNNEL (VERY IMPORTANT)
-    |-----------------------------------------
+    |--------------------------------------------------------------------------
+    | 🔹 LEARNING FUNNEL
+    |--------------------------------------------------------------------------
     */
+
     private function getLearningFunnel()
     {
         return [
-            'not_started' => User::whereDoesntHave('progress')->count(),
 
-            'started' => UserProgress::distinct('user_id')->count('user_id'),
-
-            'in_progress' => UserProgress::where('is_unlocked', true)
-                ->where('is_completed', false)
+            /*
+            |--------------------------------------------------------------------------
+            | Never started
+            |--------------------------------------------------------------------------
+            */
+            'not_started_users' => User::whereDoesntHave('progress')
                 ->count(),
 
-            'completed' => UserProgress::where('is_completed', true)->count(),
+            /*
+            |--------------------------------------------------------------------------
+            | Started learning
+            |--------------------------------------------------------------------------
+            */
+            'started_users' => UserProgress::distinct('user_id')
+                ->count('user_id'),
 
-            'certified' => Certification::distinct('user_id')->count('user_id'),
+            /*
+            |--------------------------------------------------------------------------
+            | Currently learning
+            |--------------------------------------------------------------------------
+            */
+            'in_progress_users' => UserProgress::where('is_unlocked', true)
+                ->where('is_completed', false)
+                ->distinct('user_id')
+                ->count('user_id'),
+
+            /*
+            |--------------------------------------------------------------------------
+            | Completed users
+            |--------------------------------------------------------------------------
+            */
+            'completed_users' => UserProgress::where('is_completed', true)
+                ->distinct('user_id')
+                ->count('user_id'),
+
+            /*
+            |--------------------------------------------------------------------------
+            | Certified users
+            |--------------------------------------------------------------------------
+            */
+            'certified_users' => Certification::distinct('user_id')
+                ->count('user_id'),
         ];
     }
 
     /*
-    |-----------------------------------------
-    | 🔹 ENGAGEMENT (LAST ACTIVITY)
-    |-----------------------------------------
+    |--------------------------------------------------------------------------
+    | 🔹 ENGAGEMENT ANALYTICS
+    |--------------------------------------------------------------------------
     */
-    private function getEngagementStats()
+
+    private function getEngagementAnalytics()
     {
         return [
-            'daily_active_users' => UserProgress::whereDate('updated_at', today())->count(),
 
-            'weekly_active_users' => UserProgress::where('updated_at', '>=', now()->subDays(7))->count(),
+            'daily_active_users' => UserProgress::whereDate('updated_at', today())
+                ->distinct('user_id')
+                ->count('user_id'),
 
-            'monthly_active_users' => UserProgress::where('updated_at', '>=', now()->subDays(30))->count(),
+            'weekly_active_users' => UserProgress::where(
+                'updated_at',
+                '>=',
+                now()->subDays(7)
+            )
+                ->distinct('user_id')
+                ->count('user_id'),
+
+            'monthly_active_users' => UserProgress::where(
+                'updated_at',
+                '>=',
+                now()->subDays(30)
+            )
+                ->distinct('user_id')
+                ->count('user_id'),
+
+            /*
+            |--------------------------------------------------------------------------
+            | Content Reads
+            |--------------------------------------------------------------------------
+            */
+            'content_reads_today' => UserContentProgress::whereDate(
+                'updated_at',
+                today()
+            )->count(),
+
+            'total_content_reads' => UserContentProgress::count(),
         ];
     }
 
     /*
-    |-----------------------------------------
-    | 🔹 ASSESSMENT INSIGHTS
-    |-----------------------------------------
+    |--------------------------------------------------------------------------
+    | 🔹 CONTENT GOVERNANCE
+    |--------------------------------------------------------------------------
     */
-    private function getAssessmentInsights()
+
+    private function getPublishingPipeline()
+    {
+        return [
+
+            'programs' => $this->getPublishStats(Program::class),
+
+            'levels' => $this->getPublishStats(Level::class),
+
+            'modules' => $this->getPublishStats(Module::class),
+
+            'chapters' => $this->getPublishStats(Chapter::class),
+
+            'topics' => $this->getPublishStats(Topic::class),
+
+            'contents' => $this->getPublishStats(TopicContent::class),
+        ];
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | 🔹 ASSESSMENT ANALYTICS
+    |--------------------------------------------------------------------------
+    */
+
+    private function getAssessmentAnalytics()
     {
         $totalAttempts = AssessmentAttempt::count();
-        $passed = AssessmentAttempt::where('status', 'passed')->count();
-        $failed = AssessmentAttempt::where('status', 'failed')->count();
+
+        $passedAttempts = AssessmentAttempt::where(
+            'status',
+            'passed'
+        )->count();
+
+        $failedAttempts = AssessmentAttempt::where(
+            'status',
+            'failed'
+        )->count();
 
         return [
+
             'total_attempts' => $totalAttempts,
 
-            'avg_score' => round(AssessmentAttempt::avg('percentage') ?? 0, 2),
+            'passed_attempts' => $passedAttempts,
+
+            'failed_attempts' => $failedAttempts,
 
             'pass_rate' => $totalAttempts > 0
-                ? round(($passed / $totalAttempts) * 100, 2)
+                ? round(($passedAttempts / $totalAttempts) * 100, 2)
                 : 0,
 
             'fail_rate' => $totalAttempts > 0
-                ? round(($failed / $totalAttempts) * 100, 2)
+                ? round(($failedAttempts / $totalAttempts) * 100, 2)
                 : 0,
 
+            'avg_score' => round(
+                AssessmentAttempt::avg('percentage') ?? 0,
+                2
+            ),
+
+            /*
+            |--------------------------------------------------------------------------
+            | Topic Quiz Avg
+            |--------------------------------------------------------------------------
+            */
+            'topic_quiz_avg' => round(
+                AssessmentAttempt::whereHas('assessment', function ($q) {
+                    $q->where('type', 'topic');
+                })->avg('percentage') ?? 0,
+                2
+            ),
+
+            /*
+            |--------------------------------------------------------------------------
+            | Level Exam Avg
+            |--------------------------------------------------------------------------
+            */
+            'level_exam_avg' => round(
+                AssessmentAttempt::whereHas('assessment', function ($q) {
+                    $q->where('type', 'level');
+                })->avg('percentage') ?? 0,
+                2
+            ),
+
+            /*
+            |--------------------------------------------------------------------------
+            | Most Failed Assessments
+            |--------------------------------------------------------------------------
+            */
             'most_failed_assessments' => Assessment::withCount([
                 'attempts as fail_count' => function ($q) {
                     $q->where('status', 'failed');
                 }
             ])
                 ->orderByDesc('fail_count')
-                ->limit(5)
-                ->get(['id', 'title']),
+                ->limit(10)
+                ->get([
+                    'id',
+                    'title',
+                    'type',
+                    'passing_score',
+                    'total_marks'
+                ]),
         ];
     }
 
     /*
-    |-----------------------------------------
-    | 🔹 CONTENT INSIGHTS
-    |-----------------------------------------
+    |--------------------------------------------------------------------------
+    | 🔹 CERTIFICATION ANALYTICS
+    |--------------------------------------------------------------------------
     */
-    private function getContentInsights()
+
+    private function getCertificationAnalytics()
     {
         return [
-            'published' => TopicContent::where('status', true)->count(),
-            'draft' => TopicContent::where('status', false)->count(),
 
-            'unused_topics' => Topic::whereDoesntHave('contents')->count(),
+            'total_certificates' => Certification::count(),
+
+            'certificates_issued_today' => Certification::whereDate(
+                'issued_at',
+                today()
+            )->count(),
+
+            'certificates_issued_this_month' => Certification::whereMonth(
+                'issued_at',
+                now()->month
+            )->count(),
         ];
     }
 
     /*
-    |-----------------------------------------
-    | 🔹 LEVEL ANALYTICS (REAL PROGRESSION)
-    |-----------------------------------------
+    |--------------------------------------------------------------------------
+    | 🔹 PROGRAM ANALYTICS
+    |--------------------------------------------------------------------------
     */
-    private function getLevelAnalytics()
+
+    private function getProgramAnalytics()
     {
-        return Level::with('modules.chapters.topics')->get()->map(function ($level) {
+        return Program::with([
+            'levels.modules.chapters.topics.contents'
+        ])->get()->map(function ($program) {
 
-            $topicIds = $level->modules
-                ->flatMap->chapters
-                ->flatMap->topics
-                ->pluck('id');
+            $levels = $program->levels;
 
-            $totalUsers = User::count();
+            $modules = $levels->flatMap->modules;
 
-            $completedUsers = UserProgress::whereIn('topic_id', $topicIds)
-                ->where('is_completed', true)
-                ->distinct('user_id')
-                ->count('user_id');
+            $chapters = $modules->flatMap->chapters;
+
+            $topics = $chapters->flatMap->topics;
+
+            $contents = $topics->flatMap->contents;
+
+            $topicIds = $topics->pluck('id');
 
             return [
-                'id' => $level->id,
-                'title' => $level->title,
 
-                'total_topics' => $topicIds->count(),
+                'id' => $program->id,
 
-                'completed_users' => $completedUsers,
+                'title' => $program->title,
 
-                'completion_percent' => $totalUsers > 0
-                    ? round(($completedUsers / $totalUsers) * 100, 2)
-                    : 0,
+                /*
+                |--------------------------------------------------------------------------
+                | STRUCTURE
+                |--------------------------------------------------------------------------
+                */
+                'structure' => [
+
+                    'levels' => $levels->count(),
+
+                    'modules' => $modules->count(),
+
+                    'chapters' => $chapters->count(),
+
+                    'topics' => $topics->count(),
+
+                    'contents' => $contents->count(),
+                ],
+
+                /*
+                |--------------------------------------------------------------------------
+                | PUBLISHING
+                |--------------------------------------------------------------------------
+                */
+                'publishing' => [
+
+                    'published_topics' => $topics
+                        ->where('publish_status', 'published')
+                        ->count(),
+
+                    'draft_topics' => $topics
+                        ->where('publish_status', 'draft')
+                        ->count(),
+
+                    'unpublished_topics' => $topics
+                        ->where('publish_status', 'unpublished')
+                        ->count(),
+
+                    'published_contents' => $contents
+                        ->where('publish_status', 'published')
+                        ->count(),
+
+                    'draft_contents' => $contents
+                        ->where('publish_status', 'draft')
+                        ->count(),
+
+                    'unpublished_contents' => $contents
+                        ->where('publish_status', 'unpublished')
+                        ->count(),
+                ],
+
+                /*
+                |--------------------------------------------------------------------------
+                | LEARNING
+                |--------------------------------------------------------------------------
+                */
+                'learning' => [
+
+                    'active_learners' => UserProgress::where(
+                        'program_id',
+                        $program->id
+                    )
+                        ->distinct('user_id')
+                        ->count('user_id'),
+
+                    'completed_topics' => UserProgress::where(
+                        'program_id',
+                        $program->id
+                    )
+                        ->where('is_completed', true)
+                        ->count(),
+
+                    'completion_rate' => $topicIds->count() > 0
+                        ? round(
+                            (
+                                UserProgress::where(
+                                    'program_id',
+                                    $program->id
+                                )
+                                ->where('is_completed', true)
+                                ->count()
+                                / $topicIds->count()
+                            ) * 100,
+                            2
+                        )
+                        : 0,
+                ],
+
+                /*
+                |--------------------------------------------------------------------------
+                | ASSESSMENTS
+                |--------------------------------------------------------------------------
+                */
+                'assessment' => [
+
+                    'avg_score' => round(
+                        AssessmentAttempt::whereHas(
+                            'assessment',
+                            function ($q) use ($topicIds) {
+
+                                $q->where('type', 'topic')
+                                    ->whereIn(
+                                        'assessmentable_id',
+                                        $topicIds
+                                    );
+                            }
+                        )->avg('percentage') ?? 0,
+                        2
+                    ),
+
+                    'total_attempts' => AssessmentAttempt::whereHas(
+                        'assessment',
+                        function ($q) use ($topicIds) {
+
+                            $q->where('type', 'topic')
+                                ->whereIn(
+                                    'assessmentable_id',
+                                    $topicIds
+                                );
+                        }
+                    )->count(),
+                ],
             ];
         });
     }
 
     /*
-    |-----------------------------------------
-    | 🔹 TOP PERFORMERS
-    |-----------------------------------------
+    |--------------------------------------------------------------------------
+    | 🔹 RISK INDICATORS
+    |--------------------------------------------------------------------------
     */
+
+    private function getRiskIndicators()
+    {
+        return [
+
+            /*
+            |--------------------------------------------------------------------------
+            | Low Performing Users
+            |--------------------------------------------------------------------------
+            */
+            'low_performing_users' => AssessmentAttempt::select(
+                'user_id',
+                DB::raw('AVG(percentage) as avg_score')
+            )
+                ->groupBy('user_id')
+                ->havingRaw('AVG(percentage) < 40')
+                ->with('user:id,name,email')
+                ->limit(10)
+                ->get(),
+
+            /*
+            |--------------------------------------------------------------------------
+            | Inactive Users
+            |--------------------------------------------------------------------------
+            */
+            'inactive_users_7_days' => User::whereDoesntHave(
+                'progress',
+                function ($q) {
+                    $q->where(
+                        'updated_at',
+                        '>=',
+                        now()->subDays(7)
+                    );
+                }
+            )->count(),
+
+            /*
+            |--------------------------------------------------------------------------
+            | Draft Heavy Programs
+            |--------------------------------------------------------------------------
+            */
+            'programs_with_high_drafts' => Program::withCount([
+                'levels as draft_levels_count' => function ($q) {
+                    $q->where('publish_status', 'draft');
+                }
+            ])
+                ->orderByDesc('draft_levels_count')
+                ->limit(5)
+                ->get([
+                    'id',
+                    'title'
+                ]),
+        ];
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | 🔹 TOP PERFORMERS
+    |--------------------------------------------------------------------------
+    */
+
     private function getTopPerformers()
     {
-        return AssessmentAttempt::select('user_id', DB::raw('AVG(percentage) as avg_score'))
+        return AssessmentAttempt::select(
+            'user_id',
+            DB::raw('AVG(percentage) as avg_score')
+        )
             ->where('status', 'passed')
             ->groupBy('user_id')
             ->orderByDesc('avg_score')
-            ->limit(5)
+            ->limit(10)
             ->with('user:id,name,email')
             ->get();
     }
 
     /*
-    |-----------------------------------------
-    | 🔹 AT RISK USERS (VERY IMPORTANT)
-    |-----------------------------------------
+    |--------------------------------------------------------------------------
+    | 🔹 COMMON PUBLISH STATS
+    |--------------------------------------------------------------------------
     */
-    private function getAtRiskUsers()
+
+    private function getPublishStats($model)
     {
-        return AssessmentAttempt::select('user_id', DB::raw('AVG(percentage) as avg_score'))
-            ->groupBy('user_id')
-            ->havingRaw('AVG(percentage) < 40')
-            ->with('user:id,name,email')
-            ->limit(10)
-            ->get();
+        return [
+
+            'published' => $model::where(
+                'publish_status',
+                'published'
+            )->count(),
+
+            'draft' => $model::where(
+                'publish_status',
+                'draft'
+            )->count(),
+
+            'unpublished' => $model::where(
+                'publish_status',
+                'unpublished'
+            )->count(),
+        ];
     }
 }

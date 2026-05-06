@@ -66,6 +66,8 @@ class UserProgress extends BaseModel
 
     protected static function booted()
     {
+        parent::booted();
+
         static::saving(function ($progress) {
 
             // ❗ prevent duplicate entries

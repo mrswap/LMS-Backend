@@ -61,6 +61,8 @@ class Language extends BaseModel
 
     protected static function booted()
     {
+        parent::booted();
+
         static::deleting(function ($language) {
 
             // ❗ Block default language deletion

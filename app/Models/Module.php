@@ -73,7 +73,7 @@ class Module extends BaseModel
     {
         return $query->where('status', true);
     }
-    
+
     public function scopePublished(Builder $query)
     {
         return $query->where(
@@ -123,6 +123,8 @@ class Module extends BaseModel
 
     protected static function booted()
     {
+        parent::booted();
+
         static::updated(function ($module) {
 
             if ($module->wasChanged('level_id')) {

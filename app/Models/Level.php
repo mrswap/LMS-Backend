@@ -117,6 +117,8 @@ class Level extends BaseModel
 
     protected static function booted()
     {
+        parent::booted();
+
         static::updated(function ($level) {
 
             if ($level->wasChanged('program_id')) {

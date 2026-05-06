@@ -44,7 +44,7 @@ class ProgramController extends Controller
                     'description' => $program->description,
                     'thumbnail' => $program->thumbnail,
                     'status' => (bool) $program->status,
-                    'publish_status' => $program->publish_status,,
+                    'publish_status' => $program->publish_status,
                     'creator' => $program->creator,
                     'created_at' => $program->created_at,
                 ];
@@ -64,7 +64,7 @@ class ProgramController extends Controller
                 'description' => $translation->description,
                 'thumbnail' => $program->thumbnail,
                 'status' => (bool) $program->status,
-                'publish_status' => $program->publish_status,,
+                'publish_status' => $program->publish_status,
                 'creator' => $program->creator,
                 'created_at' => $program->created_at,
             ];
@@ -164,7 +164,7 @@ class ProgramController extends Controller
                     'description' => $program->description,
                     'thumbnail' => $program->thumbnail,
                     'status' => (bool) $program->status,
-                    'publish_status' => $program->publish_status,,
+                    'publish_status' => $program->publish_status,
                     'creator' => $program->creator,
                     'created_at' => $program->created_at,
                 ]
@@ -192,7 +192,7 @@ class ProgramController extends Controller
                 'description' => $translation->description,
                 'thumbnail' => $program->thumbnail,
                 'status' => (bool) $program->status,
-                'publish_status' => $program->publish_status,,
+                'publish_status' => $program->publish_status,
                 'creator' => $program->creator,
                 'created_at' => $program->created_at,
             ]

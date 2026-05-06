@@ -13,6 +13,8 @@ class Setting extends BaseModel
     */
     protected static function booted()
     {
+        parent::booted();
+
         static::saved(fn($setting) => cache()->forget("setting_{$setting->key}"));
         static::deleted(fn($setting) => cache()->forget("setting_{$setting->key}"));
         static::restored(fn($setting) => cache()->forget("setting_{$setting->key}"));

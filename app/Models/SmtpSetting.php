@@ -39,6 +39,8 @@ class SmtpSetting extends BaseModel
 
     protected static function booted()
     {
+        parent::booted();
+
         static::creating(function ($model) {
 
             // ❗ Ensure only one config exists

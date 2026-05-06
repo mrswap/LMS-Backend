@@ -40,6 +40,8 @@ class Role extends BaseModel
 
     protected static function booted()
     {
+        parent::booted();
+
         static::deleting(function ($role) {
 
             // ❗ Block system roles

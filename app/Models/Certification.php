@@ -83,6 +83,8 @@ class Certification extends BaseModel
 
     protected static function booted()
     {
+            parent::booted();
+
         static::updating(function ($cert) {
 
             // ❗ Prevent modification after issue
