@@ -106,6 +106,17 @@ class User extends Authenticatable
         return $this->belongsTo(User::class, 'created_by')->withTrashed();
     }
 
+    public function hasPermission($permission): bool
+    {
+        if ($this->isSuperAdmin()) {
+            return true;
+        }
+
+        return $this->role
+            && $this->role->permissions()
+            ->where('name', $permission)
+            ->exists();
+    }
     /*
     |--------------------------------------------------------------------------
     | Helper Methods

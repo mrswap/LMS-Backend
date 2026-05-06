@@ -21,6 +21,8 @@ class DatabaseSeeder extends Seeder
             SalesUserSeeder::class,
             FinalLMSSeeder::class,
             CertificateSettingSeeder::class,
+            PermissionSeeder::class,
+            RolePermissionSeeder::class,
 
         ]);
     }

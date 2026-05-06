@@ -13,6 +13,14 @@ class BaseModel extends Model
 
     /*
     |--------------------------------------------------------------------------
+    | ENABLE publish_status
+    |--------------------------------------------------------------------------
+    */
+
+    protected $hasPublishStatus = false;
+
+    /*
+    |--------------------------------------------------------------------------
     | STATUS MUTATOR
     |--------------------------------------------------------------------------
     */
@@ -29,13 +37,14 @@ class BaseModel extends Model
         |--------------------------------------------------------------------------
         */
 
-        $this->attributes['publish_status'] =
+        if ($this->hasPublishStatus) {
 
-            $status
+            $this->attributes['publish_status'] =
 
-            ? 'published'
-
-            : 'unpublished';
+                $status
+                ? 'published'
+                : 'unpublished';
+        }
     }
 
     /*
@@ -46,6 +55,16 @@ class BaseModel extends Model
 
     public function setPublishStatusAttribute($value)
     {
+        /*
+        |--------------------------------------------------------------------------
+        | SKIP IF NOT ENABLED
+        |--------------------------------------------------------------------------
+        */
+
+        if (!$this->hasPublishStatus) {
+            return;
+        }
+
         $this->attributes['publish_status'] = $value;
 
         /*
@@ -67,12 +86,6 @@ class BaseModel extends Model
 
     protected static function booted()
     {
-        /*
-        |--------------------------------------------------------------------------
-        | PREVENT ACCIDENTAL HARD DELETE
-        |--------------------------------------------------------------------------
-        */
-
         static::deleting(function ($model) {
 
             if ($model->isForceDeleting()) {
@@ -83,12 +96,6 @@ class BaseModel extends Model
                 $model->cascadeSoftDelete();
             }
         });
-
-        /*
-        |--------------------------------------------------------------------------
-        | RESTORE
-        |--------------------------------------------------------------------------
-        */
 
         static::restoring(function ($model) {
 

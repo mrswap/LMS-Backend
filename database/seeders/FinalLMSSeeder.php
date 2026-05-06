@@ -69,6 +69,7 @@ class FinalLMSSeeder extends Seeder
             'title' => 'Pace Maker',
             'description' => 'Training system',
             'status' => 1,
+            'publish_status' => 'published',
             'created_by' => $createdBy
         ]);
 
@@ -77,6 +78,7 @@ class FinalLMSSeeder extends Seeder
             'program_id' => $program->id,
             'title' => 'Level 1',
             'status' => 1,
+            'publish_status' => 'published',
             'created_by' => $createdBy
         ]);
 
@@ -96,6 +98,7 @@ class FinalLMSSeeder extends Seeder
                 'level_id' => $level->id,
                 'title' => "Module $m",
                 'status' => 1,
+                'publish_status' => 'published',
                 'created_by' => $createdBy
             ]);
 
@@ -108,6 +111,7 @@ class FinalLMSSeeder extends Seeder
                     'module_id' => $module->id,
                     'title' => "Chapter $c",
                     'status' => 1,
+                    'publish_status' => 'published',
                     'created_by' => $createdBy
                 ]);
 
@@ -122,6 +126,7 @@ class FinalLMSSeeder extends Seeder
                         'title' => "Topic $t",
                         'estimated_duration' => 10,
                         'status' => 1,
+                        'publish_status' => 'published',
                         'created_by' => $createdBy
                     ]);
 
@@ -133,6 +138,7 @@ class FinalLMSSeeder extends Seeder
                         'content' => "<p>Topic content</p>",
                         'order' => 1,
                         'status' => 1,
+                        'publish_status' => 'published',
                         'created_by' => $createdBy
                     ]);
 
@@ -143,6 +149,7 @@ class FinalLMSSeeder extends Seeder
                         'meta' => ['shortcode' => $media->shortcode],
                         'order' => 2,
                         'status' => 1,
+                        'publish_status' => 'published',
                         'created_by' => $createdBy
                     ]);
 

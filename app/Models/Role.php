@@ -32,6 +32,11 @@ class Role extends BaseModel
         return $this->hasMany(User::class)->withTrashed();
     }
 
+    public function permissions()
+    {
+        return $this->belongsToMany(Permission::class);
+    }
+
     /*
     |--------------------------------------------------------------------------
     | Boot Logic (Soft Delete Safe)
