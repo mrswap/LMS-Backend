@@ -30,13 +30,6 @@ class AuthController extends Controller
             ], 403);
         }
 
-        // Restrict only admin/superadmin login here
-        if (!$user->isSuperAdmin() && !$user->isStaff()) {
-            return response()->json([
-                'message' => 'Unauthorized access'
-            ], 403);
-        }
-
         $token = $user->createToken('admin_token')->plainTextToken;
 
         return response()->json([
