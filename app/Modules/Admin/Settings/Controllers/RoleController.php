@@ -4,40 +4,214 @@ namespace App\Modules\Admin\Settings\Controllers;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use App\Models\Role;
-
 
 class RoleController extends Controller
 {
-    public function index()
+    /*
+    |--------------------------------------------------------------------------
+    | LIST
+    |--------------------------------------------------------------------------
+    */
+
+    public function index(Request $request)
     {
-        return response()->json(Role::latest()->get());
+        $query = Role::query()
+            ->withCount('permissions')
+            ->latest();
+
+        /*
+        |--------------------------------------------------------------------------
+        | Search
+        |--------------------------------------------------------------------------
+        */
+
+        if ($request->filled('search')) {
+
+            $search = $request->search;
+
+            $query->where(function ($q) use ($search) {
+
+                $q->where('name', 'LIKE', "%{$search}%")
+                    ->orWhere('label', 'LIKE', "%{$search}%");
+            });
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | Status Filter
+        |--------------------------------------------------------------------------
+        */
+
+        if ($request->filled('status')) {
+
+            $query->where('is_active', $request->status);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Roles fetched successfully',
+            'data' => $query->get()
+        ]);
     }
+
+    /*
+    |--------------------------------------------------------------------------
+    | STORE
+    |--------------------------------------------------------------------------
+    */
 
     public function store(Request $request)
     {
-        $role = Role::create($request->only('name', 'label'));
+        $validated = $request->validate([
+            'name' => [
+                'required',
+                'string',
+                'max:100',
+                'unique:roles,name'
+            ],
+            'label' => [
+                'required',
+                'string',
+                'max:100'
+            ],
+            'permissions' => [
+                'nullable',
+                'array'
+            ],
+            'permissions.*' => [
+                'exists:permissions,id'
+            ]
+        ]);
 
-        return response()->json($role, 201);
+        $role = Role::create([
+            'name' => strtolower($validated['name']),
+            'label' => $validated['label'],
+        ]);
+
+        /*
+        |--------------------------------------------------------------------------
+        | Sync Permissions
+        |--------------------------------------------------------------------------
+        */
+
+        $role->permissions()->sync(
+            $validated['permissions'] ?? []
+        );
+
+        $role->load('permissions');
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Role created successfully',
+            'data' => $role
+        ], 201);
     }
+
+    /*
+    |--------------------------------------------------------------------------
+    | SHOW
+    |--------------------------------------------------------------------------
+    */
 
     public function show($id)
     {
-        return response()->json(Role::findOrFail($id));
+        $role = Role::with('permissions')
+            ->findOrFail($id);
+
+        return response()->json([
+            'success' => true,
+            'data' => $role
+        ]);
     }
+
+    /*
+    |--------------------------------------------------------------------------
+    | UPDATE
+    |--------------------------------------------------------------------------
+    */
 
     public function update(Request $request, $id)
     {
         $role = Role::findOrFail($id);
 
+        /*
+        |--------------------------------------------------------------------------
+        | Block System Role Update
+        |--------------------------------------------------------------------------
+        */
+
         if ($role->is_system) {
-            return response()->json(['message' => 'System role cannot be modified'], 422);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'System role cannot be modified'
+            ], 422);
         }
 
-        $role->update($request->only('name', 'label'));
+        /*
+        |--------------------------------------------------------------------------
+        | Validation
+        |--------------------------------------------------------------------------
+        */
 
-        return response()->json($role);
+        $validated = $request->validate([
+            'name' => [
+                'required',
+                'string',
+                'max:100',
+                Rule::unique('roles', 'name')->ignore($role->id)
+            ],
+            'label' => [
+                'required',
+                'string',
+                'max:100'
+            ],
+            'permissions' => [
+                'nullable',
+                'array'
+            ],
+            'permissions.*' => [
+                'exists:permissions,id'
+            ]
+        ]);
+
+        /*
+        |--------------------------------------------------------------------------
+        | Update Role
+        |--------------------------------------------------------------------------
+        */
+
+        $role->update([
+            'name' => strtolower($validated['name']),
+            'label' => $validated['label'],
+        ]);
+
+        /*
+        |--------------------------------------------------------------------------
+        | Sync Permissions
+        |--------------------------------------------------------------------------
+        */
+
+        $role->permissions()->sync(
+            $validated['permissions'] ?? []
+        );
+
+        $role->load('permissions');
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Role updated successfully',
+            'data' => $role
+        ]);
     }
+
+    /*
+    |--------------------------------------------------------------------------
+    | DELETE
+    |--------------------------------------------------------------------------
+    */
 
     public function destroy($id)
     {
@@ -45,20 +219,44 @@ class RoleController extends Controller
 
         $role->delete();
 
-        return response()->json(['message' => 'Deleted']);
+        return response()->json([
+            'success' => true,
+            'message' => 'Role deleted successfully'
+        ]);
     }
+
+    /*
+    |--------------------------------------------------------------------------
+    | TOGGLE STATUS
+    |--------------------------------------------------------------------------
+    */
 
     public function toggleStatus($id)
     {
         $role = Role::findOrFail($id);
 
+        /*
+        |--------------------------------------------------------------------------
+        | Block System Role Disable
+        |--------------------------------------------------------------------------
+        */
+
         if ($role->is_system) {
-            return response()->json(['message' => 'System role cannot be disabled'], 422);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'System role cannot be disabled'
+            ], 422);
         }
 
         $role->is_active = !$role->is_active;
+
         $role->save();
 
-        return response()->json(['message' => 'Status updated']);
+        return response()->json([
+            'success' => true,
+            'message' => 'Status updated',
+            'status' => $role->is_active
+        ]);
     }
 }
