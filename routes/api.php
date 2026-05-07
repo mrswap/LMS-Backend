@@ -344,23 +344,11 @@ Route::prefix('v1/admin')->group(function () {
         |--------------------------------------------------------------------------
         */
 
-        Route::post('content-topics/{topic_id}/contents', [SectionContentController::class, 'store'])->middleware('permission:content.create');
-
-        Route::get('content-topics/{topic_id}/contents', [SectionContentController::class, 'index'])->middleware('permission:content.view');
-
-        Route::get('content-topics/{topic_id}/full', [SectionContentController::class, 'full'])->middleware('permission:content.view');
-
-        Route::get('contents', [SectionContentController::class, 'index'])->middleware('permission:content.view');
-
-        Route::post('content-topics/{topic_id}/contents/reorder', [SectionContentController::class, 'reorder'])->middleware('permission:content.reorder');
-
-        Route::post('content-topics/{topic_id}/contents/{id}/toggle-status', [SectionContentController::class, 'toggleStatus'])->middleware('permission:content.status');
-
-        Route::get('content-topics/{topic_id}/contents/{id}', [SectionContentController::class, 'show'])->middleware('permission:content.view');
-
-        Route::post('content-topics/{topic_id}/contents/{id}', [SectionContentController::class, 'update'])->middleware('permission:content.edit');
-
-        Route::delete('content-topics/{topic_id}/contents/{id}', [SectionContentController::class, 'destroy'])->middleware('permission:content.delete');
+        /*
+|--------------------------------------------------------------------------
+| CONTENT MANAGEMENT
+|--------------------------------------------------------------------------
+*/
 
         Route::post('content-topics/{topic_id}/contents/bulk', [SectionContentController::class, 'bulkStore'])->middleware('permission:content.bulk-create');
 
@@ -368,8 +356,25 @@ Route::prefix('v1/admin')->group(function () {
 
         Route::get('content-topics/{topic_id}/contents/bulk-edit', [SectionContentController::class, 'bulkEdit'])->middleware('permission:content.bulk-edit');
 
-        Route::get('content/single-preview/{topic_id}/{content_id}', [SectionContentController::class, 'single'])->middleware('permission:content.preview');
+        Route::post('content-topics/{topic_id}/contents/reorder', [SectionContentController::class, 'reorder'])->middleware('permission:content.reorder');
 
+        Route::post('content-topics/{topic_id}/contents/{id}/toggle-status', [SectionContentController::class, 'toggleStatus'])->whereNumber('id')->middleware('permission:content.status');
+
+        Route::get('content-topics/{topic_id}/full', [SectionContentController::class, 'full'])->middleware('permission:content.view');
+
+        Route::get('content/single-preview/{topic_id}/{content_id}', [SectionContentController::class, 'single'])->whereNumber('topic_id')->whereNumber('content_id')->middleware('permission:content.preview');
+
+        Route::get('contents', [SectionContentController::class, 'index'])->middleware('permission:content.view');
+
+        Route::get('content-topics/{topic_id}/contents', [SectionContentController::class, 'index'])->middleware('permission:content.view');
+
+        Route::post('content-topics/{topic_id}/contents', [SectionContentController::class, 'store'])->middleware('permission:content.create');
+
+        Route::get('content-topics/{topic_id}/contents/{id}', [SectionContentController::class, 'show'])->whereNumber('id')->middleware('permission:content.view');
+
+        Route::post('content-topics/{topic_id}/contents/{id}', [SectionContentController::class, 'update'])->whereNumber('id')->middleware('permission:content.edit');
+
+        Route::delete('content-topics/{topic_id}/contents/{id}', [SectionContentController::class, 'destroy'])->whereNumber('id')->middleware('permission:content.delete');
         /*
         |--------------------------------------------------------------------------
         | ASSESSMENTS

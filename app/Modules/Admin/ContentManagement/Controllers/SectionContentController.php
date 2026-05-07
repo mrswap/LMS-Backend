@@ -463,6 +463,22 @@ class SectionContentController extends Controller
             $query->where('status', true);
         }
 
+        /*
+        |-----------------------------
+        | PUBLISH STATUS
+        |-----------------------------
+        */
+        if ($request->has('publish_status')) {
+
+            if ($request->publish_status !== 'all') {
+
+                $query->where(
+                    'publish_status',
+                    $request->publish_status
+                );
+            }
+        }
+
         if ($request->filled('search')) {
             $search = $request->search;
 
@@ -547,6 +563,9 @@ class SectionContentController extends Controller
             'data' => $contents
         ]);
     }
+
+
+
     /*
     |--------------------------------------------------------------------------
     | SHOW

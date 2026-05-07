@@ -110,6 +110,22 @@ class ChapterController extends Controller
 
         /*
         |-----------------------------
+        | PUBLISH STATUS
+        |-----------------------------
+        */
+        if ($request->has('publish_status')) {
+
+            if ($request->publish_status !== 'all') {
+
+                $query->where(
+                    'publish_status',
+                    $request->publish_status
+                );
+            }
+        }
+
+        /*
+        |-----------------------------
         | STATUS
         |-----------------------------
         */
@@ -163,6 +179,7 @@ class ChapterController extends Controller
                     'description' => $chapter->description,
                     'thumbnail' => $chapter->thumbnail,
                     'status' => (bool) $chapter->status,
+                    'publish_status' => $chapter->publish_status,
                     'program' => $chapter->program,
                     'level' => $chapter->level,
                     'module' => $chapter->module,
@@ -185,6 +202,7 @@ class ChapterController extends Controller
                 'description' => $translation->description,
                 'thumbnail' => $chapter->thumbnail,
                 'status' => (bool) $chapter->status,
+                'publish_status' => $chapter->publish_status,
                 'program' => $chapter->program,
                 'level' => $chapter->level,
                 'module' => $chapter->module,
@@ -202,6 +220,8 @@ class ChapterController extends Controller
             'data' => $chapters
         ]);
     }
+
+
     /*
     |--------------------------------------------------------------------------
     | STORE
@@ -316,6 +336,7 @@ class ChapterController extends Controller
                     'description' => $chapter->description,
                     'thumbnail' => $chapter->thumbnail,
                     'status' => (bool) $chapter->status,
+                    'publish_status' => $chapter->publish_status,
                     'program' => $chapter->program,
                     'level' => $chapter->level,
                     'module' => $chapter->module,
@@ -343,6 +364,7 @@ class ChapterController extends Controller
                 'description' => $translation->description,
                 'thumbnail' => $chapter->thumbnail,
                 'status' => (bool) $chapter->status,
+                'publish_status' => $chapter->publish_status,
                 'program' => $chapter->program,
                 'level' => $chapter->level,
                 'module' => $chapter->module,

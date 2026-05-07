@@ -102,6 +102,22 @@ class ModuleController extends Controller
 
         /*
         |-----------------------------
+        | PUBLISH STATUS
+        |-----------------------------
+        */
+        if ($request->has('publish_status')) {
+
+            if ($request->publish_status !== 'all') {
+
+                $query->where(
+                    'publish_status',
+                    $request->publish_status
+                );
+            }
+        }
+
+        /*
+        |-----------------------------
         | STATUS
         |-----------------------------
         */
