@@ -241,7 +241,7 @@ class TopicController extends Controller
             'chapter_id' => 'required|integer',
             'title' => 'required|string|max:255',
             'description' => 'nullable|string',
-            'estimated_duration' => 'nullable|integer|min:1',
+            'estimated_duration' => 'nullable|integer|min:0',
             'thumbnail' => 'nullable|image|mimes:jpg,jpeg,png|max:2048',
         ]);
 
@@ -367,7 +367,7 @@ class TopicController extends Controller
             'chapter_id' => 'required|integer',
             'title' => 'required|string|max:255',
             'description' => 'nullable|string',
-            'estimated_duration' => 'nullable|integer|min:1',
+            'estimated_duration' => 'nullable|integer|min:0',
             'thumbnail' => 'nullable|image|mimes:jpg,jpeg,png|max:2048',
             'status' => 'nullable|boolean',
         ]);

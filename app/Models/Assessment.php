@@ -68,13 +68,23 @@ class Assessment extends BaseModel
     |--------------------------------------------------------------------------
     */
 
+    /*
+    |--------------------------------------------------------------------------
+    | Cascade Soft Delete
+    |--------------------------------------------------------------------------
+    */
+
     public function cascadeSoftDelete()
     {
-        // delete questions (structure)
-        $this->questions()->get()->each->delete();
+        // delete question structure
+        $this->questions()
+            ->cursor()
+            ->each(function ($question) {
+                $question->delete();
+            });
 
         // ❗ DO NOT delete attempts
-        // attempts = audit records
+        // attempts = audit history
     }
 
     /*
@@ -85,6 +95,11 @@ class Assessment extends BaseModel
 
     public function cascadeRestore()
     {
-        $this->questions()->withTrashed()->get()->each->restore();
+        $this->questions()
+            ->withTrashed()
+            ->cursor()
+            ->each(function ($question) {
+                $question->restore();
+            });
     }
 }

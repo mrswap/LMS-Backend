@@ -90,6 +90,7 @@ class PermissionMiddleware
         $hasPermission = $user->role
             ->permissions()
             ->where('name', $permission)
+            ->where('status', true)
             ->exists();
 
         if (!$hasPermission) {

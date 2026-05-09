@@ -99,31 +99,44 @@ class Module extends BaseModel
     |--------------------------------------------------------------------------
     */
 
+    /*
+|--------------------------------------------------------------------------
+| Cascade Soft Delete
+|--------------------------------------------------------------------------
+*/
+
     public function cascadeSoftDelete()
     {
-        $this->chapters()->get()->each->delete();
+        $this->chapters()->cursor()->each(function ($chapter) {
+            $chapter->delete();
+        });
     }
 
     /*
-    |--------------------------------------------------------------------------
-    | Cascade Restore
-    |--------------------------------------------------------------------------
-    */
+|--------------------------------------------------------------------------
+| Cascade Restore
+|--------------------------------------------------------------------------
+*/
 
     public function cascadeRestore()
     {
-        $this->chapters()->withTrashed()->get()->each->restore();
+        $this->chapters()
+            ->withTrashed()
+            ->cursor()
+            ->each(function ($chapter) {
+                $chapter->restore();
+            });
     }
 
     /*
-    |--------------------------------------------------------------------------
-    | Booted (Hierarchy Sync)
-    |--------------------------------------------------------------------------
-    */
+|--------------------------------------------------------------------------
+| Boot (Hierarchy Sync)
+|--------------------------------------------------------------------------
+*/
 
-    protected static function booted()
+    protected static function boot()
     {
-        parent::booted();
+        parent::boot();
 
         static::updated(function ($module) {
 
@@ -147,8 +160,6 @@ class Module extends BaseModel
             }
         });
     }
-
-
     public function isPublished(): bool
     {
         return $this->publish_status === self::PUBLISH_PUBLISHED;

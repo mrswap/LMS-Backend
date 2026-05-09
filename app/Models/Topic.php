@@ -121,8 +121,19 @@ class Topic extends BaseModel
 
     public function cascadeSoftDelete()
     {
-        // delete all contents under this topic
-        $this->contents()->get()->each->delete();
+        // topic contents
+        $this->contents()
+            ->cursor()
+            ->each(function ($content) {
+                $content->delete();
+            });
+
+        // quiz assessments
+        $this->assessments()
+            ->cursor()
+            ->each(function ($assessment) {
+                $assessment->delete();
+            });
     }
 
     /*
@@ -133,10 +144,22 @@ class Topic extends BaseModel
 
     public function cascadeRestore()
     {
-        // restore all contents (including previously soft-deleted)
-        $this->contents()->withTrashed()->get()->each->restore();
-    }
+        // contents
+        $this->contents()
+            ->withTrashed()
+            ->cursor()
+            ->each(function ($content) {
+                $content->restore();
+            });
 
+        // assessments
+        $this->assessments()
+            ->withTrashed()
+            ->cursor()
+            ->each(function ($assessment) {
+                $assessment->restore();
+            });
+    }
     public function isPublished(): bool
     {
         return $this->publish_status === self::PUBLISH_PUBLISHED;

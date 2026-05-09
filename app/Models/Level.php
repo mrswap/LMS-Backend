@@ -95,7 +95,9 @@ class Level extends BaseModel
 
     public function cascadeSoftDelete()
     {
-        $this->modules()->get()->each->delete();
+        $this->modules()->cursor()->each(function ($module) {
+            $module->delete();
+        });
     }
 
     /*
@@ -106,7 +108,12 @@ class Level extends BaseModel
 
     public function cascadeRestore()
     {
-        $this->modules()->withTrashed()->get()->each->restore();
+        $this->modules()
+            ->withTrashed()
+            ->cursor()
+            ->each(function ($module) {
+                $module->restore();
+            });
     }
 
     /*
@@ -115,9 +122,9 @@ class Level extends BaseModel
     |--------------------------------------------------------------------------
     */
 
-    protected static function booted()
+    protected static function boot()
     {
-        parent::booted();
+        parent::boot();
 
         static::updated(function ($level) {
 
@@ -142,7 +149,6 @@ class Level extends BaseModel
             }
         });
     }
-
     public function isPublished(): bool
     {
         return $this->publish_status === self::PUBLISH_PUBLISHED;

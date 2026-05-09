@@ -79,7 +79,7 @@ class Chapter extends BaseModel
     {
         return $query->where('status', true);
     }
-    
+
     public function scopePublished(Builder $query)
     {
         return $query->where(
@@ -106,7 +106,9 @@ class Chapter extends BaseModel
 
     public function cascadeSoftDelete()
     {
-        $this->topics()->get()->each->delete();
+        $this->topics()->cursor()->each(function ($topic) {
+            $topic->delete();
+        });
     }
 
     /*
@@ -117,18 +119,23 @@ class Chapter extends BaseModel
 
     public function cascadeRestore()
     {
-        $this->topics()->withTrashed()->get()->each->restore();
+        $this->topics()
+            ->withTrashed()
+            ->cursor()
+            ->each(function ($topic) {
+                $topic->restore();
+            });
     }
 
     /*
     |--------------------------------------------------------------------------
-    | Booted (Hierarchy Sync)
+    | Boot (Hierarchy Sync)
     |--------------------------------------------------------------------------
     */
 
-    protected static function booted()
+    protected static function boot()
     {
-            parent::booted();
+        parent::boot();
 
         static::updated(function ($chapter) {
 
@@ -147,6 +154,7 @@ class Chapter extends BaseModel
             }
         });
     }
+
 
     public function isPublished(): bool
     {

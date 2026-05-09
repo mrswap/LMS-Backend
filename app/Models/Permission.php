@@ -8,8 +8,12 @@ class Permission extends BaseModel
         'module',
         'name',
         'label',
+        'status',
     ];
 
+    protected $casts = [
+        'status' => 'boolean',
+    ];
     /*
     |--------------------------------------------------------------------------
     | RELATIONSHIPS

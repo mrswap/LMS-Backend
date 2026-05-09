@@ -33,6 +33,8 @@ class User extends Authenticatable
         'remember_token',
     ];
 
+    protected $appends = ['status'];
+
     protected function casts(): array
     {
         return [
@@ -146,6 +148,11 @@ class User extends Authenticatable
     public function notifications()
     {
         return $this->hasMany(Notification::class);
+    }
+
+    public function getStatusAttribute()
+    {
+        return $this->is_active;
     }
     /*
     |--------------------------------------------------------------------------

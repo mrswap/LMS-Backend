@@ -46,9 +46,19 @@ class AssessmentQuestion extends BaseModel
     |--------------------------------------------------------------------------
     */
 
+    /*
+    |--------------------------------------------------------------------------
+    | Cascade Soft Delete
+    |--------------------------------------------------------------------------
+    */
+
     public function cascadeSoftDelete()
     {
-        $this->options()->get()->each->delete();
+        $this->options()
+            ->cursor()
+            ->each(function ($option) {
+                $option->delete();
+            });
     }
 
     /*
@@ -59,6 +69,11 @@ class AssessmentQuestion extends BaseModel
 
     public function cascadeRestore()
     {
-        $this->options()->withTrashed()->get()->each->restore();
+        $this->options()
+            ->withTrashed()
+            ->cursor()
+            ->each(function ($option) {
+                $option->restore();
+            });
     }
 }

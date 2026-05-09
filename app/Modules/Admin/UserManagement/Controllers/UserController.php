@@ -17,7 +17,7 @@ class UserController extends Controller
 
     public function index(Request $request)
     {
-        
+
         $query = User::whereHas('role', function ($q) {
             $q->where('name', User::ROLE_SALES);
         })
@@ -47,8 +47,13 @@ class UserController extends Controller
         |-----------------------------
         */
         if ($request->has('status')) {
+
             if ($request->status !== 'all') {
-                $query->where('status', (bool) $request->status);
+
+                $query->where(
+                    'is_active',
+                    $request->status == 1 ? 1 : 0
+                );
             }
         }
 
@@ -184,113 +189,113 @@ class UserController extends Controller
     }
 
     public function profile(Request $request)
-{
-    $user = $request->user();
+    {
+        $user = $request->user();
 
-    $user->load([
-        'role.permissions',
-        'designation'
-    ]);
+        $user->load([
+            'role.permissions',
+            'designation'
+        ]);
 
-    /*
+        /*
     |--------------------------------------------------------------------------
     | Assigned Permission IDs
     |--------------------------------------------------------------------------
     */
 
-    $assignedPermissions = $user->role
-        ? $user->role->permissions->pluck('id')->toArray()
-        : [];
+        $assignedPermissions = $user->role
+            ? $user->role->permissions->pluck('id')->toArray()
+            : [];
 
-    /*
+        /*
     |--------------------------------------------------------------------------
     | Superadmin
     |--------------------------------------------------------------------------
     */
 
-    if ($user->role?->name === 'superadmin') {
+        if ($user->role?->name === 'superadmin') {
 
-        $assignedPermissions = \App\Models\Permission::pluck('id')
-            ->toArray();
-    }
+            $assignedPermissions = \App\Models\Permission::pluck('id')
+                ->toArray();
+        }
 
-    /*
+        /*
     |--------------------------------------------------------------------------
     | All Permissions
     |--------------------------------------------------------------------------
     */
 
-    $permissions = \App\Models\Permission::select(
-        'id',
-        'name'
-    )
-    ->get()
-    ->map(function ($permission) use ($assignedPermissions) {
+        $permissions = \App\Models\Permission::select(
+            'id',
+            'name'
+        )
+            ->get()
+            ->map(function ($permission) use ($assignedPermissions) {
 
-        return [
-            'id' => $permission->id,
-            'name' => $permission->name,
-            'assigned' => in_array(
-                $permission->id,
-                $assignedPermissions
-            )
-        ];
-    });
+                return [
+                    'id' => $permission->id,
+                    'name' => $permission->name,
+                    'assigned' => in_array(
+                        $permission->id,
+                        $assignedPermissions
+                    )
+                ];
+            });
 
-    return response()->json([
-        'success' => true,
-        'data' => [
+        return response()->json([
+            'success' => true,
+            'data' => [
 
-            'id' => $user->id,
-            'name' => $user->name,
-            'email' => $user->email,
-            'mobile' => $user->mobile,
-            'employee_id' => $user->employee_id,
-            'profile_image' => $user->profile_image,
+                'id' => $user->id,
+                'name' => $user->name,
+                'email' => $user->email,
+                'mobile' => $user->mobile,
+                'employee_id' => $user->employee_id,
+                'profile_image' => $user->profile_image,
 
-            'department' => $user->department,
-            'region' => $user->region,
-            'city' => $user->city,
+                'department' => $user->department,
+                'region' => $user->region,
+                'city' => $user->city,
 
-            'is_active' => $user->is_active,
+                'is_active' => $user->is_active,
 
-            /*
+                /*
             |--------------------------------------------------------------------------
             | Role
             |--------------------------------------------------------------------------
             */
 
-            'role' => [
-                'id' => $user->role?->id,
-                'name' => $user->role?->name,
-                'label' => $user->role?->label,
-            ],
+                'role' => [
+                    'id' => $user->role?->id,
+                    'name' => $user->role?->name,
+                    'label' => $user->role?->label,
+                ],
 
-            /*
+                /*
             |--------------------------------------------------------------------------
             | Designation
             |--------------------------------------------------------------------------
             */
 
-            'designation' => [
-                'id' => $user->designation?->id,
-                'name' => $user->designation?->name,
-            ],
+                'designation' => [
+                    'id' => $user->designation?->id,
+                    'name' => $user->designation?->name,
+                ],
 
-            /*
+                /*
             |--------------------------------------------------------------------------
             | Permissions
             |--------------------------------------------------------------------------
             */
 
-            'permissions' => $permissions,
+                'permissions' => $permissions,
 
-            'last_login_at' => $user->last_login_at,
-            'created_at' => $user->created_at,
-            'updated_at' => $user->updated_at,
-        ]
-    ]);
-}
+                'last_login_at' => $user->last_login_at,
+                'created_at' => $user->created_at,
+                'updated_at' => $user->updated_at,
+            ]
+        ]);
+    }
 
     public function updateProfile(Request $request)
     {

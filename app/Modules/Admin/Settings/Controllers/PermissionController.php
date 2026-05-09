@@ -9,12 +9,8 @@ class PermissionController extends Controller
 {
     public function index()
     {
-        $permissions = Permission::select(
-            'id',
-            'module',
-            'name',
-            'label'
-        )
+        $permissions = Permission::select('id', 'module', 'name', 'label')
+            ->where('status', true)
             ->orderBy('module')
             ->get()
             ->groupBy('module')

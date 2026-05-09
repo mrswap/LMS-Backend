@@ -232,6 +232,13 @@ class PermissionSeeder extends Seeder
             ['module' => 'reports', 'name' => 'reports.content-status', 'label' => 'View Content Status Reports'],
             ['module' => 'reports', 'name' => 'reports.certifications', 'label' => 'View Certifications'],
         ];
+       
+        $permissions = array_map(function ($permission) {
+
+            $permission['status'] = true;
+
+            return $permission;
+        }, $permissions);
 
         Permission::insert($permissions);
     }
