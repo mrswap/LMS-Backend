@@ -118,13 +118,15 @@ class OptionController extends Controller
         $hierarchy = $this->buildHierarchy($question->assessment);
 
         return response()->json([
+            
+            'type' => $question->assessment->type,
             'question' => [
                 'id' => $question->id,
                 'question_text' => $question->question_text,
                 'file' => $question->file,
             ],
             'options' => $question->options,
-            'hierarchy' => $hierarchy
+            'hierarchy' => $hierarchy,
         ]);
     }
 

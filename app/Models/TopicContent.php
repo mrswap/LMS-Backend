@@ -1,9 +1,11 @@
 <?php
 
 namespace App\Models;
+use App\Models\Traits\HasPublishStatus;
 
 class TopicContent extends BaseModel
 {
+    use HasPublishStatus;
     protected $hasPublishStatus = true;
     const PUBLISH_DRAFT = 'draft';
     const PUBLISH_PUBLISHED = 'published';

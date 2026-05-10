@@ -3,9 +3,11 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Builder;
+use App\Models\Traits\HasPublishStatus;
 
 class Chapter extends BaseModel
 {
+    use HasPublishStatus;
     protected $hasPublishStatus = true;
     const PUBLISH_DRAFT = 'draft';
     const PUBLISH_PUBLISHED = 'published';
@@ -109,6 +111,13 @@ class Chapter extends BaseModel
         $this->topics()->cursor()->each(function ($topic) {
             $topic->delete();
         });
+
+        // faqs
+        $this->faqs()
+            ->cursor()
+            ->each(function ($faq) {
+                $faq->delete();
+            });
     }
 
     /*
@@ -124,6 +133,13 @@ class Chapter extends BaseModel
             ->cursor()
             ->each(function ($topic) {
                 $topic->restore();
+            });
+
+        $this->faqs()
+            ->withTrashed()
+            ->cursor()
+            ->each(function ($faq) {
+                $faq->restore();
             });
     }
 

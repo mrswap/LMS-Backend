@@ -2,8 +2,13 @@
 
 namespace App\Models;
 
+use App\Models\Traits\HasPublishStatus;
+
 class Assessment extends BaseModel
 {
+    use HasPublishStatus;
+
+    protected $hasPublishStatus = true;
     protected $fillable = [
         'assessmentable_id',
         'assessmentable_type',
@@ -101,5 +106,45 @@ class Assessment extends BaseModel
             ->each(function ($question) {
                 $question->restore();
             });
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Recalculate Question Marks
+    |--------------------------------------------------------------------------
+    */
+    public function recalculateQuestionMarks()
+    {
+        $questions = $this->questions()
+            ->orderBy('id')
+            ->get();
+
+        $totalQuestions = $questions->count();
+
+        if ($totalQuestions <= 0) {
+            return;
+        }
+
+        $baseMark = floor(($this->total_marks / $totalQuestions) * 100) / 100;
+
+        $distributed = 0;
+
+        foreach ($questions as $index => $question) {
+
+            // last question gets remaining balance
+            if ($index === $totalQuestions - 1) {
+
+                $mark = round($this->total_marks - $distributed, 2);
+            } else {
+
+                $mark = $baseMark;
+
+                $distributed += $mark;
+            }
+
+            $question->updateQuietly([
+                'marks' => $mark
+            ]);
+        }
     }
 }

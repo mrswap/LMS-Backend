@@ -232,10 +232,28 @@ class PermissionSeeder extends Seeder
             ['module' => 'reports', 'name' => 'reports.content-status', 'label' => 'View Content Status Reports'],
             ['module' => 'reports', 'name' => 'reports.certifications', 'label' => 'View Certifications'],
         ];
-       
-        $permissions = array_map(function ($permission) {
 
-            $permission['status'] = true;
+        $disabledPermissions = [
+            'site-settings.firebase',
+
+            'languages.create',
+            'languages.edit',
+            'languages.delete',
+            'languages.status',
+
+            'programs.create',
+            'programs.status',
+            'programs.delete',
+
+            'content.reorder',
+        ];
+
+        $permissions = array_map(function ($permission) use ($disabledPermissions) {
+
+            $permission['status'] = !in_array(
+                $permission['name'],
+                $disabledPermissions
+            );
 
             return $permission;
         }, $permissions);

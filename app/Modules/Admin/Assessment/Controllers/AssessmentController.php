@@ -397,6 +397,8 @@ class AssessmentController extends Controller
                 $filePath = $this->uploadFile($request->file('file'));
             }
 
+            $oldTotalMarks = $assessment->total_marks;
+
             $assessment->update([
                 'assessmentable_id' => $request->assessmentable_id ?? $assessment->assessmentable_id,
                 'assessmentable_type' => $request->assessmentable_type ?? $assessment->assessmentable_type,
@@ -409,6 +411,13 @@ class AssessmentController extends Controller
                 'total_marks' => $request->total_marks ?? $assessment->total_marks,
             ]);
 
+            // 🔥 Recalculate only if total marks changed
+            if (
+                $request->filled('total_marks') &&
+                $oldTotalMarks != $assessment->total_marks
+            ) {
+                $assessment->recalculateQuestionMarks();
+            }
             return response()->json([
                 'message' => 'Assessment updated successfully',
                 'data' => $assessment->fresh()

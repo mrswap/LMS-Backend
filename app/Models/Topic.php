@@ -3,9 +3,11 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Builder;
+use App\Models\Traits\HasPublishStatus;
 
 class Topic extends BaseModel
 {
+    use HasPublishStatus;
     protected $hasPublishStatus = true;
     const PUBLISH_DRAFT = 'draft';
     const PUBLISH_PUBLISHED = 'published';
@@ -83,6 +85,10 @@ class Topic extends BaseModel
         return $this->hasMany(TopicContent::class)->orderBy('order');
     }
 
+    public function assessments()
+    {
+        return $this->morphMany(Assessment::class, 'assessmentable');
+    }
     /*
     |--------------------------------------------------------------------------
     | Scopes
@@ -134,6 +140,13 @@ class Topic extends BaseModel
             ->each(function ($assessment) {
                 $assessment->delete();
             });
+
+        // faqs
+        $this->faqs()
+            ->cursor()
+            ->each(function ($faq) {
+                $faq->delete();
+            });
     }
 
     /*
@@ -158,6 +171,13 @@ class Topic extends BaseModel
             ->cursor()
             ->each(function ($assessment) {
                 $assessment->restore();
+            });
+
+        $this->faqs()
+            ->withTrashed()
+            ->cursor()
+            ->each(function ($faq) {
+                $faq->restore();
             });
     }
     public function isPublished(): bool

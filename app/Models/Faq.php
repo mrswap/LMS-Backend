@@ -2,8 +2,11 @@
 
 namespace App\Models;
 
+use App\Models\Traits\HasPublishStatus;
+
 class Faq extends BaseModel
 {
+    use HasPublishStatus;
     /*
     |--------------------------------------------------------------------------
     | Fillable
@@ -79,9 +82,12 @@ class Faq extends BaseModel
 
     public function cascadeSoftDelete()
     {
-        $this->translations()->get()->each->delete();
+        $this->translations()
+            ->cursor()
+            ->each(function ($translation) {
+                $translation->delete();
+            });
     }
-
     /*
     |--------------------------------------------------------------------------
     | Cascade Restore
@@ -90,6 +96,11 @@ class Faq extends BaseModel
 
     public function cascadeRestore()
     {
-        $this->translations()->withTrashed()->get()->each->restore();
+        $this->translations()
+            ->withTrashed()
+            ->cursor()
+            ->each(function ($translation) {
+                $translation->restore();
+            });
     }
 }

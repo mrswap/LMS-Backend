@@ -3,9 +3,12 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Builder;
+use App\Models\Traits\HasPublishStatus;
 
 class Program extends BaseModel
 {
+    use HasPublishStatus;
+    
     protected $hasPublishStatus = true;
     const PUBLISH_DRAFT = 'draft';
     const PUBLISH_PUBLISHED = 'published';

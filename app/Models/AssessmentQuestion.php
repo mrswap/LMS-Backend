@@ -12,6 +12,10 @@ class AssessmentQuestion extends BaseModel
         'marks',
         'order'
     ];
+    
+    protected $casts = [
+        'marks' => 'float',
+    ];
 
     /*
     |--------------------------------------------------------------------------

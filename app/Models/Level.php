@@ -3,10 +3,14 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Builder;
+use App\Models\Traits\HasPublishStatus;
 
 class Level extends BaseModel
 {
+    use HasPublishStatus;
+
     protected $hasPublishStatus = true;
+    
     const PUBLISH_DRAFT = 'draft';
     const PUBLISH_PUBLISHED = 'published';
     const PUBLISH_UNPUBLISHED = 'unpublished';
@@ -40,6 +44,11 @@ class Level extends BaseModel
     public function modules()
     {
         return $this->hasMany(Module::class);
+    }
+
+    public function assessments()
+    {
+        return $this->morphMany(Assessment::class, 'assessmentable');
     }
 
     public function creator()
@@ -95,11 +104,27 @@ class Level extends BaseModel
 
     public function cascadeSoftDelete()
     {
-        $this->modules()->cursor()->each(function ($module) {
-            $module->delete();
-        });
-    }
+        // modules
+        $this->modules()
+            ->cursor()
+            ->each(function ($module) {
+                $module->delete();
+            });
 
+        // level exam assessments
+        $this->assessments()
+            ->cursor()
+            ->each(function ($assessment) {
+                $assessment->delete();
+            });
+
+        // faqs
+        $this->faqs()
+            ->cursor()
+            ->each(function ($faq) {
+                $faq->delete();
+            });
+    }
     /*
     |--------------------------------------------------------------------------
     | Cascade Restore
@@ -108,14 +133,30 @@ class Level extends BaseModel
 
     public function cascadeRestore()
     {
+        // modules
         $this->modules()
             ->withTrashed()
             ->cursor()
             ->each(function ($module) {
                 $module->restore();
             });
-    }
 
+        // assessments
+        $this->assessments()
+            ->withTrashed()
+            ->cursor()
+            ->each(function ($assessment) {
+                $assessment->restore();
+            });
+
+        // faqs
+        $this->faqs()
+            ->withTrashed()
+            ->cursor()
+            ->each(function ($faq) {
+                $faq->restore();
+            });
+    }
     /*
     |--------------------------------------------------------------------------
     | Booted (Hierarchy Sync)
@@ -146,6 +187,13 @@ class Level extends BaseModel
                 \App\Models\Topic::where('level_id', $level->id)->update([
                     'program_id' => $programId,
                 ]);
+
+                // level exam assessments
+                $this->assessments()
+                    ->cursor()
+                    ->each(function ($assessment) {
+                        $assessment->delete();
+                    });
             }
         });
     }

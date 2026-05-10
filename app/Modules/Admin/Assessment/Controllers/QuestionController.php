@@ -5,6 +5,7 @@ namespace App\Modules\Admin\Assessment\Controllers;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Models\AssessmentQuestion;
+use App\Models\Assessment;
 
 class QuestionController extends Controller
 {
@@ -19,17 +20,26 @@ class QuestionController extends Controller
 
     public function index($assessment_id)
     {
-        return AssessmentQuestion::with('options')
+        $assessment = Assessment::select('id', 'type')
+            ->findOrFail($assessment_id);
+
+        $questions = AssessmentQuestion::with('options')
             ->where('assessment_id', $assessment_id)
             ->orderBy('order')
             ->get();
+
+        return response()->json([
+            'assessment_id' => $assessment->id,
+            'assessment_type' => $assessment->type,
+            'questions' => $questions
+        ]);
     }
 
     public function store(Request $request, $assessment_id)
     {
         $request->validate([
             'question_text' => 'required|string',
-            'marks' => 'required|integer|min:1',
+            'marks' => 'nullable|integer|min:0',
             'order' => 'required|integer|min:1',
             'file' => 'nullable|file|max:2048',
         ]);
@@ -40,13 +50,17 @@ class QuestionController extends Controller
             $filePath = $this->uploadFile($request->file('file'));
         }
 
-        return AssessmentQuestion::create([
+        $question = AssessmentQuestion::create([
             'assessment_id' => $assessment_id,
             'question_text' => $request->question_text,
             'file' => $filePath,
-            'marks' => $request->marks,
+            'marks' => 0, // temporary
             'order' => $request->order
         ]);
+
+        $question->assessment->recalculateQuestionMarks();
+
+        return $question->fresh();
     }
 
     public function update(Request $request, $id)
@@ -55,7 +69,7 @@ class QuestionController extends Controller
 
         $request->validate([
             'question_text' => 'sometimes|string',
-            'marks' => 'sometimes|integer|min:1',
+            'marks' => 'nullable|integer|min:0',
             'order' => 'sometimes|integer|min:1',
             'file' => 'nullable|file|max:2048',
         ]);
@@ -67,6 +81,7 @@ class QuestionController extends Controller
         }
 
         $question->update($data);
+        $question->assessment->recalculateQuestionMarks();
 
         return response()->json(['message' => 'Updated']);
     }
@@ -87,7 +102,12 @@ class QuestionController extends Controller
             unlink(public_path($question->file));
         }
 
+        $assessment = $question->assessment;
+
         $question->delete();
+
+        $assessment->recalculateQuestionMarks();
+
 
         return response()->json([
             'message' => 'Question deleted successfully'

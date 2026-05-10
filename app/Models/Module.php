@@ -3,10 +3,14 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Builder;
+use App\Models\Traits\HasPublishStatus;
 
 class Module extends BaseModel
 {
+    use HasPublishStatus;
+
     protected $hasPublishStatus = true;
+
     const PUBLISH_DRAFT = 'draft';
     const PUBLISH_PUBLISHED = 'published';
     const PUBLISH_UNPUBLISHED = 'unpublished';
@@ -110,6 +114,13 @@ class Module extends BaseModel
         $this->chapters()->cursor()->each(function ($chapter) {
             $chapter->delete();
         });
+
+        // faqs
+        $this->faqs()
+            ->cursor()
+            ->each(function ($faq) {
+                $faq->delete();
+            });
     }
 
     /*
@@ -126,13 +137,23 @@ class Module extends BaseModel
             ->each(function ($chapter) {
                 $chapter->restore();
             });
+
+        // faqs
+        $this->faqs()
+            ->withTrashed()
+            ->cursor()
+            ->each(function ($faq) {
+                $faq->restore();
+            });
     }
 
+
+
     /*
-|--------------------------------------------------------------------------
-| Boot (Hierarchy Sync)
-|--------------------------------------------------------------------------
-*/
+    |--------------------------------------------------------------------------
+    | Boot (Hierarchy Sync)
+    |--------------------------------------------------------------------------
+    */
 
     protected static function boot()
     {

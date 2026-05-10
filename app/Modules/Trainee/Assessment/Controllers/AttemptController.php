@@ -120,7 +120,7 @@ class AttemptController extends Controller
             'duration' => $assessment->duration,
             'started_at' => $attempt->started_at,
             'expires_at' => $assessment->duration
-                ? $attempt->started_at->addMinutes($assessment->duration)
+                ? $attempt->started_at->copy()->addMinutes($assessment->duration)
                 : null,
 
             // 🆕 attempt stats
@@ -245,7 +245,7 @@ class AttemptController extends Controller
             'duration' => $assessment->duration,
             'started_at' => $attempt->started_at,
             'expires_at' => $assessment->duration
-                ? $attempt->started_at->addMinutes($assessment->duration)
+                ? $attempt->started_at->copy()->addMinutes($assessment->duration)
                 : null,
 
             // 🆕 attempt progress
@@ -286,7 +286,7 @@ class AttemptController extends Controller
             ], 422);
         }
         if ($attempt->assessment->duration) {
-            $expire = $attempt->started_at->addMinutes($attempt->assessment->duration);
+            $expire = $attempt->started_at->copy()->addMinutes($attempt->assessment->duration);
 
             if (now()->greaterThan($expire)) {
                 return response()->json([
@@ -339,7 +339,7 @@ class AttemptController extends Controller
         */
         $duration = $assessment->duration ?? null;
         $expiresAt = $duration
-            ? $attempt->started_at->addMinutes($duration)
+            ? $attempt->started_at->copy()->addMinutes($duration)
             : null;
 
         /*
@@ -514,7 +514,7 @@ class AttemptController extends Controller
         $submitType = $request->submit_type ?? 'manual';
 
         if ($assessment->duration) {
-            $expire = $attempt->started_at->addMinutes($assessment->duration);
+            $expire = $attempt->started_at->copy()->addMinutes($assessment->duration);
 
             if (now()->greaterThan($expire)) {
                 $submitType = 'timeout';
@@ -639,7 +639,11 @@ class AttemptController extends Controller
             // 🔍 evaluate
             $result = $this->service->evaluateAttempt($attempt);
 
-            $isPassed = $result['percentage'] >= $assessment->passing_score;
+            $percentage = (float) $result['percentage'];
+
+            $passingPercentage = (float) $assessment->passing_score;
+
+            $isPassed = $percentage >= $passingPercentage;
 
             // 💾 update attempt
             $attempt->update([
@@ -696,6 +700,10 @@ class AttemptController extends Controller
 
                 // 🎯 RESULT
                 'score' => $result['marks'],
+                'obtained_marks' => $result['marks'],
+                'total_marks' => $assessment->total_marks,
+                'passing_marks' => $assessment->passing_score,
+
                 'total' => $totalQuestions,
                 'percentage' => $result['percentage'],
                 'correct' => $result['correct'],
