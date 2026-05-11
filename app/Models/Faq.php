@@ -6,7 +6,6 @@ use App\Models\Traits\HasPublishStatus;
 
 class Faq extends BaseModel
 {
-    use HasPublishStatus;
     /*
     |--------------------------------------------------------------------------
     | Fillable

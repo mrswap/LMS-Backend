@@ -16,36 +16,25 @@ class ProgressionService
         DB::transaction(function () use ($userId, $topic) {
 
             /*
-        |--------------------------------------------------
-        | ✅ 1. COMPLETE CURRENT TOPIC (SAFE)
-        |--------------------------------------------------
-        */
-            $progress = UserProgress::where('user_id', $userId)
-                ->where('topic_id', $topic->id)
-                ->first();
-
-            if (!$progress) {
-
-                UserProgress::create([
+            |--------------------------------------------------
+            | ✅ 1. COMPLETE CURRENT TOPIC (SAFE)
+            |--------------------------------------------------
+            */
+            $progress = UserProgress::updateOrCreate(
+                [
                     'user_id' => $userId,
+                    'topic_id' => $topic->id,
+                ],
+                [
                     'program_id' => $topic->program_id,
                     'level_id' => $topic->level_id,
                     'module_id' => $topic->module_id,
                     'chapter_id' => $topic->chapter_id,
-                    'topic_id' => $topic->id,
                     'is_unlocked' => true,
                     'is_completed' => true,
                     'completed_at' => now(),
-                ]);
-            } else {
-
-                if (!$progress->is_completed) {
-                    $progress->update([
-                        'is_completed' => true,
-                        'completed_at' => now(),
-                    ]);
-                }
-            }
+                ]
+            );
 
             AuditService::log(
                 'lesson_completed',
@@ -55,10 +44,10 @@ class ProgressionService
 
 
             /*
-        |--------------------------------------------------
-        | ✅ 2. UNLOCK NEXT TOPIC (STRICT)
-        |--------------------------------------------------
-        */
+            |--------------------------------------------------
+            | ✅ 2. UNLOCK NEXT TOPIC (STRICT)
+            |--------------------------------------------------
+            */
             $nextTopic = Topic::where('chapter_id', $topic->chapter_id)
                 ->where('id', '>', $topic->id)
                 ->orderBy('id')
@@ -92,10 +81,10 @@ class ProgressionService
             } else {
 
                 /*
-            |--------------------------------------------------
-            | ✅ 3. NO NEXT TOPIC → CHECK CHAPTER
-            |--------------------------------------------------
-            */
+                |--------------------------------------------------
+                | ✅ 3. NO NEXT TOPIC → CHECK CHAPTER
+                |--------------------------------------------------
+                */
                 $this->handleChapterCompletion($userId, $topic->chapter_id);
             }
         });

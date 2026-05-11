@@ -6,7 +6,6 @@ use App\Models\Traits\HasPublishStatus;
 
 class Assessment extends BaseModel
 {
-    use HasPublishStatus;
 
     protected $hasPublishStatus = true;
     protected $fillable = [

@@ -5,7 +5,6 @@ namespace App\Modules\Admin\ContentManagement\Controllers;
 use App\Http\Controllers\Controller;
 use App\Models\Media;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
 use App\Modules\Admin\ContentManagement\Requests\MediaRequest;
 
 class MediaController extends Controller
@@ -19,24 +18,24 @@ class MediaController extends Controller
     {
         $query = Media::query();
 
-        // 🔹 Status
+        // 🔹 Status Filter
         if ($request->filled('status')) {
             $query->where('status', $request->status);
         }
 
-        // 🔹 Type
+        // 🔹 Type Filter
         if ($request->filled('type')) {
             $query->where('type', $request->type);
         }
 
-        // 🔹 Search (title, shortcode, file)
+        // 🔹 Search
         if ($request->filled('search')) {
             $search = $request->search;
 
             $query->where(function ($q) use ($search) {
-                $q->where('title', 'like', "%$search%")
-                    ->orWhere('shortcode', 'like', "%$search%")
-                    ->orWhere('file', 'like', "%$search%");
+                $q->where('title', 'like', "%{$search}%")
+                    ->orWhere('shortcode', 'like', "%{$search}%")
+                    ->orWhere('file', 'like', "%{$search}%");
             });
         }
 
@@ -46,9 +45,16 @@ class MediaController extends Controller
         |--------------------------------------------------------------------------
         */
         $orderBy = $request->input('order_by', 'created_at');
-        $orderDir = strtolower($request->input('order_dir', 'desc')) === 'asc' ? 'asc' : 'desc';
 
-        $allowedSorts = ['id', 'title', 'created_at'];
+        $orderDir = strtolower(
+            $request->input('order_dir', 'desc')
+        ) === 'asc' ? 'asc' : 'desc';
+
+        $allowedSorts = [
+            'id',
+            'title',
+            'created_at'
+        ];
 
         if (!in_array($orderBy, $allowedSorts)) {
             $orderBy = 'created_at';
@@ -62,9 +68,12 @@ class MediaController extends Controller
         |--------------------------------------------------------------------------
         */
         $limit = (int) $request->input('limit', 10);
+
         $limit = $limit > 100 ? 100 : $limit;
 
-        return response()->json($query->paginate($limit));
+        return response()->json(
+            $query->paginate($limit)
+        );
     }
 
     /*
@@ -75,27 +84,42 @@ class MediaController extends Controller
     public function store(MediaRequest $request)
     {
         $filePath = null;
-        $disk = config('filesystems.default'); // future S3 ready
 
         if ($request->hasFile('file')) {
-            $filePath = $request->file('file')
-                ->store(Media::UPLOAD_PATH, $disk);
+
+            $uploadPath = public_path(Media::UPLOAD_PATH);
+
+            // Create directory if not exists
+            if (!file_exists($uploadPath)) {
+                mkdir($uploadPath, 0777, true);
+            }
+
+            $file = $request->file('file');
+
+            $fileName = uniqid() . '.' .
+                $file->getClientOriginalExtension();
+
+            // Move file to public folder
+            $file->move($uploadPath, $fileName);
+
+            // Save relative path
+            $filePath = Media::UPLOAD_PATH . '/' . $fileName;
         }
 
         $media = Media::create([
-            'title' => $request->title,
-            'description' => $request->description,
-            'type' => $request->type,
-            'file' => $filePath,
-            'external_url' => $request->external_url,
-            'shortcode' => $this->generateShortcode(),
-            'disk' => $disk,
-            'created_by' => auth()->id(),
+            'title'         => $request->title,
+            'description'   => $request->description,
+            'type'          => $request->type,
+            'file'          => $filePath,
+            'external_url'  => $request->external_url,
+            'shortcode'     => $this->generateShortcode(),
+            'disk'          => 'public',
+            'created_by'    => auth()->id(),
         ]);
 
         return response()->json([
             'message' => 'Media uploaded successfully',
-            'data' => $media
+            'data'    => $media
         ]);
     }
 
@@ -119,23 +143,48 @@ class MediaController extends Controller
     public function update(MediaRequest $request, $id)
     {
         $media = Media::findOrFail($id);
-        $disk = config('filesystems.default');
 
-        // 🔹 Replace file if uploaded
+        /*
+        |--------------------------------------------------------------------------
+        | REPLACE FILE
+        |--------------------------------------------------------------------------
+        */
         if ($request->hasFile('file')) {
 
-            if ($media->file && Storage::disk($media->disk)->exists($media->file)) {
-                Storage::disk($media->disk)->delete($media->file);
+            // Delete old file
+            $oldFilePath = public_path($media->file);
+
+            if ($media->file && file_exists($oldFilePath)) {
+                unlink($oldFilePath);
             }
 
-            $filePath = $request->file('file')
-                ->store(Media::UPLOAD_PATH, $disk);
+            $uploadPath = public_path(Media::UPLOAD_PATH);
 
-            $media->file = $filePath;
-            $media->disk = $disk;
+            // Create directory if not exists
+            if (!file_exists($uploadPath)) {
+                mkdir($uploadPath, 0777, true);
+            }
+
+            $file = $request->file('file');
+
+            $fileName = uniqid() . '.' .
+                $file->getClientOriginalExtension();
+
+            // Move new file
+            $file->move($uploadPath, $fileName);
+
+            // Save new path
+            $media->file = Media::UPLOAD_PATH . '/' . $fileName;
+            $media->disk = 'public';
+
+            $media->save();
         }
 
-        // 🔹 Only update provided fields
+        /*
+        |--------------------------------------------------------------------------
+        | UPDATE OTHER FIELDS
+        |--------------------------------------------------------------------------
+        */
         $data = $request->only([
             'title',
             'description',
@@ -143,13 +192,15 @@ class MediaController extends Controller
             'external_url'
         ]);
 
-        $media->update(array_filter($data, function ($value) {
-            return !is_null($value);
-        }));
+        $media->update(
+            array_filter($data, function ($value) {
+                return !is_null($value);
+            })
+        );
 
         return response()->json([
             'message' => 'Media updated successfully',
-            'data' => $media
+            'data'    => $media->fresh()
         ]);
     }
 
@@ -162,10 +213,14 @@ class MediaController extends Controller
     {
         $media = Media::findOrFail($id);
 
-        if ($media->file && Storage::disk($media->disk)->exists($media->file)) {
-            Storage::disk($media->disk)->delete($media->file);
+        // Delete physical file
+        $filePath = public_path($media->file);
+
+        if ($media->file && file_exists($filePath)) {
+            unlink($filePath);
         }
 
+        // Delete DB record
         $media->delete();
 
         return response()->json([
@@ -183,10 +238,12 @@ class MediaController extends Controller
         $media = Media::findOrFail($id);
 
         $media->status = !$media->status;
+
         $media->save();
 
         return response()->json([
-            'message' => 'Status updated successfully'
+            'message' => 'Status updated successfully',
+            'status'  => $media->status
         ]);
     }
 

@@ -176,7 +176,7 @@ class FinalLMSSeeder extends Seeder
                         'title' => "Quiz",
                         'passing_score' => 60,
                         'duration' => 10,
-                        'total_marks' => 0, // REQUIRED
+                        'total_marks' => 100, // REQUIRED
                         'status' => 1,
                         'created_by' => $createdBy
                     ]);
@@ -185,7 +185,7 @@ class FinalLMSSeeder extends Seeder
 
                     for ($q = 1; $q <= 5; $q++) {
 
-                        $marks = 1; // changeable later
+                        $marks = 20; // changeable later
 
                         $question = AssessmentQuestion::create([
                             'assessment_id' => $quiz->id,

@@ -37,7 +37,8 @@ class Media extends BaseModel
 
     public function creator()
     {
-        return $this->belongsTo(User::class, 'created_by')->withTrashed();
+        return $this->belongsTo(User::class, 'created_by')
+            ->withTrashed();
     }
 
     /*
@@ -48,18 +49,38 @@ class Media extends BaseModel
 
     public function getFullUrlAttribute()
     {
-        // External (YouTube/Vimeo etc.)
+        // External URL
         if ($this->external_url) {
             return $this->external_url;
         }
 
+        // No file
         if (!$this->file) {
             return null;
         }
 
+        /*
+        |--------------------------------------------------------------------------
+        | PUBLIC FILES
+        |--------------------------------------------------------------------------
+        */
+        if (
+            str_starts_with($this->file, 'uploads/')
+            || str_starts_with($this->file, '/uploads/')
+        ) {
+            return asset($this->file);
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | STORAGE DISK FILES
+        |--------------------------------------------------------------------------
+        */
         $disk = $this->disk ?? config('filesystems.default');
 
-        return url(Storage::disk($disk)->url($this->file));
+        return url(
+            Storage::disk($disk)->url($this->file)
+        );
     }
 
     public function getCreatorNameAttribute()
@@ -75,7 +96,9 @@ class Media extends BaseModel
 
     public function setTitleAttribute($value)
     {
-        $this->attributes['title'] = trim($value);
+        $this->attributes['title'] = $value
+            ? trim($value)
+            : null;
     }
 
     /*
@@ -113,8 +136,7 @@ class Media extends BaseModel
 
     public function cascadeSoftDelete()
     {
-        // ❗ DO NOT delete physical file
-        // Only DB soft delete
+        // ❗ Physical file retained intentionally
     }
 
     /*
@@ -125,6 +147,6 @@ class Media extends BaseModel
 
     public function cascadeRestore()
     {
-        // nothing required
+        // Nothing required
     }
 }
