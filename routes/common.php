@@ -4,7 +4,7 @@ use Illuminate\Support\Facades\Route;
 use App\Modules\Common\Options\Controllers\OptionController;
 use App\Modules\Common\Settings\Controllers\SiteSettingController;
 use App\Modules\Common\Contact\Controllers\ContactController;
-
+use App\Modules\Admin\ContentManagement\Controllers\MediaController;
 
 
 Route::prefix('v1/common')->group(function () {
@@ -22,4 +22,5 @@ Route::prefix('v1/common')->group(function () {
     Route::get('/designations', [OptionController::class, 'designations']);
     Route::get('/site/settings', [SiteSettingController::class, 'get']);
     Route::post('/contact', [ContactController::class, 'submit']);
+    Route::get('/media/by-shortcode/{shortcode}', [MediaController::class, 'getByShortcode']);
 });

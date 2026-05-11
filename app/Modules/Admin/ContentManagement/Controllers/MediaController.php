@@ -256,4 +256,35 @@ class MediaController extends Controller
     {
         return '[media_' . uniqid() . ']';
     }
+
+    /*
+    |--------------------------------------------------------------------------
+    | GET MEDIA BY SHORTCODE
+    |--------------------------------------------------------------------------
+    */
+    public function getByShortcode($shortcode)
+    {
+        $media = Media::where('shortcode', $shortcode)
+            ->where('status', true)
+            ->first();
+
+        if (!$media) {
+            return response()->json([
+                'message' => 'Media not found'
+            ], 404);
+        }
+
+        return response()->json([
+            'message' => 'Media fetched successfully',
+            'data' => [
+                'id'            => $media->id,
+                'title'         => $media->title,
+                'type'          => $media->type,
+                'shortcode'     => $media->shortcode,
+                'file'          => $media->file,
+                'full_url'      => $media->full_url,
+                'external_url'  => $media->external_url,
+            ]
+        ]);
+    }
 }
