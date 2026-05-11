@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use App\Services\AuditService;
+use App\Models\User;
 
 class ProfileController extends Controller
 {
@@ -18,9 +19,13 @@ class ProfileController extends Controller
         AuditService::log('profile_viewed', 'User viewed their profile');
 
         $user = auth()->id();
+
+        $user = User::where('id', $user)->first();
+
+
         app(\App\Services\NotificationService::class)->send(
             $user,
-            'AUTH',
+            'TRAINING_ASSIGNED',
             [
                 'title'   => 'Test Notification',
                 'message' => 'Firebase test working',
@@ -33,6 +38,7 @@ class ProfileController extends Controller
                 'meta'    => []
             ]
         );
+
         return response()->json(['data' => $request->user()]);
     }
 
