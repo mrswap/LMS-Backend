@@ -31,6 +31,7 @@ use App\Modules\Admin\Reports\Controllers\AssessmentReportController;
 use App\Modules\Admin\Reports\Controllers\ContentStatusReportController;
 use App\Modules\Admin\Reports\Controllers\CertificationReportController;
 use App\Modules\Admin\CommonPublishStatusController;
+use App\Modules\Admin\Notification\Controllers\NotificationController;
 
 Route::prefix('v1/admin')->group(function () {
 
@@ -280,6 +281,19 @@ Route::prefix('v1/admin')->group(function () {
             Route::get('/content-status', [ContentStatusReportController::class, 'index'])->middleware('permission:reports.content-status');
             Route::get('/certifications', [CertificationReportController::class, 'index'])->middleware('permission:reports.certifications');
             Route::get('/certificate/{attempt_id}', [CertificationReportController::class, 'show'])->middleware('permission:reports.certifications');
+        });
+
+        /*
+        |--------------------------------------------------------------------------
+        | NOTIFICATIONS
+        |--------------------------------------------------------------------------
+        */
+
+        Route::prefix('notifications')->group(function () {
+            Route::get('/', [NotificationController::class, 'index']);
+            Route::post('/read/{id}', [NotificationController::class, 'markRead']);
+            Route::post('/read-all', [NotificationController::class, 'markAllRead']);
+            Route::get('/unread-count', [NotificationController::class, 'unreadCount']);
         });
     });
 });

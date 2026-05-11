@@ -18,7 +18,7 @@ class MediaRequest extends FormRequest
             'description' => 'nullable|string',
 
             // 🔹 Added document support
-            'type' => 'sometimes|in:image,video,audio,document',
+            'type' => 'nullable|in:image,video,audio,document',
 
             'file' => 'nullable|file',
             'external_url' => 'nullable|url',
