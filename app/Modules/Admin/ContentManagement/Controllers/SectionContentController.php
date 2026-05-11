@@ -599,15 +599,56 @@ class SectionContentController extends Controller
             ], 404);
         }
 
+        /*
+        |--------------------------------------------------------------------------
+        | 🎬 RESOLVE MEDIA
+        |--------------------------------------------------------------------------
+        */
+        $resolvedMedia = null;
+
+        if ($item->type === 'media' && !empty($item->meta['shortcode'])) {
+
+            $resolvedMedia = \App\Models\Media::where('shortcode', $item->meta['shortcode'])->first();
+        }
+
         return response()->json([
             'success' => true,
+
             'data' => [
                 'id' => $item->id,
                 'topic_id' => $item->topic_id,
                 'type' => $item->type,
                 'title' => $title,
-                'content' => $item->type === 'text' ? $content : null,
-                'meta' => $item->meta,
+
+                // TEXT CONTENT ONLY
+                'content' => $content,
+
+                // MEDIA CONTENT
+                // MEDIA CONTENT
+                'media' => $resolvedMedia ? [
+                    'id' => $resolvedMedia->id,
+                    'title' => $resolvedMedia->title,
+
+                    // ✅ USE CONTENT AS DESCRIPTION
+                    'content' => $content,
+
+                    'description' => $resolvedMedia->description,
+                    'type' => $resolvedMedia->type,
+                    'shortcode' => $resolvedMedia->shortcode,
+                    'file' => $resolvedMedia->file,
+                    'external_url' => $resolvedMedia->external_url,
+                    'full_url' => $resolvedMedia->full_url,
+                ] : null,
+
+                'meta' => array_merge(
+                    $item->meta ?? [],
+                    $resolvedMedia ? [
+                        'full_url' => $resolvedMedia->full_url,
+                        'file' => $resolvedMedia->file,
+                        'type' => $resolvedMedia->type,
+                    ] : []
+                ),
+
                 'order' => $item->order,
                 'status' => (bool)$item->status,
                 'publish_status' => $item->publish_status,
@@ -615,18 +656,22 @@ class SectionContentController extends Controller
                 'topic' => [
                     'id' => $item->topic->id ?? null,
                     'title' => $item->topic->title ?? null,
+
                     'program' => [
                         'id' => $item->topic->program->id ?? null,
                         'title' => $item->topic->program->title ?? null,
                     ],
+
                     'level' => [
                         'id' => $item->topic->level->id ?? null,
                         'title' => $item->topic->level->title ?? null,
                     ],
+
                     'module' => [
                         'id' => $item->topic->module->id ?? null,
                         'title' => $item->topic->module->title ?? null,
                     ],
+
                     'chapter' => [
                         'id' => $item->topic->chapter->id ?? null,
                         'title' => $item->topic->chapter->title ?? null,
@@ -635,6 +680,8 @@ class SectionContentController extends Controller
             ]
         ]);
     }
+
+
     /*
     |--------------------------------------------------------------------------
     | FULL (Frontend API)
@@ -793,21 +840,18 @@ class SectionContentController extends Controller
 
     public function single(Request $request, $topic_id, $content_id)
     {
-        AuditService::log('content_viewed', 'User viewed a content item', ['content_id' => $content_id]);
+        AuditService::log(
+            'content_viewed',
+            'User viewed a content item',
+            ['content_id' => $content_id]
+        );
 
         $userId = auth()->id();
         $lang = $this->resolveLanguage($request);
 
-
-        /*
-        | 📦 LOAD TOPIC WITH FULL RELATION
-        */
         $topic = \App\Models\Topic::with('chapter.module.level.program')
             ->findOrFail($topic_id);
 
-        /*
-        | 📦 ALL CONTENTS
-        */
         $contents = TopicContent::with('translations')
             ->where('topic_id', $topic_id)
             ->where('status', true)
@@ -821,10 +865,9 @@ class SectionContentController extends Controller
             ], 404);
         }
 
-        /*
-        | 📍 FIND CURRENT
-        */
-        $currentIndex = $contents->search(fn($c) => $c->id == $content_id);
+        $currentIndex = $contents->search(
+            fn($c) => $c->id == $content_id
+        );
 
         if ($currentIndex === false) {
             return response()->json([
@@ -835,25 +878,32 @@ class SectionContentController extends Controller
 
         $current = $contents[$currentIndex];
 
-        /*
-        | 🔁 NAVIGATION
-        */
         $previous = $contents[$currentIndex - 1] ?? null;
         $next = $contents[$currentIndex + 1] ?? null;
 
-        /*
-        | 🧠 USER READ STATUS
-        */
-        $userProgress = \App\Models\UserContentProgress::where('user_id', $userId)
+        $userProgress = \App\Models\UserContentProgress::where(
+            'user_id',
+            $userId
+        )
             ->where('topic_content_id', $current->id)
             ->first();
 
         $isRead = $userProgress?->is_read ?? false;
         $readAt = $userProgress?->read_at ?? null;
 
-        /*
-        | 🌐 LANGUAGE TRANSFORM
-        */
+        $resolvedMedia = null;
+
+        if (
+            $current->type === 'media'
+            && !empty($current->meta['shortcode'])
+        ) {
+
+            $resolvedMedia = \App\Models\Media::where(
+                'shortcode',
+                $current->meta['shortcode']
+            )->first();
+        }
+
         if ($lang === 'en') {
 
             if ($current->title === 'BASE_RECORD') {
@@ -867,8 +917,31 @@ class SectionContentController extends Controller
                 'id' => $current->id,
                 'type' => $current->type,
                 'title' => $current->title,
-                'content' => $current->type === 'text' ? $current->content : null,
-                'meta' => $current->meta,
+
+                'content' => $current->type === 'text'
+                    ? $current->content
+                    : $current->content,
+
+                'media' => $resolvedMedia ? [
+                    'id' => $resolvedMedia->id,
+                    'title' => $resolvedMedia->title,
+                    'description' => $resolvedMedia->description,
+                    'type' => $resolvedMedia->type,
+                    'shortcode' => $resolvedMedia->shortcode,
+                    'file' => $resolvedMedia->file,
+                    'external_url' => $resolvedMedia->external_url,
+                    'full_url' => $resolvedMedia->full_url,
+                ] : null,
+
+                'meta' => array_merge(
+                    $current->meta ?? [],
+                    $resolvedMedia ? [
+                        'full_url' => $resolvedMedia->full_url,
+                        'file' => $resolvedMedia->file,
+                        'type' => $resolvedMedia->type,
+                    ] : []
+                ),
+
                 'order' => $current->order,
                 'is_read' => $isRead,
                 'read_at' => $readAt,
@@ -892,17 +965,37 @@ class SectionContentController extends Controller
                 'language_code' => $lang,
                 'type' => $current->type,
                 'title' => $translation->title,
-                'content' => $current->type === 'text' ? $translation->content : null,
-                'meta' => $current->meta,
+
+                'content' => $current->type === 'text'
+                    ? $translation->content
+                    : $translation->content,
+
+                'media' => $resolvedMedia ? [
+                    'id' => $resolvedMedia->id,
+                    'title' => $resolvedMedia->title,
+                    'description' => $resolvedMedia->description,
+                    'type' => $resolvedMedia->type,
+                    'shortcode' => $resolvedMedia->shortcode,
+                    'file' => $resolvedMedia->file,
+                    'external_url' => $resolvedMedia->external_url,
+                    'full_url' => $resolvedMedia->full_url,
+                ] : null,
+
+                'meta' => array_merge(
+                    $current->meta ?? [],
+                    $resolvedMedia ? [
+                        'full_url' => $resolvedMedia->full_url,
+                        'file' => $resolvedMedia->file,
+                        'type' => $resolvedMedia->type,
+                    ] : []
+                ),
+
                 'order' => $current->order,
                 'is_read' => $isRead,
                 'read_at' => $readAt,
             ];
         }
 
-        /*
-        | 🌐 TOPIC TRANSLATION
-        */
         $topicTranslation = method_exists($topic, 'getTranslation')
             ? $topic->getTranslation($lang)
             : null;
@@ -915,37 +1008,34 @@ class SectionContentController extends Controller
             'estimated_duration' => $topic->estimated_duration,
         ];
 
-        /*
-        | 🌐 CONTEXT (HIERARCHY)
-        */
         $context = [
             'chapter' => [
                 'id' => $topic->chapter->id ?? null,
                 'title' => $topic->chapter->title ?? null,
             ],
+
             'module' => [
                 'id' => $topic->chapter->module->id ?? null,
                 'title' => $topic->chapter->module->title ?? null,
             ],
+
             'level' => [
                 'id' => $topic->chapter->module->level->id ?? null,
                 'title' => $topic->chapter->module->level->title ?? null,
             ],
+
             'program' => [
                 'id' => $topic->chapter->module->level->program->id ?? null,
                 'title' => $topic->chapter->module->level->program->title ?? null,
             ],
         ];
 
-        /*
-        | 📤 RESPONSE
-        */
         return response()->json([
             'success' => true,
+
             'data' => [
                 'topic' => $topicData,
 
-                // ✅ ADDED CONTEXT HERE
                 'context' => $context,
 
                 'current' => $data,

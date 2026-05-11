@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use App\Services\AuditService;
 use App\Models\User;
+use App\Services\NotificationService;
 
 class ProfileController extends Controller
 {
@@ -110,6 +111,72 @@ class ProfileController extends Controller
         $user->fill($validated);
         $user->save();
 
+        /*
+        |------------------------------------------------------------------
+        | 🔔 PROFILE UPDATE NOTIFICATIONS
+        |------------------------------------------------------------------
+        */
+
+        $notificationPayload = [
+            'title' => 'Profile Updated',
+            'message' => "{$user->name} updated profile information",
+
+            'screen' => 'UserProfile',
+            'id' => $user->id,
+
+            'meta' => [
+                'user_id' => $user->id,
+                'user_name' => $user->name,
+                'email' => $user->email,
+            ]
+        ];
+
+        /*
+            |------------------------------------------------------------------
+            | 👤 SELF NOTIFICATION
+            |------------------------------------------------------------------
+            */
+        app(\App\Services\NotificationService::class)->send(
+            $user,
+            'PROFILE_UPDATED',
+            [
+                'title' => 'Profile Updated',
+                'message' => 'Your profile updated successfully',
+
+                'screen' => 'Profile',
+                'id' => $user->id,
+
+                'meta' => [
+                    'user_id' => $user->id
+                ]
+            ],
+            ['db', 'push']
+        );
+
+        /*
+        |------------------------------------------------------------------
+        | 🛡 ADMINS
+        |------------------------------------------------------------------
+        */
+        app(\App\Services\NotificationService::class)->sendToRole(
+            'admin',
+            'PROFILE_UPDATED',
+            $notificationPayload,
+            ['db', 'push']
+        );
+
+        /*
+            |------------------------------------------------------------------
+            | 👑 SUPER ADMINS
+            |------------------------------------------------------------------
+            */
+        app(\App\Services\NotificationService::class)->sendToRole(
+            'superadmin',
+            'PROFILE_UPDATED',
+            $notificationPayload,
+            ['db', 'push']
+        );
+
         return response()->json([
             'message' => 'Profile updated successfully',
             'data' => $user->fresh()
@@ -133,6 +200,72 @@ class ProfileController extends Controller
         $user->update([
             'password' => Hash::make($request->new_password)
         ]);
+
+        /*
+        |------------------------------------------------------------------
+        | 🔔 PASSWORD CHANGE NOTIFICATIONS
+        |------------------------------------------------------------------
+        */
+
+        $notificationPayload = [
+            'title' => 'Password Changed',
+            'message' => "{$user->name} changed account password",
+
+            'screen' => 'UserSecurity',
+            'id' => $user->id,
+
+            'meta' => [
+                'user_id' => $user->id,
+                'user_name' => $user->name,
+                'email' => $user->email,
+            ]
+        ];
+
+        /*
+            |------------------------------------------------------------------
+            | 👤 SELF NOTIFICATION
+            |------------------------------------------------------------------
+            */
+        app(\App\Services\NotificationService::class)->send(
+            $user,
+            'PASSWORD_CHANGED',
+            [
+                'title' => 'Password Changed',
+                'message' => 'Your password changed successfully',
+
+                'screen' => 'Profile',
+                'id' => $user->id,
+
+                'meta' => [
+                    'user_id' => $user->id
+                ]
+            ],
+            ['db', 'push']
+        );
+
+        /*
+        |------------------------------------------------------------------
+        | 🛡 ADMINS
+        |------------------------------------------------------------------
+        */
+        app(\App\Services\NotificationService::class)->sendToRole(
+            'admin',
+            'PASSWORD_CHANGED',
+            $notificationPayload,
+            ['db', 'push']
+        );
+
+        /*
+            |------------------------------------------------------------------
+            | 👑 SUPER ADMINS
+            |------------------------------------------------------------------
+            */
+        app(\App\Services\NotificationService::class)->sendToRole(
+            'superadmin',
+            'PASSWORD_CHANGED',
+            $notificationPayload,
+            ['db', 'push']
+        );
 
         AuditService::log('password_changed', 'User changed their password');
 

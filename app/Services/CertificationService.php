@@ -19,14 +19,17 @@ class CertificationService
             ->where('type', $type);
 
         if ($type === 'level') {
+
             $query->where('level_id', $context->id);
         }
 
         if ($type === 'topic') {
+
             $query->where('topic_id', $context->id);
         }
 
         if ($query->exists()) {
+
             return null;
         }
 
@@ -35,19 +38,29 @@ class CertificationService
         | 📊 FETCH ANSWERS
         |--------------------------------------------------
         */
-        $answers = AssessmentAnswer::where('attempt_id', $attempt->id)->get();
+        $answers = AssessmentAnswer::where(
+            'attempt_id',
+            $attempt->id
+        )->get();
 
         $totalQuestions = $answers->count();
 
-        $attempted = $answers->whereNotNull('selected_option_id')->count();
-
-        $correct = $answers->where('is_correct', true)->count();
-
-        $incorrect = $answers->where('is_correct', false)
+        $attempted = $answers
             ->whereNotNull('selected_option_id')
             ->count();
 
-        $skipped = $answers->whereNull('selected_option_id')->count();
+        $correct = $answers
+            ->where('is_correct', true)
+            ->count();
+
+        $incorrect = $answers
+            ->where('is_correct', false)
+            ->whereNotNull('selected_option_id')
+            ->count();
+
+        $skipped = $answers
+            ->whereNull('selected_option_id')
+            ->count();
 
         /*
         |--------------------------------------------------
@@ -65,16 +78,23 @@ class CertificationService
         | 🧠 CERTIFICATE ID
         |--------------------------------------------------
         */
-        $certificateId = 'CERT-' . date('Y') . '-' . strtoupper(Str::random(6));
+        $certificateId = 'CERT-'
+            . date('Y')
+            . '-'
+            . strtoupper(Str::random(6));
 
         /*
         |--------------------------------------------------
-        | 🧾 META SNAPSHOT (FULL 🔥)
+        | 🧾 META SNAPSHOT
         |--------------------------------------------------
         */
         $meta = [
 
-            // 👤 USER
+            /*
+            |--------------------------------------------------
+            | 👤 USER
+            |--------------------------------------------------
+            */
             'user' => [
                 'id' => $user->id,
                 'name' => $user->name,
@@ -82,16 +102,31 @@ class CertificationService
                 'employee_id' => $user->employee_id,
             ],
 
-            // 📚 CONTEXT
+            /*
+            |--------------------------------------------------
+            | 📚 CONTEXT
+            |--------------------------------------------------
+            */
             'context' => [
                 'type' => $type,
                 'title' => $context->title,
+
                 'program_id' => $context->program_id ?? null,
-                'level_id' => $type === 'level' ? $context->id : $context->level_id ?? null,
-                'topic_id' => $type === 'topic' ? $context->id : null,
+
+                'level_id' => $type === 'level'
+                    ? $context->id
+                    : $context->level_id ?? null,
+
+                'topic_id' => $type === 'topic'
+                    ? $context->id
+                    : null,
             ],
 
-            // 📊 RESULT
+            /*
+            |--------------------------------------------------
+            | 📊 RESULT
+            |--------------------------------------------------
+            */
             'result' => [
                 'score' => $attempt->score,
                 'percentage' => $attempt->percentage,
@@ -99,7 +134,11 @@ class CertificationService
                 'status' => $attempt->status,
             ],
 
-            // 📊 QUESTIONS ANALYTICS
+            /*
+            |--------------------------------------------------
+            | 📊 QUESTIONS ANALYTICS
+            |--------------------------------------------------
+            */
             'questions' => [
                 'total' => $totalQuestions,
                 'attempted' => $attempted,
@@ -108,21 +147,33 @@ class CertificationService
                 'skipped' => $skipped,
             ],
 
-            // 💯 MARKS
+            /*
+            |--------------------------------------------------
+            | 💯 MARKS
+            |--------------------------------------------------
+            */
             'marks' => [
                 'total_marks' => $totalMarks,
                 'obtained_marks' => $obtainedMarks,
                 'passing_marks' => $passingMarks,
             ],
 
-            // ⏱ TIME DATA
+            /*
+            |--------------------------------------------------
+            | ⏱ TIME DATA
+            |--------------------------------------------------
+            */
             'time' => [
                 'started_at' => $attempt->started_at,
                 'submitted_at' => $attempt->submitted_at,
                 'time_taken_seconds' => $attempt->time_taken,
             ],
 
-            // 🔁 ATTEMPT INFO
+            /*
+            |--------------------------------------------------
+            | 🔁 ATTEMPT INFO
+            |--------------------------------------------------
+            */
             'attempt' => [
                 'attempt_id' => $attempt->id,
                 'submit_type' => $attempt->submit_type,
@@ -134,20 +185,111 @@ class CertificationService
         | 💾 SAVE CERTIFICATE
         |--------------------------------------------------
         */
-        return Certification::create([
+        $certificate = Certification::create([
+
             'user_id' => $user->id,
+
             'program_id' => $context->program_id ?? null,
 
-            'level_id' => $type === 'level' ? $context->id : null,
-            'topic_id' => $type === 'topic' ? $context->id : null,
+            'level_id' => $type === 'level'
+                ? $context->id
+                : null,
+
+            'topic_id' => $type === 'topic'
+                ? $context->id
+                : null,
 
             'type' => $type,
+
             'assessment_attempt_id' => $attempt->id,
+
             'certificate_id' => $certificateId,
+
             'score' => $attempt->score,
+
             'percentage' => $attempt->percentage,
+
             'issued_at' => now(),
+
             'meta' => $meta
         ]);
+
+        /*
+        |--------------------------------------------------
+        | 🔔 USER NOTIFICATION
+        |--------------------------------------------------
+        */
+        app(NotificationService::class)->send(
+            $user,
+            'CERTIFICATE_GENERATED',
+            [
+                'message' => "Certificate generated for {$context->title}",
+
+                'screen' => 'CertificateDetails',
+
+                'model' => $certificate,
+
+                'meta' => [
+                    'certificate_id' => $certificate->id,
+                    'certificate_code' => $certificate->certificate_id,
+                    'type' => $type,
+                ]
+            ],
+            ['db', 'push']
+        );
+
+        /*
+        |--------------------------------------------------
+        | 🛡 ADMIN NOTIFICATION
+        |--------------------------------------------------
+        */
+        $adminMessage = "{$user->name} earned a certificate for {$context->title}";
+
+        app(NotificationService::class)->sendToRole(
+            'admin',
+            'CERTIFICATE_GENERATED',
+            [
+                'message' => $adminMessage,
+
+                'screen' => 'CertificateReview',
+
+                'model' => $certificate,
+
+                'meta' => [
+                    'user_id' => $user->id,
+                    'certificate_id' => $certificate->id,
+                    'certificate_code' => $certificate->certificate_id,
+                    'type' => $type,
+                ]
+            ],
+            ['db', 'push']
+        );
+
+        /*
+        |--------------------------------------------------
+        | 👑 SUPERADMIN NOTIFICATION
+        |--------------------------------------------------
+        */
+        app(NotificationService::class)->sendToRole(
+            'superadmin',
+            'CERTIFICATE_GENERATED',
+            [
+                'message' => $adminMessage,
+
+                'screen' => 'CertificateReview',
+
+                'model' => $certificate,
+
+                'meta' => [
+                    'user_id' => $user->id,
+                    'certificate_id' => $certificate->id,
+                    'certificate_code' => $certificate->certificate_id,
+                    'type' => $type,
+                ]
+            ],
+            ['db', 'push']
+        );
+
+        return $certificate;
     }
 }

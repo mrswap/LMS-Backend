@@ -11,6 +11,8 @@ use App\Models\Module;
 use App\Models\Chapter;
 use App\Models\Topic;
 use App\Services\AuditService;
+use App\Models\User;
+use App\Services\NotificationService;
 
 
 class ProgressController extends Controller
@@ -439,7 +441,7 @@ class ProgressController extends Controller
                     $cert = $certifications[$level->id] ?? null;
 
                     $isPassed = $cert ? true : false;
-                    
+
                     // 🎯 LEVEL EXAM (ADD THIS)
                     $assessment = \App\Models\Assessment::where('assessmentable_id', $level->id)
                         ->where('assessmentable_type', \App\Models\Level::class)
@@ -559,50 +561,145 @@ class ProgressController extends Controller
     public function single(Request $request, $type, $id)
     {
         $lang = $this->resolveLanguage($request);
-        $userId = auth()->id();
 
-        $progress = UserProgress::where('user_id', $userId)
-            ->whereNotNull('topic_id') // 🔥 MUST ADD
+        $user = auth()->user();
+
+        $progress = UserProgress::where('user_id', $user->id)
+            ->whereNotNull('topic_id')
             ->get()
             ->keyBy('topic_id');
 
         switch ($type) {
 
+            /*
+            |--------------------------------------------------------------------------
+            | 📘 LEVEL
+            |--------------------------------------------------------------------------
+            */
             case 'level':
-                AuditService::log('level_viewed', 'User viewed their progress for a level', ['level_id' => $id]);
 
-                $level = Level::with('modules.chapters.topics')->findOrFail($id);
+                $level = Level::with('modules.chapters.topics')
+                    ->findOrFail($id);
+
+                AuditService::log(
+                    'level_viewed',
+                    'User viewed their progress for a level',
+                    [
+                        'level_id' => $level->id
+                    ]
+                );
+
+                app(\App\Services\NotificationService::class)->send(
+                    $user,
+                    'LEVEL_VIEWED',
+                    [
+                        'message' => 'You viewed a level progress',
+
+                        'screen' => 'LevelDetails',
+
+                        // 🔥 direct model
+                        'model' => $level,
+
+                        'meta' => [
+                            'level_id' => $level->id
+                        ]
+                    ],
+                    ['db']
+                );
+
                 return response()->json([
                     'success' => true,
                     'data' => $this->mapLevel($level, $progress, $lang)
                 ]);
 
+                /*
+                |--------------------------------------------------------------------------
+                | 📦 MODULE
+                |--------------------------------------------------------------------------
+                */
             case 'module':
-                AuditService::log('module_viewed', 'User viewed their progress for a module', ['module_id' => $id]);
 
-                $module = Module::with('chapters.topics')->findOrFail($id);
+                $module = Module::with('chapters.topics')
+                    ->findOrFail($id);
+
+                AuditService::log(
+                    'module_viewed',
+                    'User viewed their progress for a module',
+                    [
+                        'module_id' => $module->id
+                    ]
+                );
+
+                app(\App\Services\NotificationService::class)->send(
+                    $user,
+                    'MODULE_VIEWED',
+                    [
+                        'message' => 'You viewed a module progress',
+
+                        'screen' => 'ModuleDetails',
+
+                        'model' => $module,
+
+                        'meta' => [
+                            'module_id' => $module->id
+                        ]
+                    ],
+                    ['db']
+                );
+
                 return response()->json([
                     'success' => true,
                     'data' => $this->mapModule($module, $progress, $lang)
                 ]);
 
+                /*
+                |--------------------------------------------------------------------------
+                | 📚 CHAPTER
+                |--------------------------------------------------------------------------
+                */
             case 'chapter':
-                AuditService::log('chapter_viewed', 'User viewed their progress for a chapter', ['chapter_id' => $id]);
 
-                $chapter = Chapter::with('topics')->findOrFail($id);
+                $chapter = Chapter::with('topics')
+                    ->findOrFail($id);
+
+                AuditService::log(
+                    'chapter_viewed',
+                    'User viewed their progress for a chapter',
+                    [
+                        'chapter_id' => $chapter->id
+                    ]
+                );
+
+                app(\App\Services\NotificationService::class)->send(
+                    $user,
+                    'CHAPTER_VIEWED',
+                    [
+                        'message' => 'You viewed a chapter progress',
+
+                        'screen' => 'ChapterDetails',
+
+                        'model' => $chapter,
+
+                        'meta' => [
+                            'chapter_id' => $chapter->id
+                        ]
+                    ],
+                    ['db']
+                );
+
                 return response()->json([
                     'success' => true,
                     'data' => $this->mapChapter($chapter, $progress, $lang)
                 ]);
 
             default:
+
                 return response()->json([
                     'success' => false,
                     'message' => 'Invalid type'
                 ], 422);
         }
     }
-
     public function isTopicContentCompleted($topic, $userId)
     {
         $total = $topic->contents()->count();

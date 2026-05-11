@@ -13,11 +13,6 @@ use App\Models\AssessmentAttempt;
 
 class ContentController extends Controller
 {
-    /*
-    |--------------------------------------------------------------------------
-    | 🌐 Resolve Language
-    |--------------------------------------------------------------------------
-    */
     private function resolveLanguage(Request $request)
     {
         return $request->query('lang')
@@ -36,21 +31,11 @@ class ContentController extends Controller
         $userId = auth()->id();
         $lang = $this->resolveLanguage($request);
 
-        /*
-    |--------------------------------------------------------------------------
-    | 📦 LOAD TOPIC WITH FULL HIERARCHY
-    |--------------------------------------------------------------------------
-    */
         $topic = \App\Models\Topic::with([
             'chapter.module.level.program',
             'translations'
         ])->findOrFail($topic_id);
 
-        /*
-    |--------------------------------------------------------------------------
-    | 🔒 LOCK CHECK
-    |--------------------------------------------------------------------------
-    */
         $progress = UserProgress::where('user_id', $userId)
             ->where('topic_id', $topic_id)
             ->first();
@@ -61,12 +46,6 @@ class ContentController extends Controller
                 'message' => 'Topic is locked'
             ], 403);
         }
-
-        /*
-    |--------------------------------------------------------------------------
-    | 📦 CONTENT QUERY
-    |--------------------------------------------------------------------------
-    */
         $query = TopicContent::with('translations')
             ->where('topic_id', $topic_id)
             ->where('status', true)
@@ -81,21 +60,11 @@ class ContentController extends Controller
 
         $contents = $query->paginate($limit);
 
-        /*
-    |--------------------------------------------------------------------------
-    | 🧠 USER CONTENT PROGRESS
-    |--------------------------------------------------------------------------
-    */
         $userContentProgress = \App\Models\UserContentProgress::where('user_id', $userId)
             ->whereIn('topic_content_id', $contents->pluck('id'))
             ->get()
             ->keyBy('topic_content_id');
 
-        /*
-    |--------------------------------------------------------------------------
-    | 🔁 TRANSFORM CONTENT
-    |--------------------------------------------------------------------------
-    */
         $contents->getCollection()->transform(function ($item) use ($lang, $userContentProgress) {
 
             $progress = $userContentProgress[$item->id] ?? null;
@@ -143,11 +112,6 @@ class ContentController extends Controller
             $contents->getCollection()->filter()->values()
         );
 
-        /*
-    |--------------------------------------------------------------------------
-    | 🎯 ASSESSMENT STATUS
-    |--------------------------------------------------------------------------
-    */
         $assessmentStatus = [
             'status' => 'not_attempted',
             'score' => null,
@@ -176,11 +140,6 @@ class ContentController extends Controller
             }
         }
 
-        /*
-    |--------------------------------------------------------------------------
-    | 🌐 CONTEXT (HIERARCHY)
-    |--------------------------------------------------------------------------
-    */
         $context = [
             'type' => 'topic',
 
@@ -211,11 +170,6 @@ class ContentController extends Controller
             ],
         ];
 
-        /*
-    |--------------------------------------------------------------------------
-    | 📤 RESPONSE
-    |--------------------------------------------------------------------------
-    */
         return response()->json([
             'success' => true,
             'context' => $context,
@@ -224,16 +178,18 @@ class ContentController extends Controller
         ]);
     }
 
+
     public function single(Request $request, $topic_id, $content_id)
     {
-        AuditService::log('content_viewed', 'User viewed a content item', ['content_id' => $content_id]);
+        AuditService::log(
+            'content_viewed',
+            'User viewed a content item',
+            ['content_id' => $content_id]
+        );
 
         $userId = auth()->id();
         $lang = $this->resolveLanguage($request);
 
-        /*
-        | 🔒 LOCK CHECK
-        */
         $progress = UserProgress::where('user_id', $userId)
             ->where('topic_id', $topic_id)
             ->first();
@@ -245,15 +201,9 @@ class ContentController extends Controller
             ], 403);
         }
 
-        /*
-        | 📦 LOAD TOPIC WITH FULL RELATION
-        */
         $topic = \App\Models\Topic::with('chapter.module.level.program')
             ->findOrFail($topic_id);
 
-        /*
-        | 📦 ALL CONTENTS
-        */
         $contents = TopicContent::with('translations')
             ->where('topic_id', $topic_id)
             ->where('status', true)
@@ -267,10 +217,9 @@ class ContentController extends Controller
             ], 404);
         }
 
-        /*
-        | 📍 FIND CURRENT
-        */
-        $currentIndex = $contents->search(fn($c) => $c->id == $content_id);
+        $currentIndex = $contents->search(
+            fn($c) => $c->id == $content_id
+        );
 
         if ($currentIndex === false) {
             return response()->json([
@@ -281,25 +230,29 @@ class ContentController extends Controller
 
         $current = $contents[$currentIndex];
 
-        /*
-        | 🔁 NAVIGATION
-        */
         $previous = $contents[$currentIndex - 1] ?? null;
         $next = $contents[$currentIndex + 1] ?? null;
 
-        /*
-        | 🧠 USER READ STATUS
-        */
-        $userProgress = \App\Models\UserContentProgress::where('user_id', $userId)
+        $userProgress = \App\Models\UserContentProgress::where(
+            'user_id',
+            $userId
+        )
             ->where('topic_content_id', $current->id)
             ->first();
 
         $isRead = $userProgress?->is_read ?? false;
         $readAt = $userProgress?->read_at ?? null;
 
-        /*
-        | 🌐 LANGUAGE TRANSFORM
-        */
+        $resolvedMedia = null;
+
+        if (
+            $current->type === 'media'
+            && !empty($current->meta['shortcode'])
+        ) {
+
+            $resolvedMedia = \App\Models\Media::where('shortcode', $current->meta['shortcode'])->first();
+        }
+
         if ($lang === 'en') {
 
             if ($current->title === 'BASE_RECORD') {
@@ -313,8 +266,31 @@ class ContentController extends Controller
                 'id' => $current->id,
                 'type' => $current->type,
                 'title' => $current->title,
-                'content' => $current->type === 'text' ? $current->content : null,
-                'meta' => $current->meta,
+
+                'content' => $current->type === 'text'
+                    ? $current->content
+                    : $current->content,
+
+                'media' => $resolvedMedia ? [
+                    'id' => $resolvedMedia->id,
+                    'title' => $resolvedMedia->title,
+                    'description' => $resolvedMedia->description,
+                    'type' => $resolvedMedia->type,
+                    'shortcode' => $resolvedMedia->shortcode,
+                    'file' => $resolvedMedia->file,
+                    'external_url' => $resolvedMedia->external_url,
+                    'full_url' => $resolvedMedia->full_url,
+                ] : null,
+
+                'meta' => array_merge(
+                    $current->meta ?? [],
+                    $resolvedMedia ? [
+                        'full_url' => $resolvedMedia->full_url,
+                        'file' => $resolvedMedia->file,
+                        'type' => $resolvedMedia->type,
+                    ] : []
+                ),
+
                 'order' => $current->order,
                 'is_read' => $isRead,
                 'read_at' => $readAt,
@@ -338,17 +314,37 @@ class ContentController extends Controller
                 'language_code' => $lang,
                 'type' => $current->type,
                 'title' => $translation->title,
-                'content' => $current->type === 'text' ? $translation->content : null,
-                'meta' => $current->meta,
+
+                'content' => $current->type === 'text'
+                    ? $translation->content
+                    : $translation->content,
+
+                'media' => $resolvedMedia ? [
+                    'id' => $resolvedMedia->id,
+                    'title' => $resolvedMedia->title,
+                    'description' => $resolvedMedia->description,
+                    'type' => $resolvedMedia->type,
+                    'shortcode' => $resolvedMedia->shortcode,
+                    'file' => $resolvedMedia->file,
+                    'external_url' => $resolvedMedia->external_url,
+                    'full_url' => $resolvedMedia->full_url,
+                ] : null,
+
+                'meta' => array_merge(
+                    $current->meta ?? [],
+                    $resolvedMedia ? [
+                        'full_url' => $resolvedMedia->full_url,
+                        'file' => $resolvedMedia->file,
+                        'type' => $resolvedMedia->type,
+                    ] : []
+                ),
+
                 'order' => $current->order,
                 'is_read' => $isRead,
                 'read_at' => $readAt,
             ];
         }
 
-        /*
-        | 🌐 TOPIC TRANSLATION
-        */
         $topicTranslation = method_exists($topic, 'getTranslation')
             ? $topic->getTranslation($lang)
             : null;
@@ -361,37 +357,33 @@ class ContentController extends Controller
             'estimated_duration' => $topic->estimated_duration,
         ];
 
-        /*
-        | 🌐 CONTEXT (HIERARCHY)
-        */
         $context = [
             'chapter' => [
                 'id' => $topic->chapter->id ?? null,
                 'title' => $topic->chapter->title ?? null,
             ],
+
             'module' => [
                 'id' => $topic->chapter->module->id ?? null,
                 'title' => $topic->chapter->module->title ?? null,
             ],
+
             'level' => [
                 'id' => $topic->chapter->module->level->id ?? null,
                 'title' => $topic->chapter->module->level->title ?? null,
             ],
+
             'program' => [
                 'id' => $topic->chapter->module->level->program->id ?? null,
                 'title' => $topic->chapter->module->level->program->title ?? null,
             ],
         ];
 
-        /*
-        | 📤 RESPONSE
-        */
         return response()->json([
             'success' => true,
             'data' => [
                 'topic' => $topicData,
 
-                // ✅ ADDED CONTEXT HERE
                 'context' => $context,
 
                 'current' => $data,
@@ -405,6 +397,4 @@ class ContentController extends Controller
             ]
         ]);
     }
-
-    
 }

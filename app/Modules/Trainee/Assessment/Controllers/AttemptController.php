@@ -15,6 +15,8 @@ use App\Models\Level;
 use App\Services\AuditService;
 use Carbon\Carbon;
 use App\Services\CertificationService;
+use App\Models\User;
+use App\Services\NotificationService;
 
 
 class AttemptController extends Controller
@@ -111,6 +113,88 @@ class AttemptController extends Controller
             'started_at' => now(),
             'status' => 'in_progress'
         ]);
+
+        /*
+        |--------------------------------------------------
+        | 👤 USER
+        |--------------------------------------------------
+        */
+        $user = auth()->user();
+
+        /*
+        |--------------------------------------------------
+        | 🔔 USER NOTIFICATION
+        |--------------------------------------------------
+        */
+        if ($user) {
+
+            app(\App\Services\NotificationService::class)->send(
+                $user,
+                'ASSESSMENT_STARTED',
+                [
+                    'title' => 'Assessment Started',
+                    'message' => 'You started an assessment',
+
+                    'screen' => 'AssessmentQuestions',
+                    'id' => $assessment->id,
+
+                    'meta' => [
+                        'assessment_id' => $assessment->id,
+                        'assessment_type' => $assessment->type,
+                        'attempt_id' => $attempt->id,
+                    ]
+                ],
+                ['db', 'push']
+            );
+
+            /*
+            |--------------------------------------------------
+            | 🛡 ADMIN PAYLOAD
+            |--------------------------------------------------
+            */
+            $adminPayload = [
+                'title' => 'Assessment Started',
+                'message' => "{$user->name} started an assessment",
+
+                'screen' => 'AssessmentReview',
+                'id' => $assessment->id,
+
+                'meta' => [
+                    'user_id' => $user->id,
+                    'user_name' => $user->name,
+
+                    'assessment_id' => $assessment->id,
+                    'assessment_type' => $assessment->type,
+
+                    'attempt_id' => $attempt->id,
+                ]
+            ];
+
+            /*
+            |--------------------------------------------------
+            | 🛡 ADMINS
+            |--------------------------------------------------
+            */
+            app(\App\Services\NotificationService::class)->sendToRole(
+                'admin',
+                'ASSESSMENT_STARTED',
+                $adminPayload,
+                ['db', 'push']
+            );
+
+            /*
+            |--------------------------------------------------
+            | 👑 SUPER ADMINS
+            |--------------------------------------------------
+            */
+            app(\App\Services\NotificationService::class)->sendToRole(
+                'superadmin',
+                'ASSESSMENT_STARTED',
+                $adminPayload,
+                ['db', 'push']
+            );
+        }
+
 
         return response()->json([
             'message' => 'New attempt started',
@@ -654,6 +738,106 @@ class AttemptController extends Controller
                 'time_taken' => $timeTaken,
                 'submit_type' => $submitType
             ]);
+
+            /*
+            |--------------------------------------------------
+            | 👤 USER
+            |--------------------------------------------------
+            */
+            $user = auth()->user();
+
+            /*
+            |--------------------------------------------------
+            | 🔔 USER NOTIFICATION
+            |--------------------------------------------------
+            */
+            if ($user) {
+
+                app(\App\Services\NotificationService::class)->send(
+                    $user,
+                    'ASSESSMENT_COMPLETED',
+                    [
+                        'title' => $isPassed
+                            ? 'Assessment Passed'
+                            : 'Assessment Failed',
+
+                        'message' => $isPassed
+                            ? 'You passed the assessment successfully'
+                            : 'You failed the assessment',
+
+                        'screen' => 'AssessmentResult',
+                        'id' => $assessment->id,
+
+                        'meta' => [
+                            'assessment_id' => $assessment->id,
+                            'assessment_type' => $assessment->type,
+
+                            'attempt_id' => $attempt->id,
+
+                            'score' => $result['marks'],
+                            'percentage' => $result['percentage'],
+                            'status' => $attempt->status,
+                        ]
+                    ],
+                    ['db', 'push']
+                );
+
+                /*
+                |--------------------------------------------------
+                | 🛡 ADMIN PAYLOAD
+                |--------------------------------------------------
+                */
+                $adminPayload = [
+                    'title' => $isPassed
+                        ? 'Assessment Passed'
+                        : 'Assessment Failed',
+
+                    'message' => $isPassed
+                        ? "{$user->name} passed an assessment"
+                        : "{$user->name} failed an assessment",
+
+                    'screen' => 'AssessmentReview',
+                    'id' => $assessment->id,
+
+                    'meta' => [
+                        'user_id' => $user->id,
+                        'user_name' => $user->name,
+
+                        'assessment_id' => $assessment->id,
+                        'assessment_type' => $assessment->type,
+
+                        'attempt_id' => $attempt->id,
+
+                        'score' => $result['marks'],
+                        'percentage' => $result['percentage'],
+                        'status' => $attempt->status,
+                    ]
+                ];
+
+                /*
+            |--------------------------------------------------
+            | 🛡 ADMINS
+            |--------------------------------------------------
+            */
+                app(\App\Services\NotificationService::class)->sendToRole(
+                    'admin',
+                    'ASSESSMENT_COMPLETED',
+                    $adminPayload,
+                    ['db', 'push']
+                );
+
+                /*
+                |--------------------------------------------------
+                | 👑 SUPER ADMINS
+                |--------------------------------------------------
+                */
+                app(\App\Services\NotificationService::class)->sendToRole(
+                    'superadmin',
+                    'ASSESSMENT_COMPLETED',
+                    $adminPayload,
+                    ['db', 'push']
+                );
+            }
 
             $certificate = null;
 

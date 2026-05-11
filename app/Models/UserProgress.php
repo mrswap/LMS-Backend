@@ -70,26 +70,62 @@ class UserProgress extends BaseModel
 
         static::saving(function ($progress) {
 
-            // ❗ prevent duplicate entries
-            $exists = self::where('user_id', $progress->user_id)
-                ->where('topic_id', $progress->topic_id)
-                ->when($progress->id, fn($q) => $q->where('id', '!=', $progress->id))
-                ->exists();
+            /*
+            |--------------------------------------------------------------
+            | ✅ PREVENT DUPLICATE TOPIC PROGRESS
+            |--------------------------------------------------------------
+            |
+            | Only validate duplicates for actual topic rows.
+            | Module/level completion rows may have topic_id = null.
+            |
+            */
 
-            if ($exists) {
-                throw new \Exception('Progress already exists for this user and topic.');
-            }
+            if (!is_null($progress->topic_id)) {
 
-            // ❗ lock completed records
-            if ($progress->exists && $progress->is_completed) {
+                $exists = self::where('user_id', $progress->user_id)
+                    ->where('topic_id', $progress->topic_id)
+                    ->when(
+                        $progress->id,
+                        fn($q) => $q->where('id', '!=', $progress->id)
+                    )
+                    ->exists();
 
-                if ($progress->isDirty('is_completed') && !$progress->is_completed) {
-                    throw new \Exception('Completed progress cannot be reverted.');
+                if ($exists) {
+                    throw new \Exception(
+                        'Progress already exists for this user and topic.'
+                    );
                 }
             }
 
-            // ❗ auto set completed_at
-            if ($progress->is_completed && !$progress->completed_at) {
+            /*
+            |--------------------------------------------------------------
+            | ✅ PREVENT REVERTING COMPLETED PROGRESS
+            |--------------------------------------------------------------
+            |
+            | Once completed, progress cannot become incomplete again.
+            |
+            */
+
+            if (
+                $progress->exists &&
+                $progress->getOriginal('is_completed') === true &&
+                $progress->is_completed === false
+            ) {
+                throw new \Exception(
+                    'Completed progress cannot be reverted.'
+                );
+            }
+
+            /*
+            |--------------------------------------------------------------
+            | ✅ AUTO SET completed_at
+            |--------------------------------------------------------------
+            */
+
+            if (
+                $progress->is_completed &&
+                is_null($progress->completed_at)
+            ) {
                 $progress->completed_at = now();
             }
         });
@@ -104,7 +140,7 @@ class UserProgress extends BaseModel
     public function cascadeSoftDelete()
     {
         // ❗ DO NOTHING
-        // progress = audit + learning state
+        // Progress = audit + learning state
     }
 
     public function cascadeRestore()

@@ -60,26 +60,31 @@ class Media extends BaseModel
         }
 
         /*
-        |--------------------------------------------------------------------------
-        | PUBLIC FILES
-        |--------------------------------------------------------------------------
-        */
+    |--------------------------------------------------------------------------
+    | PUBLIC FILES
+    |--------------------------------------------------------------------------
+    */
         if (
             str_starts_with($this->file, 'uploads/')
             || str_starts_with($this->file, '/uploads/')
+            || str_starts_with($this->file, 'public/')
+            || str_starts_with($this->file, '/public/')
         ) {
-            return asset($this->file);
+            return url('public/' . ltrim($this->file, '/'));
         }
 
         /*
-        |--------------------------------------------------------------------------
-        | STORAGE DISK FILES
-        |--------------------------------------------------------------------------
-        */
+    |--------------------------------------------------------------------------
+    | STORAGE DISK FILES
+    |--------------------------------------------------------------------------
+    */
         $disk = $this->disk ?? config('filesystems.default');
 
         return url(
-            Storage::disk($disk)->url($this->file)
+            'public/' . ltrim(
+                Storage::disk($disk)->url($this->file),
+                '/'
+            )
         );
     }
 

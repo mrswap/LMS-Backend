@@ -256,5 +256,160 @@ class FinalLMSSeeder extends Seeder
         $exam->update([
             'total_marks' => $totalMarks
         ]);
+
+
+        // ================= LEVEL 2 =================
+        $level2 = Level::create([
+            'program_id' => $program->id,
+            'title' => 'Level 2',
+            'status' => 1,
+            'publish_status' => 'published',
+            'created_by' => $createdBy
+        ]);
+
+        // ================= MODULE (ONLY 1) =================
+        $module2 = Module::create([
+            'program_id' => $program->id,
+            'level_id' => $level2->id,
+            'title' => 'Module 1',
+            'status' => 1,
+            'publish_status' => 'published',
+            'created_by' => $createdBy
+        ]);
+
+        // ================= CHAPTER (ONLY 1) =================
+        $chapter2 = Chapter::create([
+            'program_id' => $program->id,
+            'level_id' => $level2->id,
+            'module_id' => $module2->id,
+            'title' => 'Chapter 1',
+            'status' => 1,
+            'publish_status' => 'published',
+            'created_by' => $createdBy
+        ]);
+
+        // ================= TOPIC (ONLY 1) =================
+        $topic2 = Topic::create([
+            'program_id' => $program->id,
+            'level_id' => $level2->id,
+            'module_id' => $module2->id,
+            'chapter_id' => $chapter2->id,
+            'title' => 'Topic 1',
+            'estimated_duration' => 10,
+            'status' => 1,
+            'publish_status' => 'published',
+            'created_by' => $createdBy
+        ]);
+
+        // ---------- CONTENT (ONLY 1) ----------
+        TopicContent::create([
+            'topic_id' => $topic2->id,
+            'type' => 'text',
+            'title' => 'Intro',
+            'content' => '<p>Level 2 Topic Content</p>',
+            'order' => 1,
+            'status' => 1,
+            'publish_status' => 'published',
+            'created_by' => $createdBy
+        ]);
+
+        // ---------- FAQ ----------
+        $faq2 = Faq::create([
+            'faqable_id' => $topic2->id,
+            'faqable_type' => Topic::class,
+            'status' => 1,
+            'created_by' => $createdBy
+        ]);
+
+        FaqTranslation::create([
+            'faq_id' => $faq2->id,
+            'language_code' => 'en',
+            'question' => 'What is Level 2?',
+            'answer' => 'Level 2 Answer'
+        ]);
+
+        // ================= QUIZ =================
+        $quiz2 = Assessment::create([
+            'assessmentable_id' => $topic2->id,
+            'assessmentable_type' => Topic::class,
+            'type' => 'topic',
+            'title' => 'Quiz',
+            'passing_score' => 60,
+            'duration' => 10,
+            'total_marks' => 0,
+            'status' => 1,
+            'created_by' => $createdBy
+        ]);
+
+        $totalMarks = 0;
+
+        for ($q = 1; $q <= 5; $q++) {
+
+            $marks = 20;
+
+            $question = AssessmentQuestion::create([
+                'assessment_id' => $quiz2->id,
+                'question_text' => "Level 2 Question $q",
+                'question_type' => 'mcq',
+                'marks' => $marks,
+                'order' => $q
+            ]);
+
+            $totalMarks += $marks;
+
+            foreach (['A', 'B', 'C', 'D'] as $k => $opt) {
+                AssessmentOption::create([
+                    'question_id' => $question->id,
+                    'option_text' => "Option $opt",
+                    'is_correct' => $k === 0
+                ]);
+            }
+        }
+
+        $quiz2->update([
+            'total_marks' => $totalMarks
+        ]);
+
+        // ================= LEVEL 2 FINAL EXAM =================
+        $exam2 = Assessment::create([
+            'assessmentable_id' => $level2->id,
+            'assessmentable_type' => Level::class,
+            'type' => 'level',
+            'title' => 'Final Exam',
+            'duration' => 20,
+            'passing_score' => 80,
+            'total_marks' => 0,
+            'status' => 1,
+            'created_by' => $createdBy
+        ]);
+
+        $totalMarks = 0;
+
+        for ($i = 1; $i <= 5; $i++) {
+
+            $marks = 1;
+
+            $q = AssessmentQuestion::create([
+                'assessment_id' => $exam2->id,
+                'question_text' => "Level 2 Final Question $i",
+                'question_type' => 'mcq',
+                'marks' => $marks,
+                'order' => $i
+            ]);
+
+            $totalMarks += $marks;
+
+            foreach (['A', 'B', 'C', 'D'] as $k => $opt) {
+                AssessmentOption::create([
+                    'question_id' => $q->id,
+                    'option_text' => "Option $opt",
+                    'is_correct' => $k === 1
+                ]);
+            }
+        }
+
+        $exam2->update([
+            'total_marks' => $totalMarks
+        ]);
     }
 }
