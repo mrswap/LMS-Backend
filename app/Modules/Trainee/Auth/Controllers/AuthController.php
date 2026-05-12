@@ -16,6 +16,8 @@ use App\Models\UserProgress;
 use App\Models\Topic;
 use App\Services\AuditService;
 use App\Models\UserDevice;
+use App\Services\NotificationService;
+
 
 class AuthController extends Controller
 {
@@ -180,6 +182,7 @@ class AuthController extends Controller
         $request->validate([
             'email' => 'required|email',
             'password' => 'required',
+
             'fcm_token' => 'nullable|string',
             'device_type' => 'nullable|string',
             'device_name' => 'nullable|string',
@@ -187,99 +190,321 @@ class AuthController extends Controller
 
         $user = User::where('email', $request->email)->first();
 
-        if (!$user || !Hash::check($request->password, $user->password)) {
-            return response()->json(['message' => 'Invalid credentials'], 401);
+        /*
+        |--------------------------------------------------------------------------
+        | ❌ INVALID CREDENTIALS
+        |--------------------------------------------------------------------------
+        */
+
+        if (
+            !$user
+            || !Hash::check($request->password, $user->password)
+        ) {
+            return response()->json([
+                'message' => 'Invalid credentials'
+            ], 401);
         }
+
+        /*
+        |--------------------------------------------------------------------------
+        | ❌ ACCOUNT INACTIVE
+        |--------------------------------------------------------------------------
+        */
 
         if (!$user->is_active) {
-            return response()->json(['message' => 'Account inactive'], 403);
+
+            return response()->json([
+                'message' => 'Account inactive'
+            ], 403);
         }
+
+        /*
+        |--------------------------------------------------------------------------
+        | ❌ ROLE CHECK
+        |--------------------------------------------------------------------------
+        */
 
         if (!$user->isSales()) {
-            return response()->json(['message' => 'Unauthorized'], 403);
+
+            return response()->json([
+                'message' => 'Unauthorized'
+            ], 403);
         }
+
+        /*
+        |--------------------------------------------------------------------------
+        | ❌ EMAIL VERIFY CHECK
+        |--------------------------------------------------------------------------
+        */
 
         if (!$user->email_verified_at) {
-            return response()->json(['message' => 'Verify email first'], 403);
+
+            return response()->json([
+                'message' => 'Verify email first'
+            ], 403);
         }
 
-        // 🔐 DEVICE CHECK
+        /*
+        |--------------------------------------------------------------------------
+        | 🔐 DEVICE CHECK
+        |--------------------------------------------------------------------------
+        */
+
         $deviceId = $request->header('X-Device-Id');
 
         if (!$deviceId) {
+
             return response()->json([
                 'message' => 'Device ID required'
             ], 400);
         }
 
-        if ($user->device_id && $user->device_id !== $deviceId) {
+        /*
+        |--------------------------------------------------------------------------
+        | ❌ MULTI DEVICE BLOCK
+        |--------------------------------------------------------------------------
+        */
+
+        if (
+            $user->device_id
+            && $user->device_id !== $deviceId
+        ) {
+
             return response()->json([
                 'message' => 'Already logged in on another device. Contact admin.'
             ], 403);
         }
 
-        // ✅ Bind device
+        /*
+        |--------------------------------------------------------------------------
+        | ✅ BIND DEVICE
+        |--------------------------------------------------------------------------
+        */
+
         $user->device_id = $deviceId;
-        $user->device_name = $request->header('User-Agent');
+
+        $user->device_name =
+            $request->device_name
+            ?? $request->header('User-Agent');
+
         $user->last_login_at = now();
+
         $user->save();
 
-        // 🔑 Token create
-        $token = $user->createToken('trainee_token')->plainTextToken;
+        /*
+        |--------------------------------------------------------------------------
+        | 🔑 CREATE TOKEN
+        |--------------------------------------------------------------------------
+        */
 
-        // 🧾 AUDIT LOG (AFTER SUCCESS LOGIN)
-        audit_log($user->id, 'login', 'User logged in');
+        $token = $user
+            ->createToken('trainee_token')
+            ->plainTextToken;
+
+        /*
+        |--------------------------------------------------------------------------
+        | 🧾 AUDIT LOG
+        |--------------------------------------------------------------------------
+        */
+
+        audit_log(
+            $user->id,
+            'login',
+            'User logged in'
+        );
 
         $userId = $user->id;
 
-        // 🔍 Progress init
+        /*
+        |--------------------------------------------------------------------------
+        | 🔍 INITIAL PROGRESSION
+        |--------------------------------------------------------------------------
+        */
+
         $exists = UserProgress::where('user_id', $userId)->exists();
 
         if (!$exists) {
-            $firstTopic = Topic::orderBy('id')->first();
+
+            $firstTopic = Topic::with([
+                'program',
+                'level',
+                'module',
+                'chapter'
+            ])
+                ->orderBy('id')
+                ->first();
 
             if ($firstTopic) {
-                UserProgress::create([
+
+                /*
+            |--------------------------------------------------------------------------
+            | 🔓 UNLOCK FIRST TOPIC
+            |--------------------------------------------------------------------------
+            */
+
+                $progress = UserProgress::create([
                     'user_id' => $userId,
+
                     'program_id' => $firstTopic->program_id,
                     'level_id' => $firstTopic->level_id,
                     'module_id' => $firstTopic->module_id,
                     'chapter_id' => $firstTopic->chapter_id,
                     'topic_id' => $firstTopic->id,
+
                     'is_unlocked' => true,
                     'is_completed' => false,
                 ]);
+
+                /*
+            |--------------------------------------------------------------------------
+            | 🖼 IMAGE RESOLVE
+            |--------------------------------------------------------------------------
+            */
+
+                $image =
+                    $firstTopic->image
+                    ?? $firstTopic->chapter->image
+                    ?? $firstTopic->module->image
+                    ?? $firstTopic->level->image
+                    ?? $firstTopic->program->image
+                    ?? null;
+
+                /*
+            |--------------------------------------------------------------------------
+            | 👤 TRAINEE NOTIFICATION
+            |--------------------------------------------------------------------------
+            */
+
+                app(\App\Services\NotificationService::class)->send(
+                    $user,
+                    'TRAINING_ASSIGNED',
+                    [
+                        'title' => 'Training Assigned',
+
+                        'message' =>
+                        "Your training journey has started with {$firstTopic->title}",
+
+                        'screen' => 'TopicDetails',
+
+                        'id' => $firstTopic->id,
+
+                        'image' => $image,
+
+                        'meta' => [
+
+                            'progress_id' => $progress->id,
+
+                            'program_id' => $firstTopic->program_id,
+                            'program_title' => $firstTopic->program->title ?? null,
+
+                            'level_id' => $firstTopic->level_id,
+                            'level_title' => $firstTopic->level->title ?? null,
+
+                            'module_id' => $firstTopic->module_id,
+                            'module_title' => $firstTopic->module->title ?? null,
+
+                            'chapter_id' => $firstTopic->chapter_id,
+                            'chapter_title' => $firstTopic->chapter->title ?? null,
+
+                            'topic_id' => $firstTopic->id,
+                            'topic_title' => $firstTopic->title,
+                        ]
+                    ],
+                    ['db', 'push']
+                );
+
+                /*
+            |--------------------------------------------------------------------------
+            | 🛡 ADMIN NOTIFICATION
+            |--------------------------------------------------------------------------
+            */
+
+                $adminPayload = [
+
+                    'title' => 'Training Auto Assigned',
+
+                    'message' =>
+                    "{$user->name} received initial training assignment",
+
+                    'screen' => 'UserDetails',
+
+                    'id' => $user->id,
+
+                    'image' => $image,
+
+                    'meta' => [
+
+                        'user_id' => $user->id,
+                        'user_name' => $user->name,
+                        'user_email' => $user->email,
+
+                        'program_id' => $firstTopic->program_id,
+                        'program_title' => $firstTopic->program->title ?? null,
+
+                        'level_id' => $firstTopic->level_id,
+                        'level_title' => $firstTopic->level->title ?? null,
+
+                        'module_id' => $firstTopic->module_id,
+                        'module_title' => $firstTopic->module->title ?? null,
+
+                        'chapter_id' => $firstTopic->chapter_id,
+                        'chapter_title' => $firstTopic->chapter->title ?? null,
+
+                        'topic_id' => $firstTopic->id,
+                        'topic_title' => $firstTopic->title,
+                    ]
+                ];
+
+                app(\App\Services\NotificationService::class)->sendToRole(
+                    'admin',
+                    'TRAINING_ASSIGNED',
+                    $adminPayload,
+                    ['db', 'push']
+                );
+
+                app(\App\Services\NotificationService::class)->sendToRole(
+                    'superadmin',
+                    'TRAINING_ASSIGNED',
+                    $adminPayload,
+                    ['db', 'push']
+                );
             }
         }
+
+        /*
+        |--------------------------------------------------------------------------
+        | 📱 STORE DEVICE TOKEN
+        |--------------------------------------------------------------------------
+        */
+
         if ($request->fcm_token) {
+
             UserDevice::updateOrCreate(
                 [
-                    'user_id'   => $user->id,
+                    'user_id' => $user->id,
                     'device_id' => $deviceId,
                 ],
                 [
-                    'fcm_token'   => $request->fcm_token,
-                    'device_type' => $request->device_type ?? 'android',
-                    'device_name' => $request->header('User-Agent'),
+                    'fcm_token' => $request->fcm_token,
+
+                    'device_type' =>
+                    $request->device_type
+                        ?? 'android',
+
+                    'device_name' =>
+                    $request->device_name
+                        ?? $request->header('User-Agent'),
+
                     'last_used_at' => now()
                 ]
             );
         }
-        app(\App\Services\NotificationService::class)->send(
-            $user,
-            'TRAINING_ASSIGNED',
-            [
-                'title'   => 'Test Notification',
-                'message' => 'Firebase test working',
 
-                'screen'  => 'HomeScreen',
-                'id'      => 1,
-
-                'image'   => null,
-                'link'    => null,
-                'meta'    => []
-            ]
-        );
+        /*
+        |--------------------------------------------------------------------------
+        | ✅ RESPONSE
+        |--------------------------------------------------------------------------
+        */
 
         return response()->json([
             'token' => $token,

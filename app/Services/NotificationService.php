@@ -2,19 +2,36 @@
 
 namespace App\Services;
 
-use App\Models\User;
 use App\Models\Notification;
+use App\Models\User;
 use Illuminate\Support\Facades\Log;
 
 class NotificationService
 {
     protected $mail;
+
     protected $push;
 
-    public function __construct(MailService $mail, PushService $push)
-    {
+    public function __construct(
+        MailService $mail,
+        PushService $push
+    ) {
         $this->mail = $mail;
         $this->push = $push;
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | 🪵 CUSTOM LOGGER
+    |--------------------------------------------------------------------------
+    */
+
+    private function log($level, $message, $data = [])
+    {
+        Log::channel('notification')->{$level}(
+            $message,
+            $data
+        );
     }
 
     /*
@@ -23,20 +40,25 @@ class NotificationService
     |--------------------------------------------------------------------------
     */
 
-    public function send($user, $type, $data = [], $channels = ['all'])
-    {
+    public function send(
+        $user,
+        $type,
+        $data = [],
+        $channels = ['all']
+    ) {
         try {
 
             /*
             |--------------------------------------------------------------------------
-            | 🔒 Validate User
+            | 🔒 VALIDATE USER
             |--------------------------------------------------------------------------
             */
 
-            if (!$user || !$user->id) {
+            if (! $user || ! $user->id) {
 
-                Log::warning('Notification skipped: invalid user', [
-                    'type' => $type
+                $this->log('warning', '⚠ Invalid notification user', [
+                    'type' => $type,
+                    'data' => $data,
                 ]);
 
                 return false;
@@ -44,35 +66,69 @@ class NotificationService
 
             /*
             |--------------------------------------------------------------------------
-            | 🧠 Auto Format
+            | 🧠 FORMAT PAYLOAD
+            |--------------------------------------------------------------------------
+            */
+
+            $formatted = $this->format($type, $data);
+
+            /*
+            |--------------------------------------------------------------------------
+            | 🔥 MERGE USER DATA
             |--------------------------------------------------------------------------
             */
 
             $payload = array_merge(
-                $this->format($type, $data),
+                $formatted,
                 $data
             );
 
             /*
             |--------------------------------------------------------------------------
-            | 🔒 Normalize Payload
+            | 🛡 NORMALIZE PAYLOAD
             |--------------------------------------------------------------------------
             */
 
             $payload = [
-                'title'   => $payload['title'] ?? 'Notification',
-                'message' => $payload['message'] ?? '',
-                'screen'  => $payload['screen'] ?? null,
-                'id'      => $payload['id'] ?? null,
-                'image'   => $payload['image'] ?? null,
-                'link'    => $payload['link'] ?? null,
-                'meta'    => $payload['meta'] ?? [],
+
+                'title' => $payload['title']
+                    ?? 'Notification',
+
+                'message' => $payload['message']
+                    ?? 'New update available',
+
+                'screen' => $payload['screen']
+                    ?? null,
+
+                'id' => $payload['id']
+                    ?? null,
+
+                'image' => $payload['image']
+                    ?? null,
+
+                'link' => $payload['link']
+                    ?? null,
+
+                'meta' => is_array($payload['meta'] ?? null)
+                    ? $payload['meta']
+                    : [],
             ];
 
-            Log::info('🚀 Sending notification', [
+            /*
+            |--------------------------------------------------------------------------
+            | 🪵 START LOG
+            |--------------------------------------------------------------------------
+            */
+
+            $this->log('info', '🚀 Sending notification', [
+
                 'user_id' => $user->id,
+
                 'type' => $type,
+
                 'channels' => $channels,
+
+                'payload' => $payload,
             ]);
 
             /*
@@ -84,15 +140,23 @@ class NotificationService
             if ($this->shouldSend($channels, 'db')) {
 
                 Notification::create([
+
                     'user_id' => $user->id,
-                    'type'    => $type,
-                    'title'   => $payload['title'],
+
+                    'type' => $type,
+
+                    'title' => $payload['title'],
+
                     'message' => $payload['message'],
-                    'data'    => $payload,
+
+                    'data' => $payload,
                 ]);
 
-                Log::info('✅ DB notification created', [
-                    'user_id' => $user->id
+                $this->log('info', '✅ DB notification created', [
+
+                    'user_id' => $user->id,
+
+                    'type' => $type,
                 ]);
             }
 
@@ -104,23 +168,29 @@ class NotificationService
 
             if (
                 $this->shouldSend($channels, 'mail')
-                && !empty($user->email)
+                && ! empty($user->email)
             ) {
 
                 $this->mail->send(
+
                     $user->email,
+
                     [
                         'subject' => $payload['title'],
-                        'title'   => $payload['title'],
+                        'title' => $payload['title'],
                         'message' => $payload['message'],
-                        'link'    => $payload['link'],
-                        'image'   => $payload['image'],
+                        'image' => $payload['image'],
+                        'link' => $payload['link'],
                     ]
                 );
 
-                Log::info('✅ Mail notification sent', [
+                $this->log('info', '✅ Mail notification sent', [
+
                     'user_id' => $user->id,
-                    'email' => $user->email
+
+                    'email' => $user->email,
+
+                    'type' => $type,
                 ]);
             }
 
@@ -133,35 +203,54 @@ class NotificationService
             if ($this->shouldSend($channels, 'push')) {
 
                 $this->push->send(
+
                     $user,
+
                     [
-                        'title'   => $payload['title'],
+                        'title' => $payload['title'],
                         'message' => $payload['message'],
-                        'image'   => $payload['image'],
+                        'image' => $payload['image'],
                     ],
+
                     [
-                        'type'   => $type,
+                        'type' => $type,
                         'screen' => $payload['screen'],
-                        'id'     => $payload['id'],
-                        'extra'  => $payload['meta'],
-                        'link'   => $payload['link'],
+                        'id' => $payload['id'],
+                        'extra' => $payload['meta'],
+                        'link' => $payload['link'],
                     ]
                 );
 
-                Log::info('✅ Push notification processed', [
-                    'user_id' => $user->id
+                $this->log('info', '✅ Push notification processed', [
+
+                    'user_id' => $user->id,
+
+                    'type' => $type,
                 ]);
             }
+
+            /*
+            |--------------------------------------------------------------------------
+            | ✅ SUCCESS
+            |--------------------------------------------------------------------------
+            */
 
             return true;
         } catch (\Throwable $e) {
 
-            Log::error('❌ Notification failed', [
+            $this->log('error', '❌ Notification failed', [
+
                 'user_id' => $user->id ?? null,
-                'type'    => $type,
-                'error'   => $e->getMessage(),
-                'file'    => $e->getFile(),
-                'line'    => $e->getLine(),
+
+                'type' => $type,
+
+                'error' => $e->getMessage(),
+
+                'file' => $e->getFile(),
+
+                'line' => $e->getLine(),
+
+                'data' => $data,
             ]);
 
             return false;
@@ -174,15 +263,33 @@ class NotificationService
     |--------------------------------------------------------------------------
     */
 
-    public function sendToUsers($users, $type, $data = [], $channels = ['all'])
-    {
+    public function sendToUsers(
+        $users,
+        $type,
+        $data = [],
+        $channels = ['all']
+    ) {
+
         foreach ($users as $user) {
 
-            if (!$user || !$user->is_active) {
+            if (! $user || ! $user->is_active) {
+
+                $this->log('warning', '⚠ Skipping inactive user', [
+
+                    'user_id' => $user->id ?? null,
+
+                    'type' => $type,
+                ]);
+
                 continue;
             }
 
-            $this->send($user, $type, $data, $channels);
+            $this->send(
+                $user,
+                $type,
+                $data,
+                $channels
+            );
         }
     }
 
@@ -192,8 +299,13 @@ class NotificationService
     |--------------------------------------------------------------------------
     */
 
-    public function sendToRole($roleName, $type, $data = [], $channels = ['all'])
-    {
+    public function sendToRole(
+        $roleName,
+        $type,
+        $data = [],
+        $channels = ['all']
+    ) {
+
         $users = User::whereHas('role', function ($q) use ($roleName) {
 
             $q->where('name', $roleName);
@@ -201,9 +313,12 @@ class NotificationService
             ->where('is_active', true)
             ->get();
 
-        Log::info('📢 Sending role notification', [
+        $this->log('info', '📢 Sending role notification', [
+
             'role' => $roleName,
+
             'count' => $users->count(),
+
             'type' => $type,
         ]);
 
@@ -221,10 +336,26 @@ class NotificationService
     |--------------------------------------------------------------------------
     */
 
-    public function sendToAll($type, $data = [], $channels = ['all'])
-    {
+    public function sendToAll(
+        $type,
+        $data = [],
+        $channels = ['all']
+    ) {
+
         User::where('is_active', true)
-            ->chunk(100, function ($users) use ($type, $data, $channels) {
+
+            ->chunk(100, function ($users) use (
+                $type,
+                $data,
+                $channels
+            ) {
+
+                $this->log('info', '🌍 Sending global notifications', [
+
+                    'count' => $users->count(),
+
+                    'type' => $type,
+                ]);
 
                 $this->sendToUsers(
                     $users,
@@ -257,88 +388,186 @@ class NotificationService
     {
         return match ($type) {
 
+            /*
+            |--------------------------------------------------------------------------
+            | 🎓 TRAINING ASSIGNED
+            |--------------------------------------------------------------------------
+            */
+
             'TRAINING_ASSIGNED' => [
-                'title' => 'New Training Assigned',
-                'message' => "New level {$data['level_name']} assigned",
-                'screen' => 'LevelDetails',
-                'id' => $data['level_id'] ?? null
+
+                'title' => $data['title']
+                    ?? 'Training Assigned',
+
+                'message' => $data['message']
+                    ?? (
+                        isset($data['level_name'])
+                        ? "New level {$data['level_name']} assigned"
+                        : 'New training assigned'
+                    ),
+
+                'screen' => $data['screen']
+                    ?? 'LevelDetails',
+
+                'id' => $data['id']
+                    ?? $data['level_id']
+                    ?? null,
+
+                'image' => $data['image']
+                    ?? null,
+
+                'link' => $data['link']
+                    ?? null,
             ],
 
+            /*
+            |--------------------------------------------------------------------------
+            | 📘 LESSON COMPLETED
+            |--------------------------------------------------------------------------
+            */
+
             'LESSON_COMPLETED' => [
-                'title' => 'Lesson Completed',
+
+                'title' => $data['title']
+                    ?? 'Lesson Completed',
+
                 'message' => $data['message']
                     ?? 'Lesson completed successfully',
 
-                'screen' => 'LessonDetails',
+                'screen' => $data['screen']
+                    ?? 'LessonDetails',
 
-                'id' => $data['id'] ?? null
+                'id' => $data['id']
+                    ?? null,
+
+                'image' => $data['image']
+                    ?? null,
             ],
 
-
-            'LESSON_REMINDER' => [
-                'title' => 'Pending Lesson Reminder',
-                'message' => 'You have pending lessons to complete',
-                'screen' => 'LessonList'
-            ],
-
-            'QUIZ_REMINDER' => [
-                'title' => 'Quiz Pending',
-                'message' => 'Complete your pending quiz',
-                'screen' => 'QuizList'
-            ],
-
-            'ASSESSMENT_RESULT' => [
-                'title' => 'Assessment Result',
-                'message' => "You scored {$data['score']}%",
-                'screen' => 'ResultScreen'
-            ],
+            /*
+            |--------------------------------------------------------------------------
+            | 📝 ASSESSMENT COMPLETED
+            |--------------------------------------------------------------------------
+            */
 
             'ASSESSMENT_COMPLETED' => [
-                'title' => 'Assessment Completed',
-                'message' => $data['message'] ?? 'Assessment completed',
-                'screen' => 'AssessmentReview',
-                'id' => $data['id'] ?? null
+
+                'title' => $data['title']
+                    ?? 'Assessment Completed',
+
+                'message' => $data['message']
+                    ?? 'Assessment completed',
+
+                'screen' => $data['screen']
+                    ?? 'AssessmentReview',
+
+                'id' => $data['id']
+                    ?? null,
+
+                'image' => $data['image']
+                    ?? null,
             ],
+
+            /*
+            |--------------------------------------------------------------------------
+            | 🎖 CERTIFICATE
+            |--------------------------------------------------------------------------
+            */
 
             'CERTIFICATE_GENERATED' => [
-                'title' => 'Certificate Ready',
-                'message' => 'Your certificate is now available',
-                'screen' => 'CertificateScreen'
+
+                'title' => $data['title']
+                    ?? 'Certificate Ready',
+
+                'message' => $data['message']
+                    ?? 'Your certificate is now available',
+
+                'screen' => $data['screen']
+                    ?? 'CertificateScreen',
+
+                'id' => $data['id']
+                    ?? null,
+
+                'image' => $data['image']
+                    ?? null,
             ],
 
-            'ACCOUNT_CREATED' => [
-                'title' => 'Account Created',
-                'message' => 'Your account has been created'
-            ],
+            /*
+            |--------------------------------------------------------------------------
+            | 🔐 AUTH
+            |--------------------------------------------------------------------------
+            */
 
             'PASSWORD_CHANGED' => [
-                'title' => 'Password Changed',
-                'message' => 'Your password was changed successfully'
+
+                'title' => $data['title']
+                    ?? 'Password Changed',
+
+                'message' => $data['message']
+                    ?? 'Your password was changed successfully',
             ],
 
             'LOGIN_ALERT' => [
-                'title' => 'Login Alert',
-                'message' => 'New login detected'
+
+                'title' => $data['title']
+                    ?? 'Login Alert',
+
+                'message' => $data['message']
+                    ?? 'New login detected',
             ],
 
+            /*
+            |--------------------------------------------------------------------------
+            | 📢 SYSTEM
+            |--------------------------------------------------------------------------
+            */
+
             'SYSTEM' => [
-                'title' => 'System Notification',
-                'message' => $data['message'] ?? 'System update available'
+
+                'title' => $data['title']
+                    ?? 'System Notification',
+
+                'message' => $data['message']
+                    ?? 'System update available',
             ],
 
             'ANNOUNCEMENT' => [
-                'title' => 'Announcement',
-                'message' => $data['message'] ?? 'New announcement'
+
+                'title' => $data['title']
+                    ?? 'Announcement',
+
+                'message' => $data['message']
+                    ?? 'New announcement',
             ],
 
-            'AUTH' => [
-                'title' => 'Account Notification',
-                'message' => $data['message'] ?? 'Account update'
-            ],
+            /*
+            |--------------------------------------------------------------------------
+            | 🔥 DEFAULT
+            |--------------------------------------------------------------------------
+            */
 
             default => [
-                'title' => 'Notification',
-                'message' => 'New update available'
+
+                'title' => $data['title']
+                    ?? 'Notification',
+
+                'message' => $data['message']
+                    ?? 'New update available',
+
+                'screen' => $data['screen']
+                    ?? null,
+
+                'id' => $data['id']
+                    ?? null,
+
+                'image' => $data['image']
+                    ?? null,
+
+                'link' => $data['link']
+                    ?? null,
+
+                'meta' => $data['meta']
+                    ?? [],
             ]
         };
     }
