@@ -14,36 +14,63 @@ class UserController extends Controller
 {
     protected $uploadPath = 'uploads/users/profile-images/';
 
+public function index(Request $request)
+{
+    /*
+    |------------------------------------------------------------
+    | ROLE FILTER
+    |------------------------------------------------------------
+    | Supported:
+    |
+    | ?role=sales
+    | ?role=staff
+    | ?role=superadmin
+    | ?role=all
+    | ?role=no_sales
+    */
+    $role = strtolower(
+        $request->get('role', User::ROLE_SALES)
+    );
 
-    public function index(Request $request)
-    {
+    $query = User::query()
+        ->with([
+            'creator:id,name',
+            'role:id,name,label',
+            'designation:id,name,label'
+        ])
+
         /*
         |------------------------------------------------------------
-        | ROLE FILTER
+        | EXCLUDE ROLE ID = 1
         |------------------------------------------------------------
-        | Default = sales
-        | Example:
-        | ?role=sales
-        | ?role=staff
-        | ?role=superadmin
-        | ?role=all
         */
-        $role = strtolower($request->get('role', User::ROLE_SALES));
+        ->where('role_id', '!=', 1);
 
-        $query = User::query()
-            ->with([
-                'creator:id,name',
-                'role:id,name,label',
-                'designation:id,name,label'
-            ]);
+    /*
+    |------------------------------------------------------------
+    | ROLE CONDITION
+    |------------------------------------------------------------
+    */
+    if ($role !== 'all') {
 
         /*
         |------------------------------------------------------------
-        | ROLE CONDITION
+        | NO SALES
         |------------------------------------------------------------
         */
-        if ($role !== 'all') {
+        if ($role === 'no_sales') {
 
+            $query->whereHas('role', function ($q) {
+
+                $q->where('name', '!=', User::ROLE_SALES);
+            });
+        } else {
+
+            /*
+            |------------------------------------------------------------
+            | NORMAL ROLE FILTER
+            |------------------------------------------------------------
+            */
             $allowedRoles = [
                 User::ROLE_SUPERADMIN,
                 User::ROLE_STAFF,
@@ -51,6 +78,7 @@ class UserController extends Controller
             ];
 
             if (!in_array($role, $allowedRoles)) {
+
                 return response()->json([
                     'success' => false,
                     'message' => 'Invalid role provided.'
@@ -58,146 +86,165 @@ class UserController extends Controller
             }
 
             $query->whereHas('role', function ($q) use ($role) {
+
                 $q->where('name', $role);
             });
         }
+    }
 
-        /*
-        |------------------------------------------------------------
-        | SEARCH
-        |------------------------------------------------------------
-        */
-        if ($request->filled('search')) {
+    /*
+    |------------------------------------------------------------
+    | SEARCH
+    |------------------------------------------------------------
+    */
+    if ($request->filled('search')) {
 
-            $search = trim($request->search);
+        $search = trim($request->search);
 
-            $query->where(function ($q) use ($search) {
+        $query->where(function ($q) use ($search) {
 
-                $q->where('name', 'like', "%{$search}%")
-                    ->orWhere('email', 'like', "%{$search}%")
-                    ->orWhere('mobile', 'like', "%{$search}%")
-                    ->orWhere('employee_id', 'like', "%{$search}%")
-                    ->orWhere('city', 'like', "%{$search}%")
-                    ->orWhere('region', 'like', "%{$search}%");
+            $q->where('name', 'like', "%{$search}%")
+                ->orWhere('email', 'like', "%{$search}%")
+                ->orWhere('mobile', 'like', "%{$search}%")
+                ->orWhere('employee_id', 'like', "%{$search}%")
+                ->orWhere('city', 'like', "%{$search}%")
+                ->orWhere('region', 'like', "%{$search}%");
 
-                /*
+            /*
             |------------------------------------------------------------
-            | SEARCH BY ROLE LABEL / NAME
+            | SEARCH BY ROLE
             |------------------------------------------------------------
             */
-                $q->orWhereHas('role', function ($roleQuery) use ($search) {
+            $q->orWhereHas('role', function ($roleQuery) use ($search) {
 
-                    $roleQuery->where('name', 'like', "%{$search}%")
-                        ->orWhere('label', 'like', "%{$search}%");
-                });
+                $roleQuery->where('name', 'like', "%{$search}%")
+                    ->orWhere('label', 'like', "%{$search}%");
+            });
 
-                /*
+            /*
             |------------------------------------------------------------
             | SEARCH BY DESIGNATION
             |------------------------------------------------------------
             */
-                $q->orWhereHas('designation', function ($designationQuery) use ($search) {
+            $q->orWhereHas('designation', function ($designationQuery) use ($search) {
 
-                    $designationQuery->where('name', 'like', "%{$search}%")
-                        ->orWhere('label', 'like', "%{$search}%");
-                });
+                $designationQuery->where('name', 'like', "%{$search}%")
+                    ->orWhere('label', 'like', "%{$search}%");
             });
-        }
-
-        /*
-        |------------------------------------------------------------
-        | STATUS FILTER
-        |------------------------------------------------------------
-        */
-        if ($request->has('status')) {
-
-            if ($request->status !== 'all') {
-
-                $query->where(
-                    'is_active',
-                    (int) $request->status === 1 ? 1 : 0
-                );
-            }
-        }
-
-        /*
-        |------------------------------------------------------------
-        | DESIGNATION FILTER
-        |------------------------------------------------------------
-        */
-        if ($request->filled('designation_id')) {
-
-            $query->where('designation_id', $request->designation_id);
-        }
-
-        /*
-        |------------------------------------------------------------
-        | REGION FILTER
-        |------------------------------------------------------------
-        */
-        if ($request->filled('region')) {
-
-            $query->where('region', $request->region);
-        }
-
-        /*
-        |------------------------------------------------------------
-        | CITY FILTER
-        |------------------------------------------------------------
-        */
-        if ($request->filled('city')) {
-
-            $query->where('city', $request->city);
-        }
-
-        /*
-        |------------------------------------------------------------
-        | SORTING
-        |------------------------------------------------------------
-        */
-        $sortByMap = [
-            'createdAt'  => 'created_at',
-            'updatedAt'  => 'updated_at',
-            'name'       => 'name',
-            'email'      => 'email',
-            'mobile'     => 'mobile',
-            'employeeId' => 'employee_id',
-        ];
-
-        $sortBy = $request->get('sortBy', 'createdAt');
-
-        $order = strtolower($request->get('order', 'desc')) === 'asc'
-            ? 'asc'
-            : 'desc';
-
-        $sortColumn = $sortByMap[$sortBy] ?? 'created_at';
-
-        $query->orderBy($sortColumn, $order);
-
-        /*
-        |------------------------------------------------------------
-        | PAGINATION
-        |------------------------------------------------------------
-        */
-        $limit = (int) $request->get('limit', 10);
-
-        $limit = ($limit > 0 && $limit <= 100)
-            ? $limit
-            : 10;
-
-        $users = $query->paginate($limit);
-
-        /*
-        |------------------------------------------------------------
-        | RESPONSE
-        |------------------------------------------------------------
-        */
-        return response()->json([
-            'success' => true,
-            'data'    => $users
-        ]);
+        });
     }
 
+    /*
+    |------------------------------------------------------------
+    | STATUS FILTER
+    |------------------------------------------------------------
+    */
+    if ($request->has('status')) {
+
+        if ($request->status !== 'all') {
+
+            $query->where(
+                'is_active',
+                (int) $request->status === 1 ? 1 : 0
+            );
+        }
+    }
+
+    /*
+    |------------------------------------------------------------
+    | DESIGNATION FILTER
+    |------------------------------------------------------------
+    */
+    if ($request->filled('designation_id')) {
+
+        $query->where(
+            'designation_id',
+            $request->designation_id
+        );
+    }
+
+    /*
+    |------------------------------------------------------------
+    | REGION FILTER
+    |------------------------------------------------------------
+    */
+    if ($request->filled('region')) {
+
+        $query->where(
+            'region',
+            $request->region
+        );
+    }
+
+    /*
+    |------------------------------------------------------------
+    | CITY FILTER
+    |------------------------------------------------------------
+    */
+    if ($request->filled('city')) {
+
+        $query->where(
+            'city',
+            $request->city
+        );
+    }
+
+    /*
+    |------------------------------------------------------------
+    | SORTING
+    |------------------------------------------------------------
+    */
+    $sortByMap = [
+        'createdAt'  => 'created_at',
+        'updatedAt'  => 'updated_at',
+        'name'       => 'name',
+        'email'      => 'email',
+        'mobile'     => 'mobile',
+        'employeeId' => 'employee_id',
+    ];
+
+    $sortBy = $request->get(
+        'sortBy',
+        'createdAt'
+    );
+
+    $order = strtolower(
+        $request->get('order', 'desc')
+    ) === 'asc'
+        ? 'asc'
+        : 'desc';
+
+    $sortColumn = $sortByMap[$sortBy]
+        ?? 'created_at';
+
+    $query->orderBy(
+        $sortColumn,
+        $order
+    );
+
+    /*
+    |------------------------------------------------------------
+    | PAGINATION
+    |------------------------------------------------------------
+    */
+    $limit = (int) $request->get('limit', 10);
+
+    $limit = ($limit > 0 && $limit <= 100)
+        ? $limit
+        : 10;
+
+    $users = $query->paginate($limit);
+
+    /*
+    |------------------------------------------------------------
+    | RESPONSE
+    |------------------------------------------------------------
+    */
+    return response()->json([
+        'success' => true,
+        'data'    => $users
+    ]);
+}
     public function store(Request $request)
     {
         $request->validate([

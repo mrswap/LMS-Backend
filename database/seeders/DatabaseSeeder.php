@@ -19,10 +19,11 @@ class DatabaseSeeder extends Seeder
             RoleSeeder::class,
             SuperAdminSeeder::class,
             SalesUserSeeder::class,
-            FinalLMSSeeder::class,
+            //FinalLMSSeeder::class,
             CertificateSettingSeeder::class,
             PermissionSeeder::class,
             RolePermissionSeeder::class,
+            ActualLMSSeeder::class,
 
         ]);
     }

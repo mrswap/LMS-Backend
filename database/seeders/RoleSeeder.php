@@ -21,7 +21,7 @@ class RoleSeeder extends Seeder
             [
                 'name' => 'admin',
                 'label' => 'Admin',
-                'is_system' => true,
+                'is_system' => false,
                 'is_active' => true,
             ],
 

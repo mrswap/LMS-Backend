@@ -120,9 +120,8 @@ class ContentController extends Controller
         ];
 
         $assessment = Assessment::where('assessmentable_id', $topic_id)
-            ->where('assessmentable_type', \App\Models\Topic::class)
+            ->where('assessmentable_type', 'App\Models\Topic')
             ->first();
-
         if ($assessment) {
             $attempt = AssessmentAttempt::where('user_id', $userId)
                 ->where('assessment_id', $assessment->id)
@@ -174,7 +173,15 @@ class ContentController extends Controller
             'success' => true,
             'context' => $context,
             'data' => $contents,
-            'assessment_status' => $assessmentStatus
+            'assessment_status' => array_merge(
+                (array) $assessmentStatus,
+                [
+                    'assessment' => $assessment ? [
+                        'id' => $assessment->id,
+                        'title' => $assessment->title,
+                    ] : null,
+                ]
+            ),
         ]);
     }
 
