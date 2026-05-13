@@ -5,7 +5,7 @@ namespace App\Modules\Trainee\Support\Controllers;
 use App\Http\Controllers\Controller;
 
 use Illuminate\Support\Facades\DB;
-
+use App\Events\SupportMessageSent;
 use App\Models\Topic;
 use App\Models\SupportThread;
 use App\Models\SupportMessage;
@@ -291,6 +291,10 @@ class SupportController extends Controller
                 'is_admin' => false,
             ]);
 
+
+            broadcast(
+                new SupportMessageSent($message)
+            )->toOthers();
             /*
             |--------------------------------------------------------------------------
             | UPDATE THREAD

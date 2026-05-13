@@ -6,7 +6,7 @@ use App\Http\Controllers\Controller;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-
+use App\Events\SupportMessageSent;
 use App\Models\SupportThread;
 use App\Models\SupportMessage;
 use App\Models\User;
@@ -262,6 +262,10 @@ class SupportController extends Controller
                 'is_admin' => true,
             ]);
 
+            broadcast(
+                new SupportMessageSent($message)
+            )->toOthers();
+
             /*
             |--------------------------------------------------------------------------
             | UPDATE THREAD
@@ -304,6 +308,8 @@ class SupportController extends Controller
 
                 ['db', 'push', 'mail']
             );
+
+
 
             DB::commit();
 

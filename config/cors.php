@@ -1,8 +1,10 @@
 <?php
 return [
 
-    'paths' => ['api/*'],
-
+    'paths' => [
+        'api/*',
+        'broadcasting/auth',
+    ],
     'allowed_methods' => ['*'],
 
     'allowed_origins' => [
@@ -25,4 +27,6 @@ return [
     'max_age' => 0,
 
     'supports_credentials' => false,
+
+    'allowed_origins' => ['*'],
 ];
