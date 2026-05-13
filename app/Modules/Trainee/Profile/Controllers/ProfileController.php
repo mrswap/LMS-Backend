@@ -23,23 +23,6 @@ class ProfileController extends Controller
 
         $user = User::where('id', $user)->first();
 
-
-        app(\App\Services\NotificationService::class)->send(
-            $user,
-            'TRAINING_ASSIGNED',
-            [
-                'title'   => 'Test Notification',
-                'message' => 'Firebase test working',
-
-                'screen'  => 'HomeScreen',
-                'id'      => 1,
-
-                'image'   => null,
-                'link'    => null,
-                'meta'    => []
-            ]
-        );
-
         return response()->json(['data' => $request->user()]);
     }
 
