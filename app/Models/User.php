@@ -119,6 +119,19 @@ class User extends Authenticatable
             ->where('name', $permission)
             ->exists();
     }
+
+    public function supportThreads()
+    {
+        return $this->hasMany(SupportThread::class);
+    }
+
+    public function supportMessages()
+    {
+        return $this->hasMany(
+            SupportMessage::class,
+            'sender_id'
+        );
+    }
     /*
     |--------------------------------------------------------------------------
     | Helper Methods

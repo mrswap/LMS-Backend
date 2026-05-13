@@ -540,6 +540,89 @@ class NotificationService
                     ?? 'New announcement',
             ],
 
+            'SUPPORT_THREAD_CREATED' => [
+
+                'title' => $data['title']
+                    ?? 'New Support Request',
+
+                'message' => $data['message']
+                    ?? 'A trainee has requested clarification.',
+
+                'screen' => $data['screen']
+                    ?? 'SupportThread',
+
+                'id' => $data['id']
+                    ?? null,
+
+                'image' => $data['image']
+                    ?? null,
+
+                'meta' => $data['meta']
+                    ?? [],
+            ],
+
+            'SUPPORT_REPLY' => [
+
+                'title' => $data['title']
+                    ?? 'New Support Reply',
+
+                'message' => $data['message']
+                    ?? 'Admin replied to your clarification request.',
+
+                'screen' => $data['screen']
+                    ?? 'SupportThread',
+
+                'id' => $data['id']
+                    ?? null,
+
+                'image' => $data['image']
+                    ?? null,
+
+                'meta' => $data['meta']
+                    ?? [],
+            ],
+
+            'SUPPORT_RESOLVED' => [
+
+                'title' => $data['title']
+                    ?? 'Support Request Resolved',
+
+                'message' => $data['message']
+                    ?? 'Your clarification request was resolved.',
+
+                'screen' => $data['screen']
+                    ?? 'SupportThread',
+
+                'id' => $data['id']
+                    ?? null,
+
+                'image' => $data['image']
+                    ?? null,
+
+                'meta' => $data['meta']
+                    ?? [],
+            ],
+
+            'SUPPORT_REOPENED' => [
+
+                'title' => $data['title']
+                    ?? 'Support Request Reopened',
+
+                'message' => $data['message']
+                    ?? 'A support request has been reopened.',
+
+                'screen' => $data['screen']
+                    ?? 'SupportThread',
+
+                'id' => $data['id']
+                    ?? null,
+
+                'image' => $data['image']
+                    ?? null,
+
+                'meta' => $data['meta']
+                    ?? [],
+            ],
             /*
             |--------------------------------------------------------------------------
             | 🔥 DEFAULT

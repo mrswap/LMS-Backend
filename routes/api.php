@@ -32,6 +32,12 @@ use App\Modules\Admin\Reports\Controllers\ContentStatusReportController;
 use App\Modules\Admin\Reports\Controllers\CertificationReportController;
 use App\Modules\Admin\CommonPublishStatusController;
 use App\Modules\Admin\Notification\Controllers\NotificationController;
+use App\Modules\Admin\Support\Controllers\SupportController as AdminSupportController;
+
+
+
+
+
 
 Route::prefix('v1/admin')->group(function () {
 
@@ -273,7 +279,6 @@ Route::prefix('v1/admin')->group(function () {
         | REPORTS
         |--------------------------------------------------------------------------
         */
-
         Route::prefix('reports')->group(function () {
             Route::get('/audit-logs', [AuditReportController::class, 'index'])->middleware('permission:reports.audit');
             Route::get('/user-progress', [UserProgressReportController::class, 'index'])->middleware('permission:reports.progress');
@@ -288,12 +293,24 @@ Route::prefix('v1/admin')->group(function () {
         | NOTIFICATIONS
         |--------------------------------------------------------------------------
         */
-
         Route::prefix('notifications')->group(function () {
             Route::get('/', [NotificationController::class, 'index']);
             Route::post('/read/{id}', [NotificationController::class, 'markRead']);
             Route::post('/read-all', [NotificationController::class, 'markAllRead']);
             Route::get('/unread-count', [NotificationController::class, 'unreadCount']);
+        });
+
+        /*
+        |--------------------------------------------------------------------------
+        | SUPPORT
+        |--------------------------------------------------------------------------
+        */
+        Route::prefix('support')->group(function () {
+            Route::get('/',   [AdminSupportController::class, 'index']);
+            Route::get('/{id}', [AdminSupportController::class, 'show'])->whereNumber('id');
+            Route::post('/{id}/reply', [AdminSupportController::class, 'reply'])->whereNumber('id');
+            Route::post('/{id}/resolve', [AdminSupportController::class, 'resolve'])->whereNumber('id');
+            Route::post('/{id}/reopen', [AdminSupportController::class, 'reopen'])->whereNumber('id');
         });
     });
 });

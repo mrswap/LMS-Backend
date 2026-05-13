@@ -89,6 +89,11 @@ class Topic extends BaseModel
     {
         return $this->morphMany(Assessment::class, 'assessmentable');
     }
+
+    public function supportThreads()
+    {
+        return $this->hasMany(SupportThread::class);
+    }
     /*
     |--------------------------------------------------------------------------
     | Scopes

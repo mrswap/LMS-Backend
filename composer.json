@@ -13,6 +13,7 @@
         "doctrine/dbal": "^4.4",
         "google/apiclient": "^2.19",
         "laravel/framework": "^12.0",
+        "laravel/reverb": "^1.10",
         "laravel/sanctum": "^4.3",
         "laravel/tinker": "^2.10.1"
     },

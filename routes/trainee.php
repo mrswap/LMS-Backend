@@ -16,7 +16,7 @@ use App\Modules\Trainee\Reports\Controllers\AssessmentReportController;
 use App\Modules\Trainee\Reports\Controllers\CertificationReportController;
 use App\Modules\Trainee\Dashboard\Controllers\DashboardController;
 use App\Modules\Trainee\Notification\Controllers\NotificationController;
-
+use App\Modules\Trainee\Support\Controllers\SupportController;
 
 
 Route::prefix('v1/trainee')->group(function () {
@@ -80,6 +80,16 @@ Route::prefix('v1/trainee')->group(function () {
             Route::post('/read/{id}', [NotificationController::class, 'markRead']);
             Route::post('/read-all', [NotificationController::class, 'markAllRead']);
             Route::get('/unread-count', [NotificationController::class, 'unreadCount']);
+        });
+
+        /*
+        |--------------------------------------------------------------------------
+        | SUPPORT
+        |--------------------------------------------------------------------------
+        */
+        Route::prefix('support')->group(function () {
+            Route::get('topics/{topicId}/thread', [SupportController::class, 'thread'])->whereNumber('topicId');
+            Route::post('threads/{threadId}/message', [SupportController::class, 'send'])->whereNumber('threadId');
         });
     });
 });
