@@ -16,6 +16,8 @@
         "laravel/reverb": "^1.10",
         "laravel/sanctum": "^4.3",
         "laravel/tinker": "^2.10.1",
+        "mews/purifier": "^3.4",
+        "openai-php/client": "^0.19.2",
         "pusher/pusher-php-server": "^7.2"
     },
     "require-dev": {

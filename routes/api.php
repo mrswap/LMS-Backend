@@ -33,6 +33,8 @@ use App\Modules\Admin\Reports\Controllers\CertificationReportController;
 use App\Modules\Admin\CommonPublishStatusController;
 use App\Modules\Admin\Notification\Controllers\NotificationController;
 use App\Modules\Admin\Support\Controllers\SupportController as AdminSupportController;
+use App\Modules\Admin\Import\Controllers\ImportController;
+
 
 
 
@@ -273,6 +275,11 @@ Route::prefix('v1/admin')->group(function () {
             Route::get('contacts/{id}', [ContactController::class, 'show'])->middleware('permission:contacts.view');
             Route::post('contacts/{id}/mark-seen', [ContactController::class, 'markSeen'])->middleware('permission:contacts.mark-seen');
             Route::post('contacts/{id}/mark-unseen', [ContactController::class, 'markUnseen'])->middleware('permission:contacts.mark-unseen');
+
+            Route::post(
+                'imports/html',
+                [ImportController::class, 'import']
+            );
         });
         /*
         |--------------------------------------------------------------------------
