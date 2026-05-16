@@ -16,7 +16,37 @@ class AssessmentParserService
 
         /*
         |--------------------------------------------------------------------------
-        | Normalize
+        | PRESERVE BREAKS
+        |--------------------------------------------------------------------------
+        */
+
+        $html = preg_replace(
+            '/<br\s*\/?>/i',
+            "\n",
+            $html
+        );
+
+        $html = preg_replace(
+            '/<\/p>/i',
+            "</p>\n",
+            $html
+        );
+
+        $html = preg_replace(
+            '/<\/tr>/i',
+            "</tr>\n",
+            $html
+        );
+
+        $html = preg_replace(
+            '/<hr[^>]*>/i',
+            "\n",
+            $html
+        );
+
+        /*
+        |--------------------------------------------------------------------------
+        | CLEAN TEXT
         |--------------------------------------------------------------------------
         */
 
@@ -29,6 +59,12 @@ class AssessmentParserService
             "\n",
             $text
         );
+
+        /*
+        |--------------------------------------------------------------------------
+        | SPLIT LINES
+        |--------------------------------------------------------------------------
+        */
 
         $lines = explode("\n", $text);
 
@@ -43,7 +79,6 @@ class AssessmentParserService
             );
 
             return trim($line);
-
         }, $lines);
 
         $lines = array_values(
@@ -52,7 +87,7 @@ class AssessmentParserService
 
         /*
         |--------------------------------------------------------------------------
-        | Storage
+        | STORAGE
         |--------------------------------------------------------------------------
         */
 
@@ -62,7 +97,7 @@ class AssessmentParserService
 
         /*
         |--------------------------------------------------------------------------
-        | Loop
+        | LOOP
         |--------------------------------------------------------------------------
         */
 
@@ -72,6 +107,9 @@ class AssessmentParserService
             |--------------------------------------------------------------------------
             | QUESTION
             |--------------------------------------------------------------------------
+            |
+            | 1.1.2.Q1 Question?
+            |
             */
 
             if (
@@ -80,6 +118,16 @@ class AssessmentParserService
                     $line,
                     $matches
                 )
+                &&
+                !str_contains($line, '.O1')
+                &&
+                !str_contains($line, '.O2')
+                &&
+                !str_contains($line, '.O3')
+                &&
+                !str_contains($line, '.O4')
+                &&
+                !str_contains($line, '.A')
             ) {
 
                 if ($currentQuestion) {
@@ -88,16 +136,31 @@ class AssessmentParserService
                         $currentQuestion;
                 }
 
+                $questionText =
+                    trim($matches[3]);
+
+                /*
+                |--------------------------------------------------------------------------
+                | REMOVE EXTRA Q1
+                |--------------------------------------------------------------------------
+                */
+
+                $questionText = preg_replace(
+                    '/^Q\d+\s*/i',
+                    '',
+                    $questionText
+                );
+
                 $currentQuestion = [
 
                     'topic_code' =>
-                        trim($matches[1]),
+                    trim($matches[1]),
 
                     'question_code' =>
-                        trim($matches[2]),
+                    trim($matches[2]),
 
                     'question' =>
-                        trim($matches[3]),
+                    $questionText,
 
                     'options' => [],
 
@@ -111,6 +174,9 @@ class AssessmentParserService
             |--------------------------------------------------------------------------
             | OPTION
             |--------------------------------------------------------------------------
+            |
+            | 1.1.2.Q1.O1 A. Aorta
+            |
             */
 
             if (
@@ -125,14 +191,13 @@ class AssessmentParserService
                     continue;
                 }
 
-                $currentQuestion
-                ['options'][] = [
+                $currentQuestion['options'][] = [
 
                     'code' =>
-                        trim($matches[3]),
+                    trim($matches[3]),
 
                     'text' =>
-                        trim($matches[4]),
+                    trim($matches[4]),
                 ];
 
                 continue;
@@ -142,6 +207,9 @@ class AssessmentParserService
             |--------------------------------------------------------------------------
             | ANSWER
             |--------------------------------------------------------------------------
+            |
+            | 1.1.2.Q1.A Correct Answer: B
+            |
             */
 
             if (
@@ -156,26 +224,19 @@ class AssessmentParserService
                     continue;
                 }
 
-                $answer = trim(
-                    $matches[3]
+                $answerText =
+                    trim($matches[3]);
+
+                preg_match(
+                    '/([A-Z])$/i',
+                    $answerText,
+                    $answerMatch
                 );
 
-                if (
-                    preg_match(
-                        '/([A-Z])$/i',
-                        $answer,
-                        $answerMatch
-                    )
-                ) {
-
-                    $answer = strtoupper(
-                        $answerMatch[1]
+                $currentQuestion['answer'] =
+                    strtoupper(
+                        $answerMatch[1] ?? ''
                     );
-                }
-
-                $currentQuestion
-                ['answer']
-                    = $answer;
 
                 continue;
             }
@@ -183,7 +244,7 @@ class AssessmentParserService
 
         /*
         |--------------------------------------------------------------------------
-        | Push last
+        | PUSH LAST
         |--------------------------------------------------------------------------
         */
 

@@ -7,10 +7,15 @@ use App\Models\ImportLog;
 class HtmlImportService
 {
     public function __construct(
+
         protected HtmlCleanerService $cleanerService,
+
         protected HierarchyParserService $hierarchyParserService,
+
         protected TopicImporterService $topicImporterService,
+
         protected AssessmentParserService $assessmentParserService,
+
         protected AssessmentImporterService $assessmentImporterService,
     ) {}
 
@@ -18,19 +23,33 @@ class HtmlImportService
         ImportLog $import
     ): void {
 
+        /*
+        |--------------------------------------------------------------------------
+        | STEP 1
+        |--------------------------------------------------------------------------
+        */
+
         $cleanHtml = $this->cleanerService->clean(
             $import->raw_html
         );
 
         /*
         |--------------------------------------------------------------------------
-        | CONTENT IMPORT
+        | STEP 2
         |--------------------------------------------------------------------------
         */
 
         $parsedData =
-            $this->hierarchyParserService
-            ->parse($cleanHtml);
+            $this->hierarchyParserService->parse(
+                $cleanHtml
+            );
+
+        /*
+        |--------------------------------------------------------------------------
+        | STEP 3
+        |--------------------------------------------------------------------------
+        | IMPORT MODULE/CHAPTER/TOPIC/CONTENTS
+        */
 
         $this->topicImporterService->import(
 
@@ -45,15 +64,25 @@ class HtmlImportService
 
         /*
         |--------------------------------------------------------------------------
-        | ASSESSMENT IMPORT
+        | STEP 4
         |--------------------------------------------------------------------------
+        | PARSE ASSESSMENTS
         */
 
         $questions =
-            $this->assessmentParserService
-            ->parse($cleanHtml);
+            $this->assessmentParserService->parse(
+                $cleanHtml
+            );
 
-        $this->assessmentImporterService
-            ->import($questions);
+        /*
+        |--------------------------------------------------------------------------
+        | STEP 5
+        |--------------------------------------------------------------------------
+        | IMPORT ASSESSMENTS
+        */
+
+        $this->assessmentImporterService->import(
+            $questions
+        );
     }
 }

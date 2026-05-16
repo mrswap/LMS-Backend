@@ -21,7 +21,7 @@ class AssessmentImporterService
 
         /*
         |--------------------------------------------------------------------------
-        | GROUP BY TOPIC CODE
+        | GROUP BY TOPIC
         |--------------------------------------------------------------------------
         */
 
@@ -63,16 +63,16 @@ class AssessmentImporterService
 
             /*
             |--------------------------------------------------------------------------
-            | AVOID DUPLICATE ASSESSMENT
+            | PREVENT DUPLICATE
             |--------------------------------------------------------------------------
             */
 
-            $exists = Assessment::where(
+            $exists = Assessment::query()
 
-                'assessmentable_id',
-                $topic->id
-
-            )
+                ->where(
+                    'assessmentable_id',
+                    $topic->id
+                )
 
                 ->where(
                     'assessmentable_type',
@@ -99,18 +99,20 @@ class AssessmentImporterService
                 'assessmentable_type' =>
                 Topic::class,
 
-                'type' => 'mcq',
+                'type' => 'topic',
 
-                'title' => 'Topic Assessment',
+                'title' =>
+                'Topic Assessment',
 
                 'description' =>
-                'Imported MCQ Assessment',
+                'Imported Assessment',
 
                 'duration' => 0,
 
                 'passing_score' => 0,
 
-                'total_marks' => count($items),
+                'total_marks' =>
+                count($items),
 
                 'status' => true,
 
@@ -158,15 +160,21 @@ class AssessmentImporterService
                     $optionText =
                         trim($option['text']);
 
+                    /*
+                    |--------------------------------------------------------------------------
+                    | EXTRACT OPTION LETTER
+                    |--------------------------------------------------------------------------
+                    */
+
                     preg_match(
                         '/^([A-Z])\./',
                         $optionText,
-                        $match
+                        $matches
                     );
 
-                    $optionLetter =
+                    $letter =
                         strtoupper(
-                            $match[1] ?? ''
+                            $matches[1] ?? ''
                         );
 
                     AssessmentOption::create([
@@ -178,13 +186,22 @@ class AssessmentImporterService
                         $optionText,
 
                         'is_correct' =>
-                        $optionLetter ===
+                        $letter ===
                             strtoupper(
                                 $item['answer']
                             ),
                     ]);
                 }
             }
+
+            /*
+            |--------------------------------------------------------------------------
+            | RECALCULATE
+            |--------------------------------------------------------------------------
+            */
+
+            $assessment
+                ->recalculateQuestionMarks();
         }
     }
 }
