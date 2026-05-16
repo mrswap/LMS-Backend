@@ -10,17 +10,13 @@ class HtmlImportService
         protected HtmlCleanerService $cleanerService,
         protected HierarchyParserService $hierarchyParserService,
         protected TopicImporterService $topicImporterService,
+        protected AssessmentParserService $assessmentParserService,
+        protected AssessmentImporterService $assessmentImporterService,
     ) {}
 
     public function handle(
         ImportLog $import
     ): void {
-
-        /*
-        |--------------------------------------------------------------------------
-        | STEP 1
-        |--------------------------------------------------------------------------
-        */
 
         $cleanHtml = $this->cleanerService->clean(
             $import->raw_html
@@ -28,19 +24,13 @@ class HtmlImportService
 
         /*
         |--------------------------------------------------------------------------
-        | STEP 2
+        | CONTENT IMPORT
         |--------------------------------------------------------------------------
         */
 
-        $parsedData = $this->hierarchyParserService->parse(
-            $cleanHtml
-        );
-
-        /*
-        |--------------------------------------------------------------------------
-        | STEP 3
-        |--------------------------------------------------------------------------
-        */
+        $parsedData =
+            $this->hierarchyParserService
+            ->parse($cleanHtml);
 
         $this->topicImporterService->import(
 
@@ -52,5 +42,18 @@ class HtmlImportService
 
             $import->created_by
         );
+
+        /*
+        |--------------------------------------------------------------------------
+        | ASSESSMENT IMPORT
+        |--------------------------------------------------------------------------
+        */
+
+        $questions =
+            $this->assessmentParserService
+            ->parse($cleanHtml);
+
+        $this->assessmentImporterService
+            ->import($questions);
     }
 }

@@ -68,7 +68,9 @@ class HierarchyParserService
         |--------------------------------------------------------------------------
         */
 
-        $body = $dom->getElementsByTagName('body')->item(0);
+        $body = $dom
+            ->getElementsByTagName('body')
+            ->item(0);
 
         if (!$body) {
 
@@ -125,7 +127,11 @@ class HierarchyParserService
                 )
             );
 
-            if (empty($text) && empty($rawHtml)) {
+            if (
+                empty($text)
+                &&
+                empty($rawHtml)
+            ) {
                 continue;
             }
 
@@ -184,7 +190,7 @@ class HierarchyParserService
 
             if (
                 preg_match(
-                    '/^Chapter\s+\d+\.\d+\s*:/i',
+                    '/^Chapter\s+\d+(\.\d+)?\s*:/i',
                     $text
                 )
             ) {
@@ -385,14 +391,6 @@ class HierarchyParserService
             |--------------------------------------------------------------------------
             | NORMAL CONTENT
             |--------------------------------------------------------------------------
-            |
-            | Everything belongs to current heading
-            | until:
-            | - new Hx
-            | - new Topic
-            | - new Chapter
-            | - new Module
-            |
             */
 
             if (
@@ -414,7 +412,7 @@ class HierarchyParserService
 
         /*
         |--------------------------------------------------------------------------
-        | Validation
+        | VALIDATION
         |--------------------------------------------------------------------------
         */
 

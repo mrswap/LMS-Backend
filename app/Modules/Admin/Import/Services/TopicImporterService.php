@@ -22,7 +22,7 @@ class TopicImporterService
         int $createdBy
     ): void {
 
-        foreach ($parsedData['modules'] as $moduleIndex => $moduleData) {
+        foreach ($parsedData['modules'] as $moduleData) {
 
             /*
             |--------------------------------------------------------------------------
@@ -30,20 +30,20 @@ class TopicImporterService
             |--------------------------------------------------------------------------
             */
 
-            $module = Module::create([
+            $module = Module::firstOrCreate(
 
-                'program_id' => $programId,
+                [
+                    'program_id' => $programId,
+                    'level_id' => $levelId,
+                    'title' => $moduleData['title'],
+                ],
 
-                'level_id' => $levelId,
-
-                'title' => $moduleData['title'],
-
-                'status' => true,
-
-                'publish_status' => 'published',
-
-                'created_by' => $createdBy,
-            ]);
+                [
+                    'status' => true,
+                    'publish_status' => 'published',
+                    'created_by' => $createdBy,
+                ]
+            );
 
             /*
             |--------------------------------------------------------------------------
@@ -51,24 +51,23 @@ class TopicImporterService
             |--------------------------------------------------------------------------
             */
 
-            foreach ($moduleData['chapters'] as $chapterIndex => $chapterData) {
+            foreach ($moduleData['chapters'] as $chapterData) {
 
-                $chapter = Chapter::create([
+                $chapter = Chapter::firstOrCreate(
 
-                    'program_id' => $programId,
+                    [
+                        'program_id' => $programId,
+                        'level_id' => $levelId,
+                        'module_id' => $module->id,
+                        'title' => $chapterData['title'],
+                    ],
 
-                    'level_id' => $levelId,
-
-                    'module_id' => $module->id,
-
-                    'title' => $chapterData['title'],
-
-                    'status' => true,
-
-                    'publish_status' => 'published',
-
-                    'created_by' => $createdBy,
-                ]);
+                    [
+                        'status' => true,
+                        'publish_status' => 'published',
+                        'created_by' => $createdBy,
+                    ]
+                );
 
                 /*
                 |--------------------------------------------------------------------------
@@ -76,30 +75,28 @@ class TopicImporterService
                 |--------------------------------------------------------------------------
                 */
 
-                foreach ($chapterData['topics'] as $topicIndex => $topicData) {
+                foreach ($chapterData['topics'] as $topicData) {
 
-                    $topic = Topic::create([
+                    $topic = Topic::firstOrCreate(
 
-                        'program_id' => $programId,
+                        [
+                            'program_id' => $programId,
+                            'level_id' => $levelId,
+                            'module_id' => $module->id,
+                            'chapter_id' => $chapter->id,
+                            'title' => $topicData['title'],
+                        ],
 
-                        'level_id' => $levelId,
-
-                        'module_id' => $module->id,
-
-                        'chapter_id' => $chapter->id,
-
-                        'title' => $topicData['title'],
-
-                        'status' => true,
-
-                        'publish_status' => 'published',
-
-                        'created_by' => $createdBy,
-                    ]);
+                        [
+                            'status' => true,
+                            'publish_status' => 'published',
+                            'created_by' => $createdBy,
+                        ]
+                    );
 
                     /*
                     |--------------------------------------------------------------------------
-                    | TOPIC CONTENTS
+                    | CONTENTS
                     |--------------------------------------------------------------------------
                     */
 
@@ -107,44 +104,64 @@ class TopicImporterService
 
                     foreach ($topicData['contents'] as $content) {
 
+                        $exists =
+                            TopicContent::query()
+
+                            ->where(
+                                'topic_id',
+                                $topic->id
+                            )
+
+                            ->where(
+                                'title',
+                                $content['title'] ?? null
+                            )
+
+                            ->exists();
+
+                        if ($exists) {
+
+                            $order++;
+
+                            continue;
+                        }
+
                         TopicContent::create([
 
                             'topic_id' => $topic->id,
 
-                            /*
-                            |--------------------------------------------------------------------------
-                            | IMPORTANT
-                            |--------------------------------------------------------------------------
-                            |
-                            | DB type = text
-                            |
-                            */
-
                             'type' => 'text',
 
-                            'title' => $content['title'] ?? null,
+                            'title' =>
+                            $content['title'] ?? null,
 
-                            'content' => $content['content'] ?? null,
+                            'content' =>
+                            $content['content'] ?? null,
 
                             'meta' => [
 
                                 'topic_code' =>
-                                    $content['topic_code'] ?? null,
+                                $content['topic_code']
+                                    ?? null,
 
                                 'heading_code' =>
-                                    $content['heading_code'] ?? null,
+                                $content['heading_code']
+                                    ?? null,
 
                                 'heading_level' =>
-                                    $content['heading_level'] ?? null,
+                                $content['heading_level']
+                                    ?? null,
                             ],
 
                             'order' => $order++,
 
                             'status' => true,
 
-                            'publish_status' => 'published',
+                            'publish_status' =>
+                            'published',
 
-                            'created_by' => $createdBy,
+                            'created_by' =>
+                            $createdBy,
                         ]);
                     }
                 }
