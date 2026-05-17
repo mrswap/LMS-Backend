@@ -557,7 +557,6 @@ class ProgressController extends Controller
             'data' => $data
         ]);
     }
-
     public function single(Request $request, $type, $id)
     {
         $lang = $this->resolveLanguage($request);
@@ -572,14 +571,16 @@ class ProgressController extends Controller
         switch ($type) {
 
             /*
-            |--------------------------------------------------------------------------
-            | 📘 LEVEL
-            |--------------------------------------------------------------------------
-            */
+        |------------------------------------------------------------------
+        | 📘 LEVEL
+        |------------------------------------------------------------------
+        */
             case 'level':
 
-                $level = Level::with('modules.chapters.topics')
-                    ->findOrFail($id);
+                $level = Level::with([
+                    'program',
+                    'modules.chapters.topics'
+                ])->findOrFail($id);
 
                 AuditService::log(
                     'level_viewed',
@@ -597,7 +598,6 @@ class ProgressController extends Controller
 
                         'screen' => 'LevelDetails',
 
-                        // 🔥 direct model
                         'model' => $level,
 
                         'meta' => [
@@ -609,18 +609,32 @@ class ProgressController extends Controller
 
                 return response()->json([
                     'success' => true,
-                    'data' => $this->mapLevel($level, $progress, $lang)
+                    'data' => [
+
+                        ...$this->mapLevel($level, $progress, $lang),
+
+                        'parent_hierarchy' => [
+
+                            'program' => [
+                                'id' => $level->program?->id,
+                                'title' => $level->program?->title,
+                            ]
+                        ]
+                    ]
                 ]);
 
                 /*
-                |--------------------------------------------------------------------------
-                | 📦 MODULE
-                |--------------------------------------------------------------------------
-                */
+        |------------------------------------------------------------------
+        | 📦 MODULE
+        |------------------------------------------------------------------
+        */
             case 'module':
 
-                $module = Module::with('chapters.topics')
-                    ->findOrFail($id);
+                $module = Module::with([
+                    'program',
+                    'level',
+                    'chapters.topics'
+                ])->findOrFail($id);
 
                 AuditService::log(
                     'module_viewed',
@@ -649,18 +663,38 @@ class ProgressController extends Controller
 
                 return response()->json([
                     'success' => true,
-                    'data' => $this->mapModule($module, $progress, $lang)
+                    'data' => [
+
+                        ...$this->mapModule($module, $progress, $lang),
+
+                        'parent_hierarchy' => [
+
+                            'program' => [
+                                'id' => $module->program?->id,
+                                'title' => $module->program?->title,
+                            ],
+
+                            'level' => [
+                                'id' => $module->level?->id,
+                                'title' => $module->level?->title,
+                            ]
+                        ]
+                    ]
                 ]);
 
                 /*
-                |--------------------------------------------------------------------------
-                | 📚 CHAPTER
-                |--------------------------------------------------------------------------
-                */
+        |------------------------------------------------------------------
+        | 📚 CHAPTER
+        |------------------------------------------------------------------
+        */
             case 'chapter':
 
-                $chapter = Chapter::with('topics')
-                    ->findOrFail($id);
+                $chapter = Chapter::with([
+                    'program',
+                    'level',
+                    'module',
+                    'topics'
+                ])->findOrFail($id);
 
                 AuditService::log(
                     'chapter_viewed',
@@ -689,9 +723,106 @@ class ProgressController extends Controller
 
                 return response()->json([
                     'success' => true,
-                    'data' => $this->mapChapter($chapter, $progress, $lang)
+                    'data' => [
+
+                        ...$this->mapChapter($chapter, $progress, $lang),
+
+                        'parent_hierarchy' => [
+
+                            'program' => [
+                                'id' => $chapter->program?->id,
+                                'title' => $chapter->program?->title,
+                            ],
+
+                            'level' => [
+                                'id' => $chapter->level?->id,
+                                'title' => $chapter->level?->title,
+                            ],
+
+                            'module' => [
+                                'id' => $chapter->module?->id,
+                                'title' => $chapter->module?->title,
+                            ]
+                        ]
+                    ]
                 ]);
 
+                /*
+        |------------------------------------------------------------------
+        | 📖 TOPIC
+        |------------------------------------------------------------------
+        */
+            case 'topic':
+
+                $topic = Topic::with([
+                    'program',
+                    'level',
+                    'module',
+                    'chapter',
+                    'contents'
+                ])->findOrFail($id);
+
+                AuditService::log(
+                    'topic_viewed',
+                    'User viewed their progress for a topic',
+                    [
+                        'topic_id' => $topic->id
+                    ]
+                );
+
+                app(\App\Services\NotificationService::class)->send(
+                    $user,
+                    'TOPIC_VIEWED',
+                    [
+                        'message' => 'You viewed a topic progress',
+
+                        'screen' => 'TopicDetails',
+
+                        'model' => $topic,
+
+                        'meta' => [
+                            'topic_id' => $topic->id
+                        ]
+                    ],
+                    ['db']
+                );
+
+                return response()->json([
+                    'success' => true,
+                    'data' => [
+
+                        ...$this->mapTopic($topic, $progress, $lang),
+
+                        'parent_hierarchy' => [
+
+                            'program' => [
+                                'id' => $topic->program?->id,
+                                'title' => $topic->program?->title,
+                            ],
+
+                            'level' => [
+                                'id' => $topic->level?->id,
+                                'title' => $topic->level?->title,
+                            ],
+
+                            'module' => [
+                                'id' => $topic->module?->id,
+                                'title' => $topic->module?->title,
+                            ],
+
+                            'chapter' => [
+                                'id' => $topic->chapter?->id,
+                                'title' => $topic->chapter?->title,
+                            ]
+                        ]
+                    ]
+                ]);
+
+                /*
+        |------------------------------------------------------------------
+        | ❌ INVALID TYPE
+        |------------------------------------------------------------------
+        */
             default:
 
                 return response()->json([
@@ -700,6 +831,7 @@ class ProgressController extends Controller
                 ], 422);
         }
     }
+
     public function isTopicContentCompleted($topic, $userId)
     {
         $total = $topic->contents()->count();
