@@ -108,7 +108,7 @@ class AssessmentParserService
             | QUESTION
             |--------------------------------------------------------------------------
             |
-            | 1.1.2.Q1 Question?
+            | 1.1.2.Q1 Q1 Which vessel carries blood?
             |
             */
 
@@ -160,7 +160,7 @@ class AssessmentParserService
                     trim($matches[2]),
 
                     'question' =>
-                    $questionText,
+                    trim($questionText),
 
                     'options' => [],
 
@@ -208,34 +208,40 @@ class AssessmentParserService
             | ANSWER
             |--------------------------------------------------------------------------
             |
+            | Supported:
+            |
             | 1.1.2.Q1.A Correct Answer: B
+            | 1.1.2.Q1.A Answer: C
+            | Correct Answer: D
+            | Answer: A
             |
             */
 
             if (
+
                 preg_match(
-                    '/^(\d+\.\d+\.\d+)\.(Q\d+)\.A\s+(.*)$/i',
+                    '/Correct\s*Answer\s*:\s*([A-Z])/i',
                     $line,
                     $matches
                 )
+
+                ||
+
+                preg_match(
+                    '/Answer\s*:\s*([A-Z])/i',
+                    $line,
+                    $matches
+                )
+
             ) {
 
                 if (!$currentQuestion) {
                     continue;
                 }
 
-                $answerText =
-                    trim($matches[3]);
-
-                preg_match(
-                    '/([A-Z])$/i',
-                    $answerText,
-                    $answerMatch
-                );
-
                 $currentQuestion['answer'] =
                     strtoupper(
-                        $answerMatch[1] ?? ''
+                        trim($matches[1])
                     );
 
                 continue;
