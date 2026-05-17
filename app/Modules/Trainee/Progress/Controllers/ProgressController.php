@@ -13,6 +13,8 @@ use App\Models\Topic;
 use App\Services\AuditService;
 use App\Models\User;
 use App\Services\NotificationService;
+use App\Models\TopicContent;
+use App\Models\UserContentProgress;
 
 
 class ProgressController extends Controller
@@ -162,7 +164,6 @@ class ProgressController extends Controller
     | MAPPERS
     |--------------------------------------------------------------------------
     */
-
     public function mapLevel($level, $progress, $lang)
     {
         $userId = auth()->id();
@@ -172,9 +173,18 @@ class ProgressController extends Controller
         $status = $this->getLevelStats($level, $progress, $userId);
 
         /*
-        |--------------------------------------------------------------------------
-        | 🎯 LEVEL EXAM (ADD THIS)
-        |--------------------------------------------------------------------------
+        |------------------------------------------------------------------
+        | 🔹 PROGRESS %
+        |------------------------------------------------------------------
+        */
+        $progressPercent = $status['total_topics'] > 0
+            ? round(($status['completed_topics'] / $status['total_topics']) * 100, 2)
+            : 0;
+
+        /*
+        |------------------------------------------------------------------
+        | 🎯 LEVEL EXAM
+        |------------------------------------------------------------------
         */
         $assessment = \App\Models\Assessment::where('assessmentable_id', $level->id)
             ->where('assessmentable_type', \App\Models\Level::class)
@@ -194,6 +204,9 @@ class ProgressController extends Controller
             'total_topics' => $status['total_topics'],
             'completed_topics' => $status['completed_topics'],
             'content_completed_topics' => $status['content_completed_topics'],
+
+            // ✅ NEW
+            'progress_percent' => $progressPercent,
 
             'is_content_completed' => $status['is_content_completed'],
             'is_level_exam_available' => $status['is_level_exam_available'],
@@ -217,6 +230,24 @@ class ProgressController extends Controller
         $t = $this->getTranslated($module, $lang);
         $status = $this->getModuleStatus($module, $progress);
 
+        /*
+        |------------------------------------------------------------------
+        | 🔹 MODULE PROGRESS
+        |------------------------------------------------------------------
+        */
+        $topics = $module->chapters->flatMap->topics;
+
+        $totalTopics = $topics->count();
+
+        $completedTopics = $topics->filter(function ($topic) use ($progress) {
+
+            return $progress[$topic->id]->is_completed ?? false;
+        })->count();
+
+        $progressPercent = $totalTopics > 0
+            ? round(($completedTopics / $totalTopics) * 100, 2)
+            : 0;
+
         return [
             'id' => $module->id,
             'type' => 'module',
@@ -224,9 +255,13 @@ class ProgressController extends Controller
             'description' => $t['description'],
             'thumbnail' => $module->thumbnail,
 
-            // ✅ FIX
             'is_unlocked' => $status['is_unlocked'],
             'is_completed' => $status['is_completed'],
+
+            // ✅ NEW
+            'total_topics' => $totalTopics,
+            'completed_topics' => $completedTopics,
+            'progress_percent' => $progressPercent,
 
             'chapters' => $module->chapters->map(
                 fn($chapter) =>
@@ -240,6 +275,22 @@ class ProgressController extends Controller
         $t = $this->getTranslated($chapter, $lang);
         $status = $this->getChapterStatus($chapter, $progress);
         $userId = auth()->id();
+
+        /*
+        |------------------------------------------------------------------
+        | 🔹 CHAPTER PROGRESS
+        |------------------------------------------------------------------
+        */
+        $totalTopics = $chapter->topics->count();
+
+        $completedTopics = $chapter->topics->filter(function ($topic) use ($progress) {
+
+            return $progress[$topic->id]->is_completed ?? false;
+        })->count();
+
+        $progressPercent = $totalTopics > 0
+            ? round(($completedTopics / $totalTopics) * 100, 2)
+            : 0;
 
         $topics = $chapter->topics->map(function ($topic) use ($progress, $lang, $userId) {
 
@@ -257,9 +308,18 @@ class ProgressController extends Controller
             $isContentDone = $totalContents > 0 && $totalContents === $readContents;
 
             /*
-            |--------------------------------------------------------------------------
-            | 🎯 FIXED ASSESSMENT (IMPORTANT)
-            |--------------------------------------------------------------------------
+            |------------------------------------------------------------------
+            | 🔹 TOPIC PROGRESS
+            |------------------------------------------------------------------
+            */
+            $topicProgressPercent = $totalContents > 0
+                ? round(($readContents / $totalContents) * 100, 2)
+                : 0;
+
+            /*
+            |------------------------------------------------------------------
+            | 🎯 ASSESSMENT
+            |------------------------------------------------------------------
             */
             $assessment = \App\Models\Assessment::where('assessmentable_id', $topic->id)
                 ->where('assessmentable_type', \App\Models\Topic::class)
@@ -269,6 +329,7 @@ class ProgressController extends Controller
             $passed = false;
 
             if ($assessment) {
+
                 $attempts = \App\Models\AssessmentAttempt::where('assessment_id', $assessment->id)
                     ->where('user_id', $userId)
                     ->whereIn('status', ['passed', 'failed'])
@@ -290,9 +351,11 @@ class ProgressController extends Controller
                 // 📚 CONTENT
                 'total_contents' => $totalContents,
                 'read_contents' => $readContents,
+                'progress_percent' => $topicProgressPercent,
+
                 'is_content_completed' => $isContentDone,
 
-                // 🎯 ASSESSMENT (FULL BLOCK)
+                // 🎯 ASSESSMENT
                 'assessment' => $assessment ? [
                     'id' => $assessment->id,
                     'type' => $assessment->type,
@@ -319,6 +382,11 @@ class ProgressController extends Controller
             'is_unlocked' => $status['is_unlocked'],
             'is_completed' => $status['is_completed'],
 
+            // ✅ NEW
+            'total_topics' => $totalTopics,
+            'completed_topics' => $completedTopics,
+            'progress_percent' => $progressPercent,
+
             'topics' => $topics
         ];
     }
@@ -332,6 +400,22 @@ class ProgressController extends Controller
 
         $isContentCompleted = $this->isTopicContentCompleted($topic, $userId);
 
+        /*
+        |------------------------------------------------------------------
+        | 🔹 CONTENT PROGRESS
+        |------------------------------------------------------------------
+        */
+        $totalContents = $topic->contents->count();
+
+        $readContents = \App\Models\UserContentProgress::where('user_id', $userId)
+            ->whereIn('topic_content_id', $topic->contents->pluck('id'))
+            ->where('is_read', true)
+            ->count();
+
+        $progressPercent = $totalContents > 0
+            ? round(($readContents / $totalContents) * 100, 2)
+            : 0;
+
         return [
             'id' => $topic->id,
             'title' => $t['title'],
@@ -341,7 +425,11 @@ class ProgressController extends Controller
             'is_unlocked' => $p?->is_unlocked ?? false,
             'is_completed' => $p?->is_completed ?? false,
 
-            // ✅ NEW FLAGS
+            // ✅ NEW
+            'total_contents' => $totalContents,
+            'read_contents' => $readContents,
+            'progress_percent' => $progressPercent,
+
             'is_content_completed' => $isContentCompleted,
             'is_quiz_available' => $isContentCompleted && !($p?->is_completed ?? false),
         ];
@@ -383,180 +471,6 @@ class ProgressController extends Controller
         ];
     }
 
-    public function hierarchy(Request $request)
-    {
-        $userId = auth()->id();
-        $lang = $this->resolveLanguage($request);
-
-        // 🔹 topic progress
-        $progress = UserProgress::where('user_id', $userId)
-            ->whereNotNull('topic_id') // 🔥 IMPORTANT
-            ->get()
-            ->keyBy('topic_id');
-
-        // 🔹 level certificates (IMPORTANT: type = level)
-        $certifications = \App\Models\Certification::where('user_id', $userId)
-            ->where('type', 'level')
-            ->get()
-            ->keyBy('level_id');
-
-        $programs = Program::with('levels.modules.chapters.topics')->get();
-
-        $data = $programs->map(function ($program) use ($progress, $lang, $certifications) {
-
-            $t = $this->getTranslated($program, $lang);
-
-            return [
-                'type' => 'program',
-                'id' => $program->id,
-                'title' => $t['title'],
-                'description' => $t['description'],
-                'thumbnail' => $program->thumbnail,
-
-                'levels' => $program->levels->map(function ($level) use ($progress, $lang, $certifications) {
-
-                    $t = $this->getTranslated($level, $lang);
-
-                    AuditService::log('level_viewed', 'User viewed their progress for a level', ['level_id' => $level->id]);
-
-                    /*
-                |--------------------------------------------------
-                | 🔥 LEVEL CONTENT COMPLETION
-                |--------------------------------------------------
-                */
-                    $allTopics = $level->modules->flatMap(function ($module) {
-                        return $module->chapters->flatMap->topics;
-                    });
-
-                    $levelUnlocked = $allTopics->contains(fn($topic) => $progress[$topic->id]->is_unlocked ?? false);
-
-                    $levelCompleted = $allTopics->isNotEmpty() &&
-                        $allTopics->every(fn($topic) => $progress[$topic->id]->is_completed ?? false);
-
-                    /*
-                |--------------------------------------------------
-                | 🎓 CERTIFICATION CHECK (TYPE = LEVEL)
-                |--------------------------------------------------
-                */
-                    $cert = $certifications[$level->id] ?? null;
-
-                    $isPassed = $cert ? true : false;
-
-                    // 🎯 LEVEL EXAM (ADD THIS)
-                    $assessment = \App\Models\Assessment::where('assessmentable_id', $level->id)
-                        ->where('assessmentable_type', \App\Models\Level::class)
-                        ->first();
-
-                    return [
-                        'type' => 'level',
-                        'id' => $level->id,
-                        'title' => $t['title'],
-                        'description' => $t['description'],
-                        'thumbnail' => $level->thumbnail,
-
-                        // 🔓 unlock
-                        'is_unlocked' => $levelUnlocked,
-
-                        // 📚 content status
-                        'is_content_completed' => $levelCompleted,
-
-                        // 🎯 exam eligibility
-                        'can_take_exam' => $levelCompleted && !$isPassed,
-
-                        // 🎓 result
-                        'is_passed' => $isPassed,
-
-                        // 🎯 🔥 NEW — LEVEL EXAM DETAILS
-                        'assessment' => $assessment ? [
-                            'id' => $assessment->id,
-                            'type' => $assessment->type,
-                            'duration' => $assessment->duration,
-                            'passing_score' => $assessment->passing_score,
-                        ] : null,
-
-                        // 📊 exam result (certificate based)
-                        'exam_details' => $cert ? [
-                            'certificate_id' => $cert->certificate_id,
-                            'score' => $cert->score,
-                            'percentage' => $cert->percentage,
-                            'issued_at' => $cert->issued_at,
-                            'passed_attempt_id' => $cert->assessment_attempt_id,
-                        ] : null,
-
-                        'modules' => $level->modules->map(function ($module) use ($progress, $lang) {
-
-                            $t = $this->getTranslated($module, $lang);
-
-                            AuditService::log('module_viewed', 'User viewed their progress for a module', ['module_id' => $module->id]);
-
-                            $topics = $module->chapters->flatMap->topics;
-
-                            $isUnlocked = $topics->contains(fn($topic) => $progress[$topic->id]->is_unlocked ?? false);
-
-                            $isCompleted = $topics->isNotEmpty() &&
-                                $topics->every(fn($topic) => $progress[$topic->id]->is_completed ?? false);
-
-                            return [
-                                'type' => 'module',
-                                'id' => $module->id,
-                                'title' => $t['title'],
-                                'description' => $t['description'],
-                                'thumbnail' => $module->thumbnail,
-
-                                'is_unlocked' => $isUnlocked,
-                                'is_completed' => $isCompleted,
-
-                                'chapters' => $module->chapters->map(function ($chapter) use ($progress, $lang) {
-
-                                    $t = $this->getTranslated($chapter, $lang);
-
-                                    AuditService::log('chapter_viewed', 'User viewed their progress for a chapter', ['chapter_id' => $chapter->id]);
-
-                                    $isUnlocked = $chapter->topics->contains(fn($topic) => $progress[$topic->id]->is_unlocked ?? false);
-
-                                    $isCompleted = $chapter->topics->isNotEmpty() &&
-                                        $chapter->topics->every(fn($topic) => $progress[$topic->id]->is_completed ?? false);
-
-                                    return [
-                                        'type' => 'chapter',
-                                        'id' => $chapter->id,
-                                        'title' => $t['title'],
-                                        'description' => $t['description'],
-                                        'thumbnail' => $chapter->thumbnail,
-
-                                        'is_unlocked' => $isUnlocked,
-                                        'is_completed' => $isCompleted,
-
-                                        'topics' => $chapter->topics->map(function ($topic) use ($progress, $lang) {
-
-                                            $p = $progress[$topic->id] ?? null;
-                                            $t = $this->getTranslated($topic, $lang);
-
-                                            return [
-                                                'type' => 'topic',
-                                                'id' => $topic->id,
-                                                'title' => $t['title'],
-                                                'description' => $t['description'],
-                                                'thumbnail' => $topic->thumbnail,
-
-                                                'is_unlocked' => $p?->is_unlocked ?? false,
-                                                'is_completed' => $p?->is_completed ?? false,
-                                            ];
-                                        })
-                                    ];
-                                })
-                            ];
-                        })
-                    ];
-                })
-            ];
-        });
-
-        return response()->json([
-            'success' => true,
-            'data' => $data
-        ]);
-    }
     public function single(Request $request, $type, $id)
     {
         $lang = $this->resolveLanguage($request);
@@ -831,6 +745,545 @@ class ProgressController extends Controller
                 ], 422);
         }
     }
+
+
+    public function hierarchy(Request $request)
+    {
+        $userId = auth()->id();
+        $lang = $this->resolveLanguage($request);
+
+        /*
+        |--------------------------------------------------
+        | 🔹 USER TOPIC PROGRESS
+        |--------------------------------------------------
+        */
+        $progress = UserProgress::where('user_id', $userId)
+            ->whereNotNull('topic_id')
+            ->get()
+            ->keyBy('topic_id');
+
+        /*
+        |--------------------------------------------------
+        | 🔹 QUIZ PASSED TOPICS (PASS BASED)
+        |--------------------------------------------------
+        */
+        $completedTopicIds = \App\Models\AssessmentAttempt::where('user_id', $userId)
+            ->where('status', 'passed')
+            ->whereHas('assessment', function ($q) {
+
+                $q->where('type', 'topic');
+            })
+            ->with('assessment')
+            ->get()
+            ->map(function ($attempt) {
+
+                return $attempt->assessment?->assessmentable_id;
+            })
+            ->filter()
+            ->unique()
+            ->values()
+            ->toArray();
+
+        /*
+        |--------------------------------------------------
+        | 🔹 LEVEL CERTIFICATIONS
+        |--------------------------------------------------
+        */
+        $certifications = \App\Models\Certification::where('user_id', $userId)
+            ->where('type', 'level')
+            ->get()
+            ->keyBy('level_id');
+
+        /*
+        |--------------------------------------------------
+        | 🔹 LOAD FULL STRUCTURE
+        |--------------------------------------------------
+        */
+        $programs = Program::with([
+            'levels.modules.chapters.topics.program'
+        ])->get();
+
+        $data = $programs->map(function ($program) use (
+            $progress,
+            $lang,
+            $certifications,
+            $completedTopicIds,
+            $userId
+        ) {
+
+            $t = $this->getTranslated($program, $lang);
+
+            /*
+            |--------------------------------------------------
+            | 🔹 PROGRAM PROGRESS
+            |--------------------------------------------------
+            */
+            $programTopics = $program->levels
+                ->flatMap->modules
+                ->flatMap->chapters
+                ->flatMap->topics;
+
+            $programTopicIds = $programTopics->pluck('id')->toArray();
+
+            $programCompletedTopics = count(array_intersect(
+                $programTopicIds,
+                $completedTopicIds
+            ));
+
+            $programProgressPercent = count($programTopicIds) > 0
+                ? round(($programCompletedTopics / count($programTopicIds)) * 100, 2)
+                : 0;
+
+            return [
+
+                'type' => 'program',
+
+                'id' => $program->id,
+
+                'title' => $t['title'],
+
+                'description' => $t['description'],
+
+                'thumbnail' => $program->thumbnail,
+
+                /*
+                |--------------------------------------------------
+                | 🔹 PROGRAM PROGRESS
+                |--------------------------------------------------
+                */
+                'progress' => [
+                    'total_topics' => count($programTopicIds),
+                    'completed_topics' => $programCompletedTopics,
+                    'progress_percent' => $programProgressPercent
+                ],
+
+                /*
+                |--------------------------------------------------
+                | 🔹 LEVELS
+                |--------------------------------------------------
+                */
+                'levels' => $program->levels->map(function (
+                    $level
+                ) use (
+                    $progress,
+                    $lang,
+                    $certifications,
+                    $completedTopicIds,
+                    $userId
+                ) {
+
+                    $t = $this->getTranslated($level, $lang);
+
+                    AuditService::log(
+                        'level_viewed',
+                        'User viewed their progress for a level',
+                        ['level_id' => $level->id]
+                    );
+
+                    /*
+                    |--------------------------------------------------
+                    | 🔹 LEVEL TOPICS
+                    |--------------------------------------------------
+                    */
+                    $allTopics = $level->modules
+                        ->flatMap->chapters
+                        ->flatMap->topics;
+
+                    $levelTopicIds = $allTopics
+                        ->pluck('id')
+                        ->toArray();
+
+                    /*
+                    |--------------------------------------------------
+                    | 🔹 LEVEL PROGRESS
+                    |--------------------------------------------------
+                    */
+                    $completedLevelTopics = count(array_intersect(
+                        $levelTopicIds,
+                        $completedTopicIds
+                    ));
+
+                    $totalLevelTopics = count($levelTopicIds);
+
+                    $levelProgressPercent = $totalLevelTopics > 0
+                        ? round(($completedLevelTopics / $totalLevelTopics) * 100, 2)
+                        : 0;
+
+                    /*
+                    |--------------------------------------------------
+                    | 🔹 LEVEL STATES
+                    |--------------------------------------------------
+                    */
+                    $levelUnlocked = $allTopics->contains(
+                        fn($topic) =>
+                        $progress[$topic->id]->is_unlocked ?? false
+                    );
+
+                    $levelCompleted =
+                        $totalLevelTopics > 0 &&
+                        $completedLevelTopics === $totalLevelTopics;
+
+                    /*
+                    |--------------------------------------------------
+                    | 🔹 CERTIFICATION
+                    |--------------------------------------------------
+                    */
+                    $cert = $certifications[$level->id] ?? null;
+
+                    $isPassed = $cert ? true : false;
+
+                    /*
+                    |--------------------------------------------------
+                    | 🔹 LEVEL EXAM
+                    |--------------------------------------------------
+                    */
+                    $assessment = \App\Models\Assessment::where(
+                        'assessmentable_id',
+                        $level->id
+                    )
+                        ->where(
+                            'assessmentable_type',
+                            \App\Models\Level::class
+                        )
+                        ->first();
+
+                    return [
+
+                        'type' => 'level',
+
+                        'id' => $level->id,
+
+                        'title' => $t['title'],
+
+                        'description' => $t['description'],
+
+                        'thumbnail' => $level->thumbnail,
+
+                        /*
+                        |--------------------------------------------------
+                        | 🔹 STATES
+                        |--------------------------------------------------
+                        */
+                        'is_unlocked' => $levelUnlocked,
+
+                        'is_content_completed' => $levelCompleted,
+
+                        'can_take_exam' => $levelCompleted && !$isPassed,
+
+                        'is_passed' => $isPassed,
+
+                        /*
+                        |--------------------------------------------------
+                        | 🔹 LEVEL PROGRESS
+                        |--------------------------------------------------
+                        */
+                        'progress' => [
+                            'total_topics' => $totalLevelTopics,
+                            'completed_topics' => $completedLevelTopics,
+                            'progress_percent' => $levelProgressPercent
+                        ],
+
+                        /*
+                        |--------------------------------------------------
+                        | 🔹 ASSESSMENT
+                        |--------------------------------------------------
+                        */
+                        'assessment' => $assessment ? [
+
+                            'id' => $assessment->id,
+
+                            'type' => $assessment->type,
+
+                            'duration' => $assessment->duration,
+
+                            'passing_score' => $assessment->passing_score,
+
+                        ] : null,
+
+                        /*
+                        |--------------------------------------------------
+                        | 🔹 EXAM DETAILS
+                        |--------------------------------------------------
+                        */
+                        'exam_details' => $cert ? [
+
+                            'certificate_id' => $cert->certificate_id,
+
+                            'score' => $cert->score,
+
+                            'percentage' => $cert->percentage,
+
+                            'issued_at' => $cert->issued_at,
+
+                            'passed_attempt_id' => $cert->assessment_attempt_id,
+
+                        ] : null,
+
+                        /*
+                        |--------------------------------------------------
+                        | 🔹 MODULES
+                        |--------------------------------------------------
+                        */
+                        'modules' => $level->modules->map(function (
+                            $module
+                        ) use (
+                            $progress,
+                            $lang,
+                            $completedTopicIds,
+                            $userId
+                        ) {
+
+                            $t = $this->getTranslated($module, $lang);
+
+                            AuditService::log(
+                                'module_viewed',
+                                'User viewed their progress for a module',
+                                ['module_id' => $module->id]
+                            );
+
+                            $topics = $module->chapters
+                                ->flatMap->topics;
+
+                            $moduleTopicIds = $topics
+                                ->pluck('id')
+                                ->toArray();
+
+                            /*
+                            |--------------------------------------------------
+                            | 🔹 MODULE PROGRESS
+                            |--------------------------------------------------
+                            */
+                            $completedTopics = count(array_intersect(
+                                $moduleTopicIds,
+                                $completedTopicIds
+                            ));
+
+                            $totalTopics = count($moduleTopicIds);
+
+                            $progressPercent = $totalTopics > 0
+                                ? round(($completedTopics / $totalTopics) * 100, 2)
+                                : 0;
+
+                            /*
+                            |--------------------------------------------------
+                            | 🔹 MODULE STATES
+                            |--------------------------------------------------
+                            */
+                            $isUnlocked = $topics->contains(
+                                fn($topic) =>
+                                $progress[$topic->id]->is_unlocked ?? false
+                            );
+
+                            $isCompleted =
+                                $totalTopics > 0 &&
+                                $completedTopics === $totalTopics;
+
+                            return [
+
+                                'type' => 'module',
+
+                                'id' => $module->id,
+
+                                'title' => $t['title'],
+
+                                'description' => $t['description'],
+
+                                'thumbnail' => $module->thumbnail,
+
+                                'is_unlocked' => $isUnlocked,
+
+                                'is_completed' => $isCompleted,
+
+                                /*
+                                |--------------------------------------------------
+                                | 🔹 MODULE PROGRESS
+                                |--------------------------------------------------
+                                */
+                                'progress' => [
+                                    'total_topics' => $totalTopics,
+                                    'completed_topics' => $completedTopics,
+                                    'progress_percent' => $progressPercent
+                                ],
+
+                                /*
+                                |--------------------------------------------------
+                                | 🔹 CHAPTERS
+                                |--------------------------------------------------
+                                */
+                                'chapters' => $module->chapters->map(function (
+                                    $chapter
+                                ) use (
+                                    $progress,
+                                    $lang,
+                                    $completedTopicIds,
+                                    $userId
+                                ) {
+
+                                    $t = $this->getTranslated($chapter, $lang);
+
+                                    AuditService::log(
+                                        'chapter_viewed',
+                                        'User viewed their progress for a chapter',
+                                        ['chapter_id' => $chapter->id]
+                                    );
+
+                                    $chapterTopicIds = $chapter->topics
+                                        ->pluck('id')
+                                        ->toArray();
+
+                                    /*
+                                    |--------------------------------------------------
+                                    | 🔹 CHAPTER PROGRESS
+                                    |--------------------------------------------------
+                                    */
+                                    $completedTopics = count(array_intersect(
+                                        $chapterTopicIds,
+                                        $completedTopicIds
+                                    ));
+
+                                    $totalTopics = count($chapterTopicIds);
+
+                                    $progressPercent = $totalTopics > 0
+                                        ? round(($completedTopics / $totalTopics) * 100, 2)
+                                        : 0;
+
+                                    /*
+                                    |--------------------------------------------------
+                                    | 🔹 CHAPTER STATES
+                                    |--------------------------------------------------
+                                    */
+                                    $isUnlocked = $chapter->topics->contains(
+                                        fn($topic) =>
+                                        $progress[$topic->id]->is_unlocked ?? false
+                                    );
+
+                                    $isCompleted =
+                                        $totalTopics > 0 &&
+                                        $completedTopics === $totalTopics;
+
+                                    return [
+
+                                        'type' => 'chapter',
+
+                                        'id' => $chapter->id,
+
+                                        'title' => $t['title'],
+
+                                        'description' => $t['description'],
+
+                                        'thumbnail' => $chapter->thumbnail,
+
+                                        'is_unlocked' => $isUnlocked,
+
+                                        'is_completed' => $isCompleted,
+
+                                        /*
+                                        |--------------------------------------------------
+                                        | 🔹 CHAPTER PROGRESS
+                                        |--------------------------------------------------
+                                        */
+                                        'progress' => [
+                                            'total_topics' => $totalTopics,
+                                            'completed_topics' => $completedTopics,
+                                            'progress_percent' => $progressPercent
+                                        ],
+
+                                        /*
+                                        |--------------------------------------------------
+                                        | 🔹 TOPICS
+                                        |--------------------------------------------------
+                                        */
+                                        'topics' => $chapter->topics->map(function (
+                                            $topic
+                                        ) use (
+                                            $progress,
+                                            $lang,
+                                            $completedTopicIds,
+                                            $userId
+                                        ) {
+
+                                            $p = $progress[$topic->id] ?? null;
+
+                                            $t = $this->getTranslated($topic, $lang);
+
+                                            /*
+                                            |--------------------------------------------------
+                                            | 🔹 CONTENT PROGRESS
+                                            |--------------------------------------------------
+                                            */
+                                            $totalContents = TopicContent::where(
+                                                'topic_id',
+                                                $topic->id
+                                            )->count();
+
+                                            $readContents = UserContentProgress::where(
+                                                'user_id',
+                                                $userId
+                                            )
+                                                ->whereIn('topic_content_id', function ($q) use ($topic) {
+
+                                                    $q->select('id')
+                                                        ->from('topic_contents')
+                                                        ->where('topic_id', $topic->id);
+                                                })
+                                                ->where('is_read', 1)
+                                                ->count();
+
+                                            $topicProgressPercent = $totalContents > 0
+                                                ? round(($readContents / $totalContents) * 100, 2)
+                                                : 0;
+
+                                            return [
+
+                                                'type' => 'topic',
+
+                                                'id' => $topic->id,
+
+                                                'title' => $t['title'],
+
+                                                'description' => $t['description'],
+
+                                                'thumbnail' => $topic->thumbnail,
+
+                                                'is_unlocked' => $p?->is_unlocked ?? false,
+
+                                                /*
+                                                |--------------------------------------------------
+                                                | 🔹 PASS BASED COMPLETION
+                                                |--------------------------------------------------
+                                                */
+                                                'is_completed' => in_array(
+                                                    $topic->id,
+                                                    $completedTopicIds
+                                                ),
+
+                                                /*
+                                                |--------------------------------------------------
+                                                | 🔹 TOPIC PROGRESS
+                                                |--------------------------------------------------
+                                                */
+                                                'progress' => [
+                                                    'total_contents' => $totalContents,
+                                                    'read_contents' => $readContents,
+                                                    'progress_percent' => $topicProgressPercent
+                                                ],
+                                            ];
+                                        })
+                                    ];
+                                })
+                            ];
+                        })
+                    ];
+                })
+            ];
+        });
+
+        return response()->json([
+            'success' => true,
+            'data' => $data
+        ]);
+    }
+
 
     public function isTopicContentCompleted($topic, $userId)
     {
