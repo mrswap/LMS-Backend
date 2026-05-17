@@ -15,14 +15,57 @@ class NotificationController extends Controller
     */
     public function index(Request $request)
     {
-        $notifications = $request->user()
+        $user = $request->user();
+
+        $notifications = $user
             ->notifications()
             ->latest()
             ->paginate(20);
 
-        return response()->json($notifications);
-    }
+        // Analytics
+        $totalNotifications = $user
+            ->notifications()
+            ->count();
 
+        $unreadNotifications = $user
+            ->notifications()
+            ->where('is_read', false)
+            ->count();
+
+        $readNotifications = $user
+            ->notifications()
+            ->where('is_read', true)
+            ->count();
+
+        // Inject analytics after current_page and before data
+        $notificationsArray = $notifications->toArray();
+
+        $customResponse = [
+            'current_page' => $notificationsArray['current_page'],
+
+            'analytics' => [
+                'total'   => $totalNotifications,
+                'unread' => $unreadNotifications,
+                'read'    => $readNotifications,
+            ],
+
+            'data' => $notificationsArray['data'],
+
+            'first_page_url' => $notificationsArray['first_page_url'],
+            'from' => $notificationsArray['from'],
+            'last_page' => $notificationsArray['last_page'],
+            'last_page_url' => $notificationsArray['last_page_url'],
+            'links' => $notificationsArray['links'],
+            'next_page_url' => $notificationsArray['next_page_url'],
+            'path' => $notificationsArray['path'],
+            'per_page' => $notificationsArray['per_page'],
+            'prev_page_url' => $notificationsArray['prev_page_url'],
+            'to' => $notificationsArray['to'],
+            'total' => $notificationsArray['total'],
+        ];
+
+        return response()->json($customResponse);
+    }
     /*
     |--------------------------------------------------------------------------
     | 📌 Mark Single Notification as Read
