@@ -10,7 +10,7 @@ class Level extends BaseModel
     use HasPublishStatus;
 
     protected $hasPublishStatus = true;
-    
+
     const PUBLISH_DRAFT = 'draft';
     const PUBLISH_PUBLISHED = 'published';
     const PUBLISH_UNPUBLISHED = 'unpublished';
@@ -93,7 +93,16 @@ class Level extends BaseModel
 
     public function getThumbnailAttribute($value)
     {
-        return $value ? url('public/' . ltrim($value, '/')) : null;
+        if (empty($value)) {
+            return url('public/uploads/logo.png');
+        }
+
+        // already full URL
+        if (filter_var($value, FILTER_VALIDATE_URL)) {
+            return $value;
+        }
+
+        return url('public/' . ltrim($value, '/'));
     }
 
     /*

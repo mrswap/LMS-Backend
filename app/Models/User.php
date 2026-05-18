@@ -183,9 +183,18 @@ class User extends Authenticatable
 
     public function getProfileImageAttribute($value)
     {
-        return $value ? url('public/' . ltrim($value, '/')) : null;
-    }
+        if (empty($value)) {
+            return url('public/uploads/logo.png');
+        }
 
+        // already full URL
+        if (filter_var($value, FILTER_VALIDATE_URL)) {
+            return $value;
+        }
+
+        return url('public/' . ltrim($value, '/'));
+    }
+    
     public function progress()
     {
         return $this->hasMany(UserProgress::class);

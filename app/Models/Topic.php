@@ -121,9 +121,17 @@ class Topic extends BaseModel
 
     public function getThumbnailAttribute($value)
     {
-        return $value ? url('public/' . ltrim($value, '/')) : null;
-    }
+        if (empty($value)) {
+            return url('public/uploads/logo.png');
+        }
 
+        // already full URL
+        if (filter_var($value, FILTER_VALIDATE_URL)) {
+            return $value;
+        }
+
+        return url('public/' . ltrim($value, '/'));
+    }
     /*
     |--------------------------------------------------------------------------
     | Cascade Soft Delete
