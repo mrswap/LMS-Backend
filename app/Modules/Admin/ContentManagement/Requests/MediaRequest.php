@@ -18,7 +18,7 @@ class MediaRequest extends FormRequest
             'description' => 'nullable|string',
 
             // 🔹 Added document support
-            'type' => 'nullable|in:image,video,audio,document',
+            'type' => 'nullable|in:image,video,audio,document,h5p',
 
             'file' => 'nullable|file',
             'external_url' => 'nullable|url',
@@ -59,6 +59,10 @@ class MediaRequest extends FormRequest
 
                 if ($type === 'document' && !in_array($ext, ['pdf', 'doc', 'docx', 'xls', 'xlsx'])) {
                     $validator->errors()->add('file', 'Invalid document format');
+                }
+
+                if ($type === 'h5p' && !in_array($ext, ['h5p', 'zip'])) {
+                    $validator->errors()->add('file', 'Invalid H5P format');
                 }
             }
         });

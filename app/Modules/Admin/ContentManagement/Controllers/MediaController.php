@@ -30,9 +30,11 @@ class MediaController extends Controller
 
         // 🔹 Search
         if ($request->filled('search')) {
+
             $search = $request->search;
 
             $query->where(function ($q) use ($search) {
+
                 $q->where('title', 'like', "%{$search}%")
                     ->orWhere('shortcode', 'like', "%{$search}%")
                     ->orWhere('file', 'like', "%{$search}%");
@@ -44,11 +46,16 @@ class MediaController extends Controller
         | SORTING
         |--------------------------------------------------------------------------
         */
-        $orderBy = $request->input('order_by', 'created_at');
+        $orderBy = $request->input(
+            'order_by',
+            'created_at'
+        );
 
         $orderDir = strtolower(
             $request->input('order_dir', 'desc')
-        ) === 'asc' ? 'asc' : 'desc';
+        ) === 'asc'
+            ? 'asc'
+            : 'desc';
 
         $allowedSorts = [
             'id',
@@ -69,7 +76,9 @@ class MediaController extends Controller
         */
         $limit = (int) $request->input('limit', 10);
 
-        $limit = $limit > 100 ? 100 : $limit;
+        $limit = $limit > 100
+            ? 100
+            : $limit;
 
         return response()->json(
             $query->paginate($limit)
@@ -85,13 +94,30 @@ class MediaController extends Controller
     {
         $filePath = null;
 
+        $mimeType = null;
+        $extension = null;
+        $originalName = null;
+        $fileSize = null;
+
+        /*
+        |--------------------------------------------------------------------------
+        | FILE UPLOAD
+        |--------------------------------------------------------------------------
+        */
         if ($request->hasFile('file')) {
 
-            $uploadPath = public_path(Media::UPLOAD_PATH);
+            $uploadPath = public_path(
+                Media::UPLOAD_PATH
+            );
 
             // Create directory if not exists
             if (!file_exists($uploadPath)) {
-                mkdir($uploadPath, 0777, true);
+
+                mkdir(
+                    $uploadPath,
+                    0777,
+                    true
+                );
             }
 
             $file = $request->file('file');
@@ -99,21 +125,61 @@ class MediaController extends Controller
             $fileName = uniqid() . '.' .
                 $file->getClientOriginalExtension();
 
+            /*
+            |--------------------------------------------------------------------------
+            | STORE FILE META
+            |--------------------------------------------------------------------------
+            */
+            $mimeType = $file->getMimeType();
+
+            $extension = $file->getClientOriginalExtension();
+
+            $originalName = $file->getClientOriginalName();
+
+            $fileSize = $file->getSize();
+
             // Move file to public folder
-            $file->move($uploadPath, $fileName);
+            $file->move(
+                $uploadPath,
+                $fileName
+            );
 
             // Save relative path
-            $filePath = Media::UPLOAD_PATH . '/' . $fileName;
+            $filePath =
+                Media::UPLOAD_PATH .
+                '/' .
+                $fileName;
         }
 
+        /*
+        |--------------------------------------------------------------------------
+        | CREATE MEDIA
+        |--------------------------------------------------------------------------
+        */
         $media = Media::create([
+
             'title'         => $request->title,
+
             'description'   => $request->description,
+
             'type'          => $request->type,
+
             'file'          => $filePath,
+
+            'mime_type'     => $mimeType,
+
+            'extension'     => $extension,
+
+            'original_name' => $originalName,
+
+            'file_size'     => $fileSize,
+
             'external_url'  => $request->external_url,
+
             'shortcode'     => $this->generateShortcode(),
+
             'disk'          => 'public',
+
             'created_by'    => auth()->id(),
         ]);
 
@@ -140,8 +206,10 @@ class MediaController extends Controller
     | UPDATE
     |--------------------------------------------------------------------------
     */
-    public function update(MediaRequest $request, $id)
-    {
+    public function update(
+        MediaRequest $request,
+        $id
+    ) {
         $media = Media::findOrFail($id);
 
         /*
@@ -152,17 +220,30 @@ class MediaController extends Controller
         if ($request->hasFile('file')) {
 
             // Delete old file
-            $oldFilePath = public_path($media->file);
+            $oldFilePath = public_path(
+                $media->file
+            );
 
-            if ($media->file && file_exists($oldFilePath)) {
+            if (
+                $media->file
+                && file_exists($oldFilePath)
+            ) {
+
                 unlink($oldFilePath);
             }
 
-            $uploadPath = public_path(Media::UPLOAD_PATH);
+            $uploadPath = public_path(
+                Media::UPLOAD_PATH
+            );
 
             // Create directory if not exists
             if (!file_exists($uploadPath)) {
-                mkdir($uploadPath, 0777, true);
+
+                mkdir(
+                    $uploadPath,
+                    0777,
+                    true
+                );
             }
 
             $file = $request->file('file');
@@ -171,11 +252,39 @@ class MediaController extends Controller
                 $file->getClientOriginalExtension();
 
             // Move new file
-            $file->move($uploadPath, $fileName);
+            $file->move(
+                $uploadPath,
+                $fileName
+            );
 
-            // Save new path
-            $media->file = Media::UPLOAD_PATH . '/' . $fileName;
+            /*
+            |--------------------------------------------------------------------------
+            | SAVE NEW FILE PATH
+            |--------------------------------------------------------------------------
+            */
+            $media->file =
+                Media::UPLOAD_PATH .
+                '/' .
+                $fileName;
+
             $media->disk = 'public';
+
+            /*
+            |--------------------------------------------------------------------------
+            | UPDATE FILE META
+            |--------------------------------------------------------------------------
+            */
+            $media->mime_type =
+                $file->getMimeType();
+
+            $media->extension =
+                $file->getClientOriginalExtension();
+
+            $media->original_name =
+                $file->getClientOriginalName();
+
+            $media->file_size =
+                $file->getSize();
 
             $media->save();
         }
@@ -193,9 +302,12 @@ class MediaController extends Controller
         ]);
 
         $media->update(
-            array_filter($data, function ($value) {
-                return !is_null($value);
-            })
+            array_filter(
+                $data,
+                function ($value) {
+                    return !is_null($value);
+                }
+            )
         );
 
         return response()->json([
@@ -214,9 +326,15 @@ class MediaController extends Controller
         $media = Media::findOrFail($id);
 
         // Delete physical file
-        $filePath = public_path($media->file);
+        $filePath = public_path(
+            $media->file
+        );
 
-        if ($media->file && file_exists($filePath)) {
+        if (
+            $media->file
+            && file_exists($filePath)
+        ) {
+
             unlink($filePath);
         }
 
@@ -264,11 +382,15 @@ class MediaController extends Controller
     */
     public function getByShortcode($shortcode)
     {
-        $media = Media::where('shortcode', $shortcode)
+        $media = Media::where(
+            'shortcode',
+            $shortcode
+        )
             ->where('status', true)
             ->first();
 
         if (!$media) {
+
             return response()->json([
                 'message' => 'Media not found'
             ], 404);
@@ -276,14 +398,35 @@ class MediaController extends Controller
 
         return response()->json([
             'message' => 'Media fetched successfully',
+
             'data' => [
+
                 'id'            => $media->id,
+
                 'title'         => $media->title,
+
                 'type'          => $media->type,
+
                 'shortcode'     => $media->shortcode,
+
                 'file'          => $media->file,
+
                 'full_url'      => $media->full_url,
+
                 'external_url'  => $media->external_url,
+
+                /*
+                |--------------------------------------------------------------------------
+                | OPTIONAL FILE META
+                |--------------------------------------------------------------------------
+                */
+                'mime_type'     => $media->mime_type,
+
+                'extension'     => $media->extension,
+
+                'original_name' => $media->original_name,
+
+                'file_size'     => $media->file_size,
             ]
         ]);
     }
