@@ -409,6 +409,8 @@ class SectionContentController extends Controller
             'topic.level:id,title',
             'topic.module:id,title',
             'topic.chapter:id,title',
+            'creator:id,name,email',
+
         ]);
 
         if ($topicId) {
@@ -530,6 +532,12 @@ class SectionContentController extends Controller
                 'order' => $item->order,
                 'status' => (bool)$item->status,
                 'publish_status' => $item->publish_status,
+
+                'creator' => [
+                    'id' => $item->creator->id ?? null,
+                    'name' => $item->creator->name ?? null,
+                    'email' => $item->creator->email ?? null,
+                ],
 
                 'topic' => [
                     'id' => $item->topic->id ?? null,

@@ -231,7 +231,34 @@ class PermissionSeeder extends Seeder
             ['module' => 'reports', 'name' => 'reports.assessment', 'label' => 'View Assessment Reports'],
             ['module' => 'reports', 'name' => 'reports.content-status', 'label' => 'View Content Status Reports'],
             ['module' => 'reports', 'name' => 'reports.certifications', 'label' => 'View Certifications'],
+
+            /*
+            |--------------------------------------------------------------------------
+            | IMPORTS
+            |--------------------------------------------------------------------------
+            */
+            ['module' => 'imports', 'name' => 'imports.create', 'label' => 'Import HTML Content'],
+            ['module' => 'imports', 'name' => 'imports.logs', 'label' => 'View Import Logs'],
+
+            /*
+            |--------------------------------------------------------------------------
+            | NOTIFICATIONS
+            |--------------------------------------------------------------------------
+            */
+            //['module' => 'notifications', 'name' => 'notifications.view', 'label' => 'View Notifications'],
+            //['module' => 'notifications', 'name' => 'notifications.read', 'label' => 'Mark Notifications Read'],
+
+            /*
+            |--------------------------------------------------------------------------
+            | SUPPORT
+            |--------------------------------------------------------------------------
+            */
+            ['module' => 'support', 'name' => 'support.view', 'label' => 'View Support Tickets'],
+            ['module' => 'support', 'name' => 'support.reply', 'label' => 'Reply Support Tickets'],
+            ['module' => 'support', 'name' => 'support.resolve', 'label' => 'Resolve Support Tickets'],
+            ['module' => 'support', 'name' => 'support.reopen', 'label' => 'Reopen Support Tickets'],
         ];
+
 
         $disabledPermissions = [
             'site-settings.firebase',
@@ -246,6 +273,9 @@ class PermissionSeeder extends Seeder
             'programs.delete',
 
             'content.reorder',
+
+
+            
         ];
 
         $permissions = array_map(function ($permission) use ($disabledPermissions) {

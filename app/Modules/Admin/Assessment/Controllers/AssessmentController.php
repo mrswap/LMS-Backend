@@ -26,6 +26,7 @@ class AssessmentController extends Controller
 
         $query = Assessment::with([
             'questions:id,assessment_id',
+            'creator:id,name,email',
             'assessmentable' => function (MorphTo $morphTo) {
                 $morphTo->morphWith([
                     \App\Models\Topic::class => [
@@ -251,6 +252,12 @@ class AssessmentController extends Controller
                 'passing_score' => $assessment->passing_score,
                 'total_marks' => $assessment->total_marks,
                 'status' => (bool)$assessment->status,
+                
+                'creator' => [
+                    'id' => $assessment->creator->id ?? null,
+                    'name' => $assessment->creator->name ?? null,
+                    'email' => $assessment->creator->email ?? null,
+                ],
 
                 'hierarchy' => $hierarchy,
 

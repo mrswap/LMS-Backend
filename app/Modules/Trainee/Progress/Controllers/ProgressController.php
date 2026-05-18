@@ -49,6 +49,7 @@ class ProgressController extends Controller
 
             $modules = Module::with('chapters.topics')
                 ->where('level_id', $request->level_id)
+                ->where('status', true)
                 ->get();
 
             $data = $modules->map(function ($module) use ($progress, $lang) {
@@ -492,9 +493,24 @@ class ProgressController extends Controller
             case 'level':
 
                 $level = Level::with([
+
                     'program',
-                    'modules.chapters.topics'
-                ])->findOrFail($id);
+
+                    'modules' => function ($q) {
+                        $q->where('status', true);
+                    },
+
+                    'modules.chapters' => function ($q) {
+                        $q->where('status', true);
+                    },
+
+                    'modules.chapters.topics' => function ($q) {
+                        $q->where('status', true);
+                    }
+
+                ])
+                    ->where('status', true)
+                    ->findOrFail($id);
 
                 AuditService::log(
                     'level_viewed',
@@ -545,10 +561,21 @@ class ProgressController extends Controller
             case 'module':
 
                 $module = Module::with([
+
                     'program',
                     'level',
-                    'chapters.topics'
-                ])->findOrFail($id);
+
+                    'chapters' => function ($q) {
+                        $q->where('status', true);
+                    },
+
+                    'chapters.topics' => function ($q) {
+                        $q->where('status', true);
+                    }
+
+                ])
+                    ->where('status', true)
+                    ->findOrFail($id);
 
                 AuditService::log(
                     'module_viewed',
@@ -604,11 +631,18 @@ class ProgressController extends Controller
             case 'chapter':
 
                 $chapter = Chapter::with([
+
                     'program',
                     'level',
                     'module',
-                    'topics'
-                ])->findOrFail($id);
+
+                    'topics' => function ($q) {
+                        $q->where('status', true);
+                    }
+
+                ])
+                    ->where('status', true)
+                    ->findOrFail($id);
 
                 AuditService::log(
                     'chapter_viewed',
@@ -669,12 +703,21 @@ class ProgressController extends Controller
             case 'topic':
 
                 $topic = Topic::with([
+
                     'program',
                     'level',
                     'module',
                     'chapter',
-                    'contents'
-                ])->findOrFail($id);
+
+                    'contents' => function ($q) {
+
+                        $q->where('status', true)
+                            ->where('publish_status', 'published');
+                    }
+
+                ])
+                    ->where('status', true)
+                    ->findOrFail($id);
 
                 AuditService::log(
                     'topic_viewed',
@@ -746,7 +789,6 @@ class ProgressController extends Controller
         }
     }
 
-
     public function hierarchy(Request $request)
     {
         $userId = auth()->id();
@@ -800,8 +842,28 @@ class ProgressController extends Controller
         |--------------------------------------------------
         */
         $programs = Program::with([
+
+            'levels' => function ($q) {
+                $q->where('status', true);
+            },
+
+            'levels.modules' => function ($q) {
+                $q->where('status', true);
+            },
+
+            'levels.modules.chapters' => function ($q) {
+                $q->where('status', true);
+            },
+
+            'levels.modules.chapters.topics' => function ($q) {
+                $q->where('status', true);
+            },
+
             'levels.modules.chapters.topics.program'
-        ])->get();
+
+        ])
+            ->where('status', true)
+            ->get();
 
         $data = $programs->map(function ($program) use (
             $progress,
@@ -945,8 +1007,8 @@ class ProgressController extends Controller
                             'assessmentable_type',
                             \App\Models\Level::class
                         )
+                        ->where('status', true)
                         ->first();
-
                     return [
 
                         'type' => 'level',
@@ -1214,17 +1276,21 @@ class ProgressController extends Controller
                                             $totalContents = TopicContent::where(
                                                 'topic_id',
                                                 $topic->id
-                                            )->count();
+                                            )
+                                                ->where('status', true)
+                                                ->where('publish_status', 'published')
+                                                ->count();
 
                                             $readContents = UserContentProgress::where(
                                                 'user_id',
                                                 $userId
                                             )
                                                 ->whereIn('topic_content_id', function ($q) use ($topic) {
-
                                                     $q->select('id')
                                                         ->from('topic_contents')
-                                                        ->where('topic_id', $topic->id);
+                                                        ->where('topic_id', $topic->id)
+                                                        ->where('status', true)
+                                                        ->where('publish_status', 'published');
                                                 })
                                                 ->where('is_read', 1)
                                                 ->count();

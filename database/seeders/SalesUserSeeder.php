@@ -15,7 +15,11 @@ class SalesUserSeeder extends Seeder
         $role = Role::where('name', User::ROLE_SALES)->first();
         $roleId = $role?->id ?? 3; // fallback: 3 = sales
 
-        // Default Sales Person
+        /*
+        |--------------------------------------------------------------------------
+        | 👨‍💼 Default Sales Person
+        |--------------------------------------------------------------------------
+        */
         User::updateOrCreate(
             ['email' => 'salesperson@netswaptech.com'],
             [
@@ -34,7 +38,34 @@ class SalesUserSeeder extends Seeder
             ]
         );
 
-        // Kajal User
+        /*
+        |--------------------------------------------------------------------------
+        | 👨‍💼 Avanta Sales Person
+        |--------------------------------------------------------------------------
+        */
+        User::updateOrCreate(
+            ['email' => 'salesperson@avanta.com'],
+            [
+                'name' => 'Avanta Sales',
+                'password' => Hash::make('12345678'),
+                'role_id' => $roleId,
+                'designation_id' => null,
+                'department' => 'Sales',
+                'region' => 'India',
+                'city' => 'Indore',
+                'mobile' => '7777777777',
+                'employee_id' => 'EMP003',
+                'is_active' => true,
+                'created_by' => 1,
+                'email_verified_at' => now(),
+            ]
+        );
+
+        /*
+        |--------------------------------------------------------------------------
+        | 👩 Kajal User
+        |--------------------------------------------------------------------------
+        */
         User::updateOrCreate(
             ['email' => 'kajalcharve6@gmail.com'],
             [
