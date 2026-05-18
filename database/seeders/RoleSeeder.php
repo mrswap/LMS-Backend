@@ -27,14 +27,14 @@ class RoleSeeder extends Seeder
 
             [
                 'name' => 'staff',
-                'label' => 'Staff',
+                'label' => 'Staff ',
                 'is_system' => true,
                 'is_active' => true,
             ],
 
             [
                 'name' => 'sales',
-                'label' => 'Sales',
+                'label' => 'Sales Trainee',
                 'is_system' => true,
                 'is_active' => true,
             ],

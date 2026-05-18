@@ -22,10 +22,10 @@ class RoleController extends Controller
             ->latest();
 
         /*
-        |--------------------------------------------------------------------------
-        | Search
-        |--------------------------------------------------------------------------
-        */
+    |--------------------------------------------------------------------------
+    | Search
+    |--------------------------------------------------------------------------
+    */
 
         if ($request->filled('search')) {
 
@@ -39,20 +39,71 @@ class RoleController extends Controller
         }
 
         /*
+    |--------------------------------------------------------------------------
+    | Status Filter
+    |--------------------------------------------------------------------------
+    */
+
+        if ($request->has('status')) {
+
+            if ($request->status !== 'all') {
+
+                $query->where(
+                    'is_active',
+                    (int) $request->status
+                );
+            }
+        }
+
+        /*
         |--------------------------------------------------------------------------
-        | Status Filter
+        | Admin Filter
         |--------------------------------------------------------------------------
         */
 
-        if ($request->filled('status')) {
+        if ($request->has('is_admin')) {
 
-            $query->where('is_active', $request->status);
+            $isAdmin = (int) $request->is_admin;
+
+            if ($isAdmin === 1) {
+
+                // admin/system roles
+                $query->where('is_system', 1);
+            } elseif ($isAdmin === 0) {
+
+                // non-admin roles
+                $query->where('is_system', 0);
+            }
         }
+
+        $roles = $query->get()->map(function ($role) {
+
+            return [
+
+                'id' => $role->id,
+
+                'name' => $role->name,
+
+                'label' => $role->label,
+
+                'is_system' => (bool) $role->is_system,
+
+                'is_active' => (bool) $role->is_active,
+
+                'permissions_count' => $role->permissions_count,
+
+                // ✅ custom flag
+                'hidden' => $role->id == 4 && $role->name === 'sales',
+
+                'created_at' => $role->created_at,
+                'updated_at' => $role->updated_at,
+            ];
+        });
 
         return response()->json([
             'success' => true,
             'message' => 'Roles fetched successfully',
-            'data' => $query->get()
+            'data' => $roles
         ]);
     }
 

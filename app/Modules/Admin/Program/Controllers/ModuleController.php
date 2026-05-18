@@ -4,7 +4,6 @@ namespace App\Modules\Admin\Program\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Models\Module;
-use App\Models\ModuleTranslation;
 use App\Models\Program;
 use App\Models\Level;
 use Illuminate\Http\Request;
@@ -29,6 +28,17 @@ class ModuleController extends Controller
 
     /*
     |--------------------------------------------------------------------------
+    | SYSTEM USER CHECK
+    |--------------------------------------------------------------------------
+    */
+
+    private function isSystemUser(): bool
+    {
+        return auth()->user()?->isSystemUser() ?? false;
+    }
+
+    /*
+    |--------------------------------------------------------------------------
     | INDEX
     |--------------------------------------------------------------------------
     */
@@ -37,11 +47,7 @@ class ModuleController extends Controller
     {
         $lang = $this->resolveLanguage($request);
 
-        $user = auth()->user();
-
-        $user->loadMissing('role');
-
-        $isSystemUser = (bool) $user?->role?->is_system;
+        $isSystemUser = $this->isSystemUser();
 
         $query = Module::with([
             'creator:id,name',
@@ -107,24 +113,23 @@ class ModuleController extends Controller
                         'like',
                         "%{$search}%"
                     )
-                    ->orWhereHas('level', function ($q2) use ($search) {
+                        ->orWhereHas('level', function ($q2) use ($search) {
 
-                        $q2->where(
-                            'title',
-                            'like',
-                            "%{$search}%"
-                        );
-                    })
-                    ->orWhereHas('program', function ($q3) use ($search) {
+                            $q2->where(
+                                'title',
+                                'like',
+                                "%{$search}%"
+                            );
+                        })
+                        ->orWhereHas('program', function ($q3) use ($search) {
 
-                        $q3->where(
-                            'title',
-                            'like',
-                            "%{$search}%"
-                        );
-                    });
+                            $q3->where(
+                                'title',
+                                'like',
+                                "%{$search}%"
+                            );
+                        });
                 });
-
             } else {
 
                 $query->whereHas(
@@ -150,7 +155,10 @@ class ModuleController extends Controller
         |--------------------------------------------------------------------------
         */
 
-        if ($lang === 'en' && !$request->filled('search')) {
+        if (
+            $lang === 'en'
+            && !$request->filled('search')
+        ) {
 
             $query->where(
                 'title',
@@ -159,63 +167,6 @@ class ModuleController extends Controller
             );
         }
 
-        /*
-        |--------------------------------------------------------------------------
-        | SYSTEM USER FILTERS
-        |--------------------------------------------------------------------------
-        */
-
-        if ($isSystemUser) {
-
-            /*
-            |--------------------------------------------------------------------------
-            | PUBLISH STATUS
-            |--------------------------------------------------------------------------
-            */
-
-            if ($request->has('publish_status')) {
-
-                if ($request->publish_status !== 'all') {
-
-                    $query->where(
-                        'publish_status',
-                        $request->publish_status
-                    );
-                }
-            }
-
-            /*
-            |--------------------------------------------------------------------------
-            | STATUS
-            |--------------------------------------------------------------------------
-            */
-
-            if ($request->has('status')) {
-
-                if ($request->status !== 'all') {
-
-                    $query->where(
-                        'status',
-                        (bool) $request->status
-                    );
-                }
-            }
-
-        } else {
-
-            /*
-            |--------------------------------------------------------------------------
-            | NON SYSTEM USER RESTRICTIONS
-            |--------------------------------------------------------------------------
-            */
-
-            $query->where('status', true);
-
-            $query->where(
-                'publish_status',
-                Module::PUBLISH_PUBLISHED
-            );
-        }
 
         /*
         |--------------------------------------------------------------------------
@@ -336,20 +287,11 @@ class ModuleController extends Controller
             'level_id' => 'required|integer',
             'title' => 'required|string|max:255',
             'description' => 'nullable|string',
-            'thumbnail' => 'nullable|image|mimes:jpg,jpeg,png|max:2048',
+            'thumbnail'
+            => 'nullable|image|mimes:jpg,jpeg,png|max:2048',
         ]);
 
-        /*
-        |--------------------------------------------------------------------------
-        | USER GOVERNANCE
-        |--------------------------------------------------------------------------
-        */
-
-        $user = auth()->user();
-
-        $user->loadMissing('role');
-
-        $isSystemUser = (bool) $user?->role?->is_system;
+        $isSystemUser = $this->isSystemUser();
 
         /*
         |--------------------------------------------------------------------------
@@ -386,7 +328,7 @@ class ModuleController extends Controller
             return response()->json([
                 'success' => false,
                 'message'
-                    => 'Level does not belong to selected program'
+                => 'Level does not belong to selected program'
             ], 422);
         }
 
@@ -429,6 +371,20 @@ class ModuleController extends Controller
 
         /*
         |--------------------------------------------------------------------------
+        | GOVERNANCE DEFAULTS
+        |--------------------------------------------------------------------------
+        */
+
+        $defaultStatus = $isSystemUser
+            ? true
+            : false;
+
+        $defaultPublishStatus = $isSystemUser
+            ? Module::PUBLISH_PUBLISHED
+            : Module::PUBLISH_DRAFT;
+
+        /*
+        |--------------------------------------------------------------------------
         | CREATE
         |--------------------------------------------------------------------------
         */
@@ -440,47 +396,40 @@ class ModuleController extends Controller
 
                 'created_by' => auth()->id(),
 
-                'status' => $isSystemUser
-                    ? true
-                    : false,
+                'status' => $defaultStatus,
 
-                'publish_status' => $isSystemUser
-                    ? Module::PUBLISH_PUBLISHED
-                    : Module::PUBLISH_DRAFT,
+                'publish_status'
+                => $defaultPublishStatus,
             ]);
-
         } else {
 
             $module = Module::create([
                 'program_id'
-                    => $validated['program_id'],
+                => $validated['program_id'],
 
                 'level_id'
-                    => $validated['level_id'],
+                => $validated['level_id'],
 
                 'title' => 'BASE_RECORD',
 
                 'description' => null,
 
                 'thumbnail'
-                    => $validated['thumbnail'] ?? null,
+                => $validated['thumbnail'] ?? null,
 
                 'created_by' => auth()->id(),
 
-                'status' => $isSystemUser
-                    ? true
-                    : false,
+                'status' => $defaultStatus,
 
-                'publish_status' => $isSystemUser
-                    ? Module::PUBLISH_PUBLISHED
-                    : Module::PUBLISH_DRAFT,
+                'publish_status'
+                => $defaultPublishStatus,
             ]);
 
             $module->translations()->create([
                 'language_code' => $lang,
                 'title' => $validated['title'],
                 'description'
-                    => $validated['description'] ?? null,
+                => $validated['description'] ?? null,
             ]);
         }
 
@@ -514,13 +463,35 @@ class ModuleController extends Controller
             'translations'
         ])->findOrFail($id);
 
+        /*
+        |--------------------------------------------------------------------------
+        | NON SYSTEM USER RESTRICTION
+        |--------------------------------------------------------------------------
+        */
+
+        if (
+            !$this->isSystemUser()
+            && (
+                !$module->status
+                || $module->publish_status
+                !== Module::PUBLISH_PUBLISHED
+            )
+        ) {
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Module not available'
+            ], 404);
+        }
+
         if ($lang === 'en') {
 
             if ($module->title === 'BASE_RECORD') {
 
                 return response()->json([
                     'success' => false,
-                    'message' => 'English content not available'
+                    'message'
+                    => 'English content not available'
                 ], 404);
             }
 
@@ -530,10 +501,13 @@ class ModuleController extends Controller
                     'id' => $module->id,
                     'language_code' => 'en',
                     'title' => $module->title,
-                    'description' => $module->description,
+                    'description'
+                    => $module->description,
                     'thumbnail' => $module->thumbnail,
-                    'status' => (bool) $module->status,
-                    'publish_status' => $module->publish_status,
+                    'status'
+                    => (bool) $module->status,
+                    'publish_status'
+                    => $module->publish_status,
                     'program' => $module->program,
                     'level' => $module->level,
                     'creator' => $module->creator,
@@ -549,7 +523,8 @@ class ModuleController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Translation not available'
+                'message'
+                => 'Translation not available'
             ], 404);
         }
 
@@ -560,10 +535,12 @@ class ModuleController extends Controller
                 'translation_id' => $translation->id,
                 'language_code' => $lang,
                 'title' => $translation->title,
-                'description' => $translation->description,
+                'description'
+                => $translation->description,
                 'thumbnail' => $module->thumbnail,
                 'status' => (bool) $module->status,
-                'publish_status' => $module->publish_status,
+                'publish_status'
+                => $module->publish_status,
                 'program' => $module->program,
                 'level' => $module->level,
                 'creator' => $module->creator,
@@ -589,20 +566,11 @@ class ModuleController extends Controller
             'level_id' => 'required|integer',
             'title' => 'required|string|max:255',
             'description' => 'nullable|string',
-            'thumbnail' => 'nullable|image|mimes:jpg,jpeg,png|max:2048',
+            'thumbnail'
+            => 'nullable|image|mimes:jpg,jpeg,png|max:2048',
         ]);
 
-        /*
-        |--------------------------------------------------------------------------
-        | USER GOVERNANCE
-        |--------------------------------------------------------------------------
-        */
-
-        $user = auth()->user();
-
-        $user->loadMissing('role');
-
-        $isSystemUser = (bool) $user?->role?->is_system;
+        $isSystemUser = $this->isSystemUser();
 
         /*
         |--------------------------------------------------------------------------
@@ -639,7 +607,7 @@ class ModuleController extends Controller
             return response()->json([
                 'success' => false,
                 'message'
-                    => 'Level does not belong to selected program'
+                => 'Level does not belong to selected program'
             ], 422);
         }
 
@@ -700,14 +668,16 @@ class ModuleController extends Controller
 
         $updateData = [
             'program_id'
-                => $validated['program_id'],
+            => $validated['program_id'],
 
             'level_id'
-                => $validated['level_id'],
+            => $validated['level_id'],
 
             'thumbnail'
-                => $validated['thumbnail']
-                ?? $module->getRawOriginal('thumbnail'),
+            => $validated['thumbnail']
+                ?? $module->getRawOriginal(
+                    'thumbnail'
+                ),
         ];
 
         /*
@@ -721,7 +691,10 @@ class ModuleController extends Controller
             if ($request->has('status')) {
 
                 $updateData['status']
-                    = (bool) $request->status;
+                    = filter_var(
+                        $request->status,
+                        FILTER_VALIDATE_BOOLEAN
+                    );
             }
 
             if ($request->filled('publish_status')) {
@@ -760,7 +733,6 @@ class ModuleController extends Controller
                 = $validated['description'] ?? null;
 
             $module->update($updateData);
-
         } else {
 
             $module->update($updateData);
@@ -773,7 +745,7 @@ class ModuleController extends Controller
                     'title' => $validated['title'],
 
                     'description'
-                        => $validated['description']
+                    => $validated['description']
                         ?? null,
                 ]
             );
@@ -830,16 +802,12 @@ class ModuleController extends Controller
 
     public function toggleStatus($id)
     {
-        $user = auth()->user();
-
-        $user->loadMissing('role');
-
-        if (!(bool) $user?->role?->is_system) {
+        if (!$this->isSystemUser()) {
 
             return response()->json([
                 'success' => false,
                 'message'
-                    => 'Only system users can change status'
+                => 'Only system users can change status'
             ], 403);
         }
 
@@ -864,21 +832,18 @@ class ModuleController extends Controller
     |--------------------------------------------------------------------------
     */
 
+
     public function updatePublishStatus(
         Request $request,
         $id
     ) {
 
-        $user = auth()->user();
-
-        $user->loadMissing('role');
-
-        if (!(bool) $user?->role?->is_system) {
+        if (!$this->isSystemUser()) {
 
             return response()->json([
                 'success' => false,
                 'message'
-                    => 'Only system users can change publish status'
+                => 'Only system users can change publish status'
             ], 403);
         }
 
@@ -891,17 +856,51 @@ class ModuleController extends Controller
 
         $module = Module::findOrFail($id);
 
-        $module->update([
+        /*
+    |--------------------------------------------------------------------------
+    | GOVERNANCE RULES
+    |--------------------------------------------------------------------------
+    */
+
+        $updateData = [
             'publish_status'
-                => $validated['publish_status']
-        ]);
+            => $validated['publish_status']
+        ];
+
+        /*
+    |--------------------------------------------------------------------------
+    | AUTO STATUS HANDLING
+    |--------------------------------------------------------------------------
+    */
+
+        if (
+            $validated['publish_status']
+            === Module::PUBLISH_PUBLISHED
+        ) {
+
+            $updateData['status'] = true;
+        }
+
+        if (
+            $validated['publish_status']
+            === Module::PUBLISH_UNPUBLISHED
+        ) {
+
+            $updateData['status'] = false;
+        }
+
+        $module->update($updateData);
 
         return response()->json([
             'success' => true,
             'data' => [
                 'id' => $module->id,
+
+                'status'
+                => (bool) $module->status,
+
                 'publish_status'
-                    => $module->publish_status
+                => $module->publish_status
             ]
         ]);
     }

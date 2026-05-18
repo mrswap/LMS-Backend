@@ -32,6 +32,17 @@ class CommonPublishStatusController extends Controller
 
     /*
     |--------------------------------------------------------------------------
+    | SYSTEM USER CHECK
+    |--------------------------------------------------------------------------
+    */
+
+    private function isSystemUser(): bool
+    {
+        return auth()->user()?->isSystemUser() ?? false;
+    }
+
+    /*
+    |--------------------------------------------------------------------------
     | UPDATE PUBLISH STATUS
     |--------------------------------------------------------------------------
     */
@@ -40,17 +51,38 @@ class CommonPublishStatusController extends Controller
     {
         /*
         |--------------------------------------------------------------------------
+        | SYSTEM USER VALIDATION
+        |--------------------------------------------------------------------------
+        */
+
+        if (!$this->isSystemUser()) {
+
+            return response()->json([
+
+                'success' => false,
+
+                'message'
+                    => 'Only system users can change publish status'
+
+            ], 403);
+        }
+
+        /*
+        |--------------------------------------------------------------------------
         | VALIDATION
         |--------------------------------------------------------------------------
         */
 
         $validated = $request->validate([
 
-            'type' => 'required|string|in:program,level,module,chapter,topic,topic_content',
+            'type'
+                => 'required|string|in:program,level,module,chapter,topic,topic_content',
 
-            'id' => 'required|integer',
+            'id'
+                => 'required|integer',
 
-            'publish_status' => 'required|in:draft,published,unpublished',
+            'publish_status'
+                => 'required|in:draft,published,unpublished',
         ]);
 
         /*
@@ -67,18 +99,51 @@ class CommonPublishStatusController extends Controller
         |--------------------------------------------------------------------------
         */
 
-        $item = $modelClass::findOrFail($validated['id']);
+        $item = $modelClass::findOrFail(
+            $validated['id']
+        );
 
         /*
         |--------------------------------------------------------------------------
-        | UPDATE STATUS
+        | UPDATE DATA
         |--------------------------------------------------------------------------
         */
 
-        $item->update([
+        $updateData = [
 
-            'publish_status' => $validated['publish_status']
-        ]);
+            'publish_status'
+                => $validated['publish_status']
+        ];
+
+        /*
+        |--------------------------------------------------------------------------
+        | AUTO STATUS HANDLING
+        |--------------------------------------------------------------------------
+        */
+
+        if (
+            $validated['publish_status']
+            === $modelClass::PUBLISH_PUBLISHED
+        ) {
+
+            $updateData['status'] = true;
+        }
+
+        if (
+            $validated['publish_status']
+            === $modelClass::PUBLISH_UNPUBLISHED
+        ) {
+
+            $updateData['status'] = false;
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | UPDATE
+        |--------------------------------------------------------------------------
+        */
+
+        $item->update($updateData);
 
         /*
         |--------------------------------------------------------------------------
@@ -98,16 +163,22 @@ class CommonPublishStatusController extends Controller
 
             'success' => true,
 
-            'message' => 'Publish status updated successfully.',
+            'message'
+                => 'Publish status updated successfully.',
 
             'data' => [
 
-                'type' => $validated['type'],
-                'id' => $item->id,
+                'type'
+                    => $validated['type'],
 
-                'status' => $item->status,
+                'id'
+                    => $item->id,
 
-                'publish_status' => $item->publish_status,
+                'status'
+                    => (bool) $item->status,
+
+                'publish_status'
+                    => $item->publish_status,
             ]
         ]);
     }

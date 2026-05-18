@@ -170,9 +170,10 @@ class User extends Authenticatable
 
     public function isSystemUser(): bool
     {
-        $this->loadMissing('role');
-
-        return (bool) $this->role?->is_system;
+        return Role::where(
+            'id',
+            $this->role_id
+        )->value('is_system') == true;
     }
     /*
     |--------------------------------------------------------------------------

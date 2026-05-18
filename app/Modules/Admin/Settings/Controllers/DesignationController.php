@@ -8,12 +8,53 @@ use App\Models\Designation;
 
 class DesignationController extends Controller
 {
-    public function index()
+
+    public function index(Request $request)
     {
+        $query = Designation::query()
+            ->latest();
+
+        /*
+        |--------------------------------------------------------------------------
+        | Search
+        |--------------------------------------------------------------------------
+        */
+
+        if ($request->filled('search')) {
+
+            $search = $request->search;
+
+            $query->where(function ($q) use ($search) {
+
+                $q->where('name', 'LIKE', "%{$search}%")
+                    ->orWhere('label', 'LIKE', "%{$search}%");
+            });
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | Status Filter
+        |--------------------------------------------------------------------------
+        */
+
+        if ($request->has('status')) {
+
+            if ($request->status !== 'all') {
+
+                $query->where(
+                    'is_active',
+                    (int) $request->status
+                );
+            }
+        }
+
         return response()->json([
-            'data' => Designation::latest()->get()
+            'success' => true,
+            'message' => 'Designations fetched successfully',
+            'data' => $query->get()
         ]);
     }
+
 
     public function store(Request $request)
     {

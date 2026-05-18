@@ -40,7 +40,7 @@ class LevelController extends Controller
 
         $user->loadMissing('role');
 
-        $isSystemUser = (bool) $user?->role?->is_system;
+        $isSystemUser = auth()->user()?->isSystemUser();
 
         $query = Level::with([
             'creator:id,name',
@@ -84,7 +84,6 @@ class LevelController extends Controller
 
                 $query->where('title', 'like', "%{$search}%")
                     ->where('title', '!=', 'BASE_RECORD');
-
             } else {
 
                 $query->whereHas(
@@ -119,63 +118,6 @@ class LevelController extends Controller
             );
         }
 
-        /*
-        |--------------------------------------------------------------------------
-        | SYSTEM USER FILTERS
-        |--------------------------------------------------------------------------
-        */
-
-        if ($isSystemUser) {
-
-            /*
-            |--------------------------------------------------------------------------
-            | PUBLISH STATUS
-            |--------------------------------------------------------------------------
-            */
-
-            if ($request->has('publish_status')) {
-
-                if ($request->publish_status !== 'all') {
-
-                    $query->where(
-                        'publish_status',
-                        $request->publish_status
-                    );
-                }
-            }
-
-            /*
-            |--------------------------------------------------------------------------
-            | STATUS
-            |--------------------------------------------------------------------------
-            */
-
-            if ($request->has('status')) {
-
-                if ($request->status !== 'all') {
-
-                    $query->where(
-                        'status',
-                        (bool) $request->status
-                    );
-                }
-            }
-
-        } else {
-
-            /*
-            |--------------------------------------------------------------------------
-            | NON SYSTEM USER RESTRICTIONS
-            |--------------------------------------------------------------------------
-            */
-
-            $query->where('status', true);
-
-            $query->where(
-                'publish_status',
-                Level::PUBLISH_PUBLISHED
-            );
-        }
 
         /*
         |--------------------------------------------------------------------------
@@ -306,7 +248,7 @@ class LevelController extends Controller
 
         $user->loadMissing('role');
 
-        $isSystemUser = (bool) $user?->role?->is_system;
+        $isSystemUser = auth()->user()?->isSystemUser();
 
         /*
         |--------------------------------------------------------------------------
@@ -366,7 +308,6 @@ class LevelController extends Controller
                     ? Level::PUBLISH_PUBLISHED
                     : Level::PUBLISH_DRAFT,
             ]);
-
         } else {
 
             $level = Level::create([
@@ -374,7 +315,7 @@ class LevelController extends Controller
                 'title' => 'BASE_RECORD',
                 'description' => null,
                 'thumbnail'
-                    => $validated['thumbnail'] ?? null,
+                => $validated['thumbnail'] ?? null,
 
                 'created_by' => auth()->id(),
 
@@ -391,7 +332,7 @@ class LevelController extends Controller
                 'language_code' => $lang,
                 'title' => $validated['title'],
                 'description'
-                    => $validated['description'] ?? null,
+                => $validated['description'] ?? null,
             ]);
         }
 
@@ -508,7 +449,7 @@ class LevelController extends Controller
 
         $user->loadMissing('role');
 
-        $isSystemUser = (bool) $user?->role?->is_system;
+        $isSystemUser = auth()->user()?->isSystemUser();
 
         /*
         |--------------------------------------------------------------------------
@@ -584,10 +525,10 @@ class LevelController extends Controller
 
         $updateData = [
             'program_id'
-                => $validated['program_id'],
+            => $validated['program_id'],
 
             'thumbnail'
-                => $validated['thumbnail']
+            => $validated['thumbnail']
                 ?? $level->getRawOriginal('thumbnail'),
         ];
 
@@ -641,7 +582,6 @@ class LevelController extends Controller
                 = $validated['description'] ?? null;
 
             $level->update($updateData);
-
         } else {
 
             $level->update($updateData);
@@ -654,7 +594,7 @@ class LevelController extends Controller
                     'title' => $validated['title'],
 
                     'description'
-                        => $validated['description']
+                    => $validated['description']
                         ?? null,
                 ]
             );
@@ -719,7 +659,7 @@ class LevelController extends Controller
             return response()->json([
                 'success' => false,
                 'message'
-                    => 'Only system users can change status'
+                => 'Only system users can change status'
             ], 403);
         }
 
@@ -758,7 +698,7 @@ class LevelController extends Controller
             return response()->json([
                 'success' => false,
                 'message'
-                    => 'Only system users can change publish status'
+                => 'Only system users can change publish status'
             ], 403);
         }
 
@@ -771,17 +711,51 @@ class LevelController extends Controller
 
         $level = Level::findOrFail($id);
 
-        $level->update([
+        /*
+    |--------------------------------------------------------------------------
+    | GOVERNANCE RULES
+    |--------------------------------------------------------------------------
+    */
+
+        $updateData = [
             'publish_status'
-                => $validated['publish_status']
-        ]);
+            => $validated['publish_status']
+        ];
+
+        /*
+    |--------------------------------------------------------------------------
+    | AUTO STATUS HANDLING
+    |--------------------------------------------------------------------------
+    */
+
+        if (
+            $validated['publish_status']
+            === Level::PUBLISH_PUBLISHED
+        ) {
+
+            $updateData['status'] = true;
+        }
+
+        if (
+            $validated['publish_status']
+            === Level::PUBLISH_UNPUBLISHED
+        ) {
+
+            $updateData['status'] = false;
+        }
+
+        $level->update($updateData);
 
         return response()->json([
             'success' => true,
             'data' => [
                 'id' => $level->id,
+
+                'status'
+                => (bool) $level->status,
+
                 'publish_status'
-                    => $level->publish_status
+                => $level->publish_status
             ]
         ]);
     }
