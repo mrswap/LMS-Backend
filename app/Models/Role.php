@@ -29,12 +29,31 @@ class Role extends BaseModel
 
     public function usersWithTrashed()
     {
-        return $this->hasMany(User::class)->withTrashed();
+        return $this->hasMany(User::class)
+            ->withTrashed();
     }
 
     public function permissions()
     {
-        return $this->belongsToMany(Permission::class);
+        return $this->belongsToMany(
+            Permission::class
+        );
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Helper Methods
+    |--------------------------------------------------------------------------
+    */
+
+    public function isSystemRole(): bool
+    {
+        return (bool) $this->is_system;
+    }
+
+    public function canManagePublishStatus(): bool
+    {
+        return $this->isSystemRole();
     }
 
     /*
@@ -49,14 +68,32 @@ class Role extends BaseModel
 
         static::deleting(function ($role) {
 
-            // ❗ Block system roles
-            if ($role->is_system) {
-                throw new \Exception('System roles cannot be deleted.');
+            /*
+            |--------------------------------------------------------------------------
+            | BLOCK SYSTEM ROLE DELETE
+            |--------------------------------------------------------------------------
+            */
+
+            if ($role->isSystemRole()) {
+
+                throw new \Exception(
+                    'System roles cannot be deleted.'
+                );
             }
 
-            // ❗ Check INCLUDING soft-deleted users
-            if ($role->usersWithTrashed()->count() > 0) {
-                throw new \Exception('Role is assigned to users.');
+            /*
+            |--------------------------------------------------------------------------
+            | BLOCK IF ASSIGNED
+            |--------------------------------------------------------------------------
+            */
+
+            if (
+                $role->usersWithTrashed()->count() > 0
+            ) {
+
+                throw new \Exception(
+                    'Role is assigned to users.'
+                );
             }
         });
     }

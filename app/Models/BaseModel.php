@@ -19,7 +19,6 @@ class BaseModel extends Model
 
     protected $hasPublishStatus = false;
 
-
     /*
     |--------------------------------------------------------------------------
     | BOOTED
@@ -28,6 +27,12 @@ class BaseModel extends Model
 
     protected static function booted()
     {
+        /*
+        |----------------------------------------------------------------------
+        | Cascade Delete
+        |----------------------------------------------------------------------
+        */
+
         static::deleting(function ($model) {
 
             if ($model->isForceDeleting()) {
@@ -39,10 +44,57 @@ class BaseModel extends Model
             }
         });
 
+        /*
+        |----------------------------------------------------------------------
+        | Cascade Restore
+        |----------------------------------------------------------------------
+        */
+
         static::restoring(function ($model) {
 
             if (method_exists($model, 'cascadeRestore')) {
                 $model->cascadeRestore();
+            }
+        });
+
+        /*
+        |----------------------------------------------------------------------
+        | Publish Governance
+        |----------------------------------------------------------------------
+        */
+
+        static::saving(function ($model) {
+
+            // only models with publish system
+            if (!$model->hasPublishStatus) {
+                return;
+            }
+
+            // auth check
+            if (!auth()->check()) {
+                return;
+            }
+
+            $user = auth()->user();
+
+            // load role safely
+            $user->loadMissing('role');
+
+            $isSystemUser = (bool) $user->role?->is_system;
+
+            /*
+            |------------------------------------------------------------------
+            | Non System Users
+            |------------------------------------------------------------------
+            */
+
+            if (!$isSystemUser) {
+
+                // always inactive
+                $model->status = false;
+
+                // always draft
+                $model->publish_status = $model::PUBLISH_DRAFT;
             }
         });
     }

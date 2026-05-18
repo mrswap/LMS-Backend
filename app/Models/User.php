@@ -167,6 +167,13 @@ class User extends Authenticatable
     {
         return $this->is_active;
     }
+
+    public function isSystemUser(): bool
+    {
+        $this->loadMissing('role');
+
+        return (bool) $this->role?->is_system;
+    }
     /*
     |--------------------------------------------------------------------------
     | Accessors
