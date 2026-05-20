@@ -18,13 +18,13 @@ class SettingSeeder extends Seeder
             */
 
             [
-                'key' => 'company_logo',
-                'value' => 'uploads/settings/company-logo.png',
+                'key'   => 'company_bio',
+                'value' => 'We are building next-gen learning systems.',
             ],
 
             [
-                'key' => 'company_bio',
-                'value' => 'Avante Sales Training App helps medical and sales professionals master product knowledge, assessments, certifications, and field learning through a modern LMS platform.',
+                'key'   => 'company_logo',
+                'value' => 'public/uploads/settings/1779261822_logo.png',
             ],
 
             /*
@@ -34,23 +34,23 @@ class SettingSeeder extends Seeder
             */
 
             [
-                'key' => 'app_ios_store',
+                'key'   => 'app_ios_store',
                 'value' => 'https://apps.apple.com/app/id123456',
             ],
 
             [
-                'key' => 'app_ios_download',
-                'value' => 'https://yourdomain.com/downloads/ios-app.apk',
+                'key'   => 'app_ios_download',
+                'value' => 'https://yourdomain.com/ios-app.apk',
             ],
 
             [
-                'key' => 'app_android_store',
-                'value' => 'https://play.google.com/store/apps/details?id=com.avante.salestraining',
+                'key'   => 'app_android_store',
+                'value' => 'https://play.google.com/store/apps/details?id=com.app',
             ],
 
             [
-                'key' => 'app_android_download',
-                'value' => 'https://yourdomain.com/downloads/android-app.apk',
+                'key'   => 'app_android_download',
+                'value' => 'https://yourdomain.com/app.apk',
             ],
 
             /*
@@ -60,23 +60,23 @@ class SettingSeeder extends Seeder
             */
 
             [
-                'key' => 'contact_heading',
-                'value' => 'Reach Out To Us',
+                'key'   => 'contact_heading',
+                'value' => 'Reach out to us',
             ],
 
             [
-                'key' => 'contact_text',
-                'value' => 'Need help with training, assessments, certificates, or onboarding? Our support team is always ready to assist you.',
+                'key'   => 'contact_text',
+                'value' => 'Get your questions answered about learning with us.',
             ],
 
             [
-                'key' => 'contact_phone',
+                'key'   => 'contact_phone',
                 'value' => '+91 9876543210',
             ],
 
             [
-                'key' => 'contact_email',
-                'value' => 'support@avanteapp.com',
+                'key'   => 'contact_email',
+                'value' => 'support@company.com',
             ],
 
             /*
@@ -86,23 +86,23 @@ class SettingSeeder extends Seeder
             */
 
             [
-                'key' => 'social_facebook',
-                'value' => 'https://facebook.com/avanteapp',
+                'key'   => 'social_facebook',
+                'value' => 'https://facebook.com/company',
             ],
 
             [
-                'key' => 'social_linkedin',
-                'value' => 'https://linkedin.com/company/avanteapp',
+                'key'   => 'social_linkedin',
+                'value' => 'https://linkedin.com/company/company',
             ],
 
             [
-                'key' => 'social_instagram',
-                'value' => 'https://instagram.com/avanteapp',
+                'key'   => 'social_instagram',
+                'value' => 'https://instagram.com/company',
             ],
 
             [
-                'key' => 'social_twitter',
-                'value' => 'https://x.com/avanteapp',
+                'key'   => 'social_twitter',
+                'value' => 'https://x.com/company',
             ],
 
             /*
@@ -112,8 +112,8 @@ class SettingSeeder extends Seeder
             */
 
             [
-                'key' => 'footer_text',
-                'value' => '© 2026 Avante Sales Training App. All rights reserved.',
+                'key'   => 'footer_text',
+                'value' => '© 2025 Avante Medical LMS - v2.1.0  test',
             ],
 
             /*
@@ -123,25 +123,8 @@ class SettingSeeder extends Seeder
             */
 
             [
-                'key' => 'about_us',
-                'value' => '
-                <h2>About Avante Sales Training</h2>
-
-                <p>
-                    Avante Sales Training App is a next-generation LMS platform
-                    designed for healthcare, pharmaceutical, and medical sales teams.
-                </p>
-
-                <p>
-                    Our platform enables structured learning through multilingual
-                    modules, assessments, certifications, and real-time progress tracking.
-                </p>
-
-                <p>
-                    We focus on delivering scalable digital learning experiences
-                    that improve field readiness and product expertise.
-                </p>
-                ',
+                'key'   => 'about_us',
+                'value' => '<p><strong>About Us</strong></p><p><br></p><p><strong>Our platform is dedicated to providing high-quality digital learning experiences for students, professionals, and organizations.</strong></p><p><br></p><p><strong>Our Mission</strong></p><p><br></p><p><strong>We aim to make learning accessible, engaging, and effective through modern technology and structured educational content.</strong></p><p><br></p><p><strong>What We Offer</strong></p><p><br></p><p>• Interactive learning programs</p><p>• Progress tracking and certifications</p><p>• Expert-designed educational content</p><p>• Flexible online learning experience</p><p><br></p><p>Our Vision</p><p><br></p><p>We believe in empowering learners worldwide by providing innovative and user-friendly educational solutions.</p><p><br></p><p>Contact Information</p><p><br></p><p>For support or business inquiries, please contact our official support team.</p>',
             ],
 
             /*
@@ -151,25 +134,8 @@ class SettingSeeder extends Seeder
             */
 
             [
-                'key' => 'privacy_policy',
-                'value' => '
-                <h2>Privacy Policy</h2>
-
-                <p>
-                    We respect your privacy and are committed to protecting
-                    your personal information.
-                </p>
-
-                <p>
-                    User data is securely stored and only used for learning,
-                    assessment, analytics, and certification purposes.
-                </p>
-
-                <p>
-                    We do not sell or share personal information with
-                    unauthorized third parties.
-                </p>
-                ',
+                'key'   => 'privacy_policy',
+                'value' => '<p><strong>Privacy Policy</strong></p><p><br></p><p><strong>We value your privacy and are committed to protecting your personal information. This Privacy Policy explains how we collect, use, and safeguard your data when you use our platform.</strong></p><p><br></p><p><strong>Information We Collect</strong></p><p><br></p><p>• Name and contact information</p><p>• Email address and account details</p><p>• Learning progress and activity</p><p>• Device and browser information</p><p><br></p><p>How We Use Your Information</p><p><br></p><p>We use your information to provide learning services, improve platform performance, personalize user experience, and communicate important updates.</p><p><br></p><p>Data Protection</p><p><br></p><p>We implement security measures to protect your data from unauthorized access, misuse, or disclosure.</p><p><br></p><p>Third-Party Services</p><p><br></p><p>Some services may be provided through trusted third-party providers. We do not sell your personal information to any third party.</p><p><br></p><p>Contact Us</p><p><br></p><p>If you have any questions regarding this Privacy Policy, please contact our support team.</p>',
             ],
 
             /*
@@ -179,25 +145,8 @@ class SettingSeeder extends Seeder
             */
 
             [
-                'key' => 'terms_conditions',
-                'value' => '
-                <h2>Terms & Conditions</h2>
-
-                <p>
-                    By using the Avante Sales Training App, users agree to
-                    comply with all training, certification, and assessment policies.
-                </p>
-
-                <p>
-                    Misuse of content, unauthorized sharing, or fraudulent
-                    assessment activity may result in account suspension.
-                </p>
-
-                <p>
-                    All educational content remains the intellectual property
-                    of Avante Sales Training App.
-                </p>
-                ',
+                'key'   => 'terms_conditions',
+                'value' => '<p><strong>Terms &amp; Conditions</strong></p><p><br></p><p><strong>By accessing and using this platform, you agree to comply with the following terms and conditions.</strong></p><p><br></p><p><strong>User Responsibilities</strong></p><p><br></p><p><strong>• Provide accurate registration information</strong></p><p><strong>• Maintain the confidentiality of your account</strong></p><p><strong>• Use the platform for lawful purposes only</strong></p><p><br></p><p><strong>Intellectual Property</strong></p><p><br></p><p>All content, materials, logos, and resources available on this platform are the property of the organization and protected by copyright laws.</p><p><br></p><p>Restrictions</p><p><br></p><p>• Do not misuse or attempt to hack the platform</p><p>• Do not copy or redistribute platform content without permission</p><p>• Do not upload harmful or illegal content</p><p><br></p><p>Termination</p><p><br></p><p>We reserve the right to suspend or terminate accounts that violate our policies or terms.</p><p><br></p><p>Changes to Terms</p><p><br></p><p>We may update these Terms &amp; Conditions from time to time. Continued use of the platform means you accept the updated terms.</p>',
             ],
         ];
 
@@ -217,14 +166,14 @@ class SettingSeeder extends Seeder
 
         /*
         |--------------------------------------------------------------------------
-        | FIREBASE SERVICE ACCOUNT (PRE-ENCRYPTED)
+        | FIREBASE SERVICE ACCOUNT
         |--------------------------------------------------------------------------
         */
 
         Setting::updateOrCreate(
             ['key' => 'firebase_service_account'],
             [
-                'value' => 'eyJpdiI6IktBQjZKeGhWeTFINGViQUp6Y0p4dlE9PSIsInZhbHVlIjoiQTBNenh1cUNhMEZwWUdRZkh4KzVYbjJKS0E5WStyVG5YWk9lZGZvZjVMVkxkQnRkUEJ2QkxRMTN2ak1TNGtPa3pQUitaRTZyZ1dZdnh5T2dpRW9nUTZKbkU2bE4xbG5YejlaQ09xOXptcE1yTEtVREplTFJlR1d4R1UxYXZ0eTl5SCtWNHhRZ2duTUYxbUdkSGw1TFBia0o2cU9zZHFxVlVhTzZ3M2l2VkZ0djdnVGVXc3ZYaFdwbVVzVVJpQjR2emlYeWxKQUFxOHpMQTl6UXBGZVp3cERmZWJHMzA3RzJOd2h2Snl5SDN2dmNqRWYyK3N5NWtlNXA1M2x3aVFJelpyYU15Slk3NTJvd2hFQ1JlWCtqSW9sQWgwaGdLWSt4M2NsNkRtRmFlT0hhN1lDYVdHMEN6Ky9EdWN1cVZmVTgxS0J5RTVNZlV1RzhwRGFPOU1OMlV4dyt3KzJQbUxQcThqemhiK2FBdWxlZzVtbk9BaGxFT2dXNHdtem1GOTE3V0ZIMTNDOVZURUJkVlRzS0dydjhOVnJjTkNhaytZNDdpTnpsa3VNZkw0dm55SDE1YmhqU3hwUUxlTTQ5UlBxVGZ0NlhjN0lhS0ZLTVp3V2U0YkJPSU82QjlTNWk3bFMvcjJKdGVqajUzTVFMd2kxWURXejhxckdzd0prRkpodmVlTS9LbjF5T2xGd0pISmlTSnNtWXFUWUVGblpvSTVYa3FiZGREZFB2WFdZSDByeFJWci80NVg3UGpaWTY1Umg3ZjdGcjdyVS9aRXRwL2k5c3BhRDZEbW9vWlBldWVKRTY2UStRdks1KzRTMzBCN2RjN3BnVjk0eVk1a0pYdjZWWk9tc0pPMjI0RFdSbjlJcFpyalJXMCtzZTZkVjhVS2pONFd3Zm1HbVMvYnJyM3NGaHJISVFyMzhoalNMVm94MzhSQWdSbXNXTjZGcWIreVlRMzVmYmk2ODYzOE9reXR1Uld5bWNtYUFubko1eDhKNE16MzF0OUFYb0M0V29FQ0N0SDVBdmFFVjdQV0VVOUkyakx4NnpYcE41bzNWZm9CelE0L01vaEJJS0l3aitBYndidFhwUDBtQmxVay9PQTY1S082dG10V2FSS0I1Yk82anRyRm0wRTdhdUpSdXlmODV4L2JHSmxXTVFXMjh2eThmRTNDaDF1bFJiaXlBZUt6UjNjNUNHQ3ZSTWszQjd3b2IxZ1hvWXB4a2NiNVpQMmVYVXFzc2U0bElUUC94SVpEazh0VTkrblRvNkc4WnowTU83S1YyaDRSQmQ3UE9xOVFIYVg0Ri9CVVl0UUZ0ZHovSVY1c293WVNhQXBtOXZLa0FwZTVJWG1Sb3llcm1WTklYeENCYzN6T2N1SWlZOHY2SlBGOVJ2SDFBdiszVUpkRHMzMUUydjFlVkVNRjZMVGkvbVJFcXVSeGtQeW5YRXEvWUJmWXFhTVhpVUhUQi9Dc3V5enJiY01sRnY0ZGdnWDR6RWlYYjM5QWlVMStVaW1rSDcrcHdUanJoTmRYNlk4V2tZNEh5NW9NRkh0YVFySWlMSkxvUjlZMkxUNlE5ak00a3NpMWNWU1RPeS9kUGNvbFpNMzY5K01RVU4yMml2UXJiUEw1bmRFenNoZlB3dEtYZ1NuRnl3VXRHZkN4V1dVRENqTSt4eDdsaFl0Qlc5L2Z2aStmbHpEelduZlVja0Z1N1NadkdSdFF4em1BYTU4RGNIdW5Zb3VyRFpwbnovVTY3aGZvMjJMMHI5cnNMMlEyeUhXQ0FUWWlaNTcrSDFNVkEwM2pUTmVYQkFQejVuUW9FWDNab1VTRDhRQURoSHBJOUl0T0dHb2l6ZmZrUi9EQmpwRWNSZEhWa1BoUXllMTZzbVRaUUkyQkFUcmR6TkJld2pQM2FKUHFDaXdhWTgvTFNVVzB6Q3lZbzZMQjYzQVZMWmp3Vms3WkpoVW1UdEpsQUFwS0ZiVllJODhmY01MQmMrTmNYdFpyTTlGcm9DWndSS0NISU5kTG9zQ0NKdlM1OGNkL0cvWTcxelkvU08zenk1OUVMMUNxWERzWnNacW5FSE5EZGE2S2pVNXkwZ1k5c3U3aEczT3Y0Z1lsQ2RpYmN3a1JJWUs2QjRvaUxNMyswVGY1VWIwenlBNUxYWDFpVXlGSlJuMEoxK1pHZzhpcGVtOFNZZmtzUTg5MFQ3QWV2cjhCbFEvSmdUN21XdFk4Tk5HWkFSNU1EOWV5TTV5dUJncmMwUTAzUUhrbGpwdzZxVExDOWUxMDR4cjIreldLQzFZWVJzdHMxeUZkVFVXdG1pelJEZHdiYmlNNmJpcTYwcGhOOGdZYW93d1hsQjk1VnFlT2R6dXI2ZzJ2RVNEYklxVXYxdmVud0RGRFBXNmVlL3BTdDJFR3J1WWcwb1BVN0pHc1o5bjlteUpqZkhpSTFKVDhvQXZ6N2t5UDR2azl1NjhsUFBTTnBadlVvS0E2eHBpTURJWWhDZWZVNUNkR3J2WDV5VVl3RUp1UFA3MUJEU2FJekR3eUlpT2k4ZzFDY284Y3d2YXRheEVLTk9uQ3BScENyYitqeUkrSEo1YTJzMmZTZlZ0THlOdnBiZ1BMNHZieHQzTi9Gb3puZDRGN3Fza1ZnUXFZQWVwTHR4Tkl1QVEwWXIwc2FFdXFhYUd0UGtINVF5WjNpNUd4UTc2WGpCZ1VxS1d6WGRZaElLYzRoMm9DcWhHTGRmQ0srRXFKcUJ3c1pvQUJJSmJXUkVndHdYTENmQ0JBbkZiTm5hL0o4N2QzYzZ2dXFKVURrYkZqeGtWWWROTHpCWUVNY0plNHY2QXcyUFkrMGxJdURkMi93YmQwUFRNY2ltMmVYeHU4UFoxOTVRbzBWajZnNGRwNjJQUWZvcW84ODF0bzJsWEZMb2VCaEZXTDFYRHUxcVkxSlRBUVpUTzROc2w3QTFiUExNK20xU2pIQ2VYOVFCTWV3UERCRFJrKzRTcEtqcnFSK3lneWV4ZHRKTGczUE8zMm5sRzNsUHpXZjFwQlBUMHV2dFV2aXpDckZXekVLcUxJb0QxcU5TVlUwTE81Ym1vdjZBazlHL1FFSkNnOEV3dWNYY1hkZXNlTGNnb21OcG9YeUR2eExKcXlaRjI4ZVZ1ZEFsbmI2TnB6OUtYT3BDRUdxZWhQSDNaM1g2N3N1T2Qvdzl5dUc1SklNdmgva0JTNm1SRTFhU3RmZzY5QURpdGcwa2RjSHE1cDZMRHEwTHdxVC95R2grVFBBdWNWS1dFcU5nSExEbWNxNW8yVElsd0IxWnBlZkxRSTVoRjRLdnpSZzhRNms2SE1ZN1BJMGN1ZXQvRUFFQmxFMEU5Q1E5V0NoMEJMTE9MY3BodkVLdjIvT1BFcXp5RzNoZ1FEOVJxMENJUzd1UWxwREJ0aUJpa0xpZWtlN0U3WnZGc1dtdTFuQzZjNllRbHpPVXFyQlZtZVJXU1I1a3JlazEzR2d1UXplU0tpZEhySHBYVHJCZkh0K2tSbUwvL09KWW9Ecmp5Uy9nUlJaMG80L2Q5K0JWOTJ3MVhxczN3c2E4cEw2OTN1Ukc1cklHell6dGs3dndhc2tmK1AycHBvdFVkUTVtYXpiQTVuamdmT1c5Wm0yemoyNUpuYjRhZExpclNHajBFaHZqa1ZXekpVRmIxRVRWUWhQOGhqanpRYUtVaGZUdGh3cms4bURRNlF1TVJVSS9MSHQrR2Q0TkVZL0tsS0ViU1RmYndHZXd6T1BKRmx6S0hKdGtZVHNrbFIzdlBmb29WeFFwTkwvOWppV1RhL2c3UnZlekFrSWFuQ1pUYUVSV2tlNjFhSzlzK2FKYStuMHNLNDRuMml1ckp5Q3hZOHpwSXVwK3V1enZCSFBFQ21VZEtTTXBtbnJvcWoxM0p4NERMZzNPTng2YUFRZm4vYjdXU0RCeS9xSWl4MWpVUzIwcHRUd0Fhby9SOWNpWDVjT3ZKSXowcktXZmp6UjgzSUhwSDNKd2lHaEVWTDVxNkk2Zjg0OXVzVzJxMG5GTC9DMVpGQ3p5MG5BN1hiUjQ1OXk3NGUrUVhWTUtLbDVhVWhMYjZUcmdkLzVLZEVqbXNUT2o2eC9WdjRRK0dwWnNaYVJpMWsrWldGR0VrSE1RQ3BwSmY5T3A4ZFJqOGJKSHpkQXNJdHc1bGhWNEFGMUJiY0JIMW1LbDNjWE9XaEtVaVhmU241T3duSHdaQ2U4TXpic1FFUGo2anhQM2ZwNUgrcGc9IiwibWFjIjoiMWM3MzhlMzIzMTVhMDBkOGRlNDIzMjg0ZTZiNGNmODhiYmFhOWY5YWI3YWY4ODgwNThmMzY1NTJkYjE4MWExYiIsInRhZyI6IiJ9'
+                'value' => 'eyJpdiI6IkZvczRzMXR5cmg2WDM1SVhSY1FPUkE9PSIsInZhbHVlIjoiK3BValY1ZldUUTFwN2hhMXFIcWtKR05LRHhkQ0g1MExQQmJQU0JueG5iZ1p3dnl5ZTlNTFNmMWNGc2tORzhXdEJENWdXeUl5Y2cvME01ZUxFMjg3bjFQaC9lVWZUSFJZMXlQeXRBMjBLTGwxQlc4cU9PME9qT1NtSUYzNjVLaUtQSnc3NDBsanVOd0N0Z0RDZEF3UjVEamMyMi9ldUJuOU1ZUjh3S3RtU3MyeVRXejJPclJKQUttWDhuME02MGdvNThDUE5rYlAvY3k4Mkc1enNmZjVhYkgvWlN5bFY4cGxIZi9CekdZeGVqVnRxdWdGc2tFZkZ0WkhYQlVQbHhIWkk5OUVXY0cvZGtiQXdxWFkwTVlHTFJoTCtjYVNVVWRRUDVHaXRDclBLcnB0eEoxQmRJOEcxTzNYWUNBNGhpZGJaZERTenQ4R2UrZzk3VUZtTHJOZnZOR2dhd3BRWTViemZBU21zeHpSSktLYUs0VzlCblNTSUZYNGVUQXhPMktwUTYvMkV5MFpHY3kwNzRReWZGRFpFSXZxTEJBVGRNTEVacm5UZTJrZzNoZkdnbGJiQ09KOG1IZlJjMTdEU3RlNUhWc2pFcEN4ZitRK1ZNMWhDSG1YdVpHUTd3MGxSVUpCbjJtOXJzT2J2aUYrYi9HQ3pmWEpMa0ZPYURlN2hDQkF6SUl1R1A5aUEvTDdEM3pYMCtrV3dnRzJXVmI3UVdwcGIrZ2MzVy9TRldpQ1pTcHU5YkFhRWR2bUNrbjRYUmx6WU5EL21aaHBkM0RPd0V0elRsZXpUcGZMMHo4bk5vTGw4UytQM251clg2VkhhWUM5SHFSa1dFSE16K05Tb2J5RFY4ODcwemJlU2hEYUxqemlSdzY3WTRiQVpyWW1VZi9iRjB6R0syTkpHYUxpcTBseitRVURTSWNnRHdRSWFhaHlYbUNVVDl1c3grVVNIVXA3amY5YVJZVHM1dzJINHhISHVwbGQ4YTl6NFRIcEVjWmRYUWhUKzJicVRrUlFuRWF4Y3NBYkFSSDI4S1Nnblhnd0RqWHg0RG90S2ZLdHZOM1B6V2ViQVhvRlZEZDZxOFcwTnM3TzhJTjJkdXFRSHRFeGhUZDBmVTVPRFF3WDZDK0FzZll4YjVCWnhuWmNnbmR3clZWMFp1N0hHbUltTVpRSC9PYk1EOGNXRnozMnBCV2JrMDVsOUNZb25aUVFTWXlGdnJET01vTWR6YmdmODlRck1BdUN3RnhrLzl2c3VzRmtabjFZYzBiTXdWR3Z6SVRMRVJhT3g2NG9SQjgvNGJPY3c3Wk5GcTJVTVRtQWdOOUhrNGNkb2dVRnhwN01HMmxzaXdNQVh2emJ1UVBRSVJoczFVTStpVjJ4UlQ4UFgvWXVXQkFvV0FnYU1QZ3R3LzVSUHg5TUNWUllNLzdPejRtQW1keWJZa2pmaTZnY0xJbW5BZXh5S1NjNk1BVFdiRWluVUpSY3VCVHppTU9hcVppaHorajlyRm1ScDZ3MThtMGE4bnphTzBRWXUwdmtReVhXWFZBRTBsYy9aVHdrQWd2b3ZQalhKVy9pSzlWMEJsZTA2OUE0ck9Zd3lhOGM5eDlUTW1TQjNoeFpMS1IyZyswUkR2MVVrWVBHajZKZlF1OHJkQUdVbXFvVllJSW5PNUJtSUk2cGlwV2RSbHJlaGRobUR2RWhUN21obXE4bTlDOFR5bUtteG52bTB0SDRzZ1hrN2pvb08yaDJMRUMwdkg4aTh6L0pvRDZ5Yk9CRTFzUXBBWmVYZjhraU4xc1V1L1lUZEhjR0IxR052ZGpUbkJGM2plYk45dEVWYndYcGpNMkl2cVBoMXh2dXdoVE1DZDBrZ20vMFZlUjlKZjc4UGMxMDU3YlRXSUpvaWVmYzkrbFZDamF6Rk04TkVremc1WkhtaGJpVXliWWh0bytmUnkzblFQSWpnQTRxQlF0Zm5QNXliQVVGQ091ZDVkRmpOMVRlMjluNHg3WFAwdmxPTUkwQmMrbVJhUWI2NHRqbHdCaHBnSGZpNkkwenVnZy9neHUvNm92d284S0E0T1RmOVI3NG1ZR3FDZUxKaFp4MHkvVkQ0bUhLTlp6VWFTa1kwUm9vWFg4dFZPRTB4MU55SFJsUTJjeVNpZDBxNzhiMFVEb2E3ajlIZktxN3pjaEl3VHg0ckhVUFZPMmE1Sko5UHBUYzZtTUdsVlE2Z0t6aXVCdVQxUDlFK3BoQ0N6WC94aHBUUENhTFdRWnk0eThMdk1ZNTFIYjBEcHdzWno5UTczZDNia2ZUNU5uSi9PTW4yZWhKTzhaNzVjQ3dOc3VaTHVseFhPME5sU0h1YkdyMkhzVlgrTHRyWklRbnA4UTFtVHdWRi9QZmJtTHVuUWJCdGl3N2x2MkczTENtSnFoRlo2MkViVkllKzdValpsNjhYdjIzYzh2TnRwV3ZDaWtCUXQ1MWtYWitzaDRIVHFKSmFrTTJmTjRyZFl5TFArYkJYUkVUK2V5TDcxUzRxY2JPMnhYTzY3eVhKYy9ERFNyeXVrS2N1cVl6VGY4R2tOc0VFL0svRDFuOWx5bFh5S2gxbUc4Q1JnSDd3eWNsdzg0Sitkc0RCeHJQMzVMd0J6cnJEdy85Mjk1Z2Flb1FZZFhuNTFIMHRHc2xRdE1pNXdCRXpVVUtCcmx2MUMxZG50R3NWSzl4WDZpRGZ2eEllTzNSKzFuVzZ2QWRMZldnRmJJNFlTM2Jsdi84cnE2aEZlai9xWlppNE9kcnluOEFDR3oyRHpwZzZyd0JFcnZ1UnUzZmhJTnY5VlVvcHQxRjFZQWtBeEpDK3ZieWphSFhZcmE1bWxDYUhTYnRteXNicXV4OWdqaGphdVJCOHdmbDdhcGYyYzRJSmJzOTFFZlZpQjVKSzJtT3dkQ1FpaUNnekZyajNrK0g4dk5vUmpBUElDL3kzeXQ1S1J6eEhvdktKNHN0eGpFMnJLYkpxV3FCdnV2cnZxK3d4aDh0WkdSZVlBOTd0Nkh5YnVuaEs2ZEYwNWdkdkFqOHVFVWszV01JN0RzY0M5OUxnbGZobmo0cFJkYlorOGhuMTFlT2NJVTdJUDE2UnQyd2RxNzVHckJaZXNWMVBqTnVjMTBSWld0TWNkdEgwbmZHckRWWHZMZi80anFGcnlNNkF6cVcvMHY2VTRKaDZMWDFIUFlLbFBUdmJXc1RWSGIyNWpZb28wSzJ2UXd6Nmk5aFRkS0xGcVBnUldCZFNKenlBNVlTTlZ3TmNNWGVSdmdIMEdrK3pMZVRFZkVaeVM2VEpWVlNFY3cxcklEUm56QWpYdkY3Q1dsaVVsbXRPc21CdUM5dEtBUEp5NzZSbFB6OFlGTUhHRGxaQWtrNDVXMTEwbEpBYmpKMzBPaHA3VTRXUFN4Yjk2RXArV28xSGpMUmtWTjNVY2l1SnVjUUF5N3VwcnZIK1Z3bGt0ZmFTYnVFZnYxR2hibFNVZzd2djI3QWFhbHk4aTFZNjhpVnFGSTNFdGxtaVlFemFlTW1YZEVTalorOVN4SVdFak5OajZPK3lWK0hmZ0NGaUd5TVhtVVdEUmFUZlpkYS9FRllrZUlPZXY2QWxIS1dxNGExVlo3ZWt6MDhMS1gxUUhLM3gwWllTbHFmbVFQVVhtR1VsVWRWTFFCSFlWa1ZCNGdFT2RWZlQ3SEVKZ2E2czF6OTM5UUxYeTJhVVRSRGNLZnhZN3k3V0YwMVEyenh4SzhqbzlyeXo1Y3BkU3VLdnlFREZ5a29Tek1xYTFpZjh6bVl3djU0REVrcGhOcFJXMVpXM3FZYjg0cjVBdmJUVXZremhVQ3EwV2VIemJyeTBQMi9pRThqTUdNTTMyK0JQT2k0UkF6OUxtb3FGcXVBYjRYcitXZ3M0VDdMbUgvREViNmVCRDlaUW1McWVPLzRlY042STl1aGNIVlMza0pXc2NLR1NzK2tVeUg3L1ZqWXJGYS9xME5Bcm96cmZ3ZldKaEdtai9tR01aRDR2QjRoWWF2ODlZN3cwUUZyR0pNSTdJc1p1QXVMVDBocXRsMkd0bHdLOGtqZ3l5YzJsdS9xa3cwQ1JpNm5ZOERMU01kWU9zUnU3NkRDU25FVmhXOTRGV2lpYndnQ2h2UUNGR0s3cVRRK0UrQkJvaC9HeTg3ajlwYUpDbVRQcE1QRk14Y09taU9VeVdvNFJ6YXRtUXZHQUFyTmtKb0t6MFVTNVM3Y3lSblRSbkt1NDhicnNMSUdwRHZUMjZpdVJPbHprYkhJalc5Y2l2UHIiLCJtYWMiOiI5ZWJiOTdhNTU2N2I3ZmQyY2RlODExZjliYjg2YmNlYjFjNzgyN2ZjYjhiYjc5ZmFmYzhlZTI3ZTBiMDdhMTc4IiwidGFnIjoiIn0='
             ]
         );
     }
