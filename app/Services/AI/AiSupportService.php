@@ -15,6 +15,12 @@ class AiSupportService
 
         try {
 
+            /*
+            |--------------------------------------------------------------------------
+            | START
+            |--------------------------------------------------------------------------
+            */
+
             Log::channel('ai')->info(
                 'AI Reply Started',
                 [
@@ -23,24 +29,24 @@ class AiSupportService
             );
 
             /*
-            |------------------------------------------------------------------
+            |--------------------------------------------------------------------------
             | AI ENABLED?
-            |------------------------------------------------------------------
+            |--------------------------------------------------------------------------
             */
 
             if (! config('ai.enabled')) {
 
                 Log::channel('ai')->warning(
-                    'AI Disabled'
+                    'AI Disabled Globally'
                 );
 
                 return null;
             }
 
             /*
-            |------------------------------------------------------------------
+            |--------------------------------------------------------------------------
             | THREAD AI ENABLED?
-            |------------------------------------------------------------------
+            |--------------------------------------------------------------------------
             */
 
             if (! $thread->ai_enabled) {
@@ -56,9 +62,9 @@ class AiSupportService
             }
 
             /*
-            |------------------------------------------------------------------
-            | TOPIC EXISTS?
-            |------------------------------------------------------------------
+            |--------------------------------------------------------------------------
+            | LOAD TOPIC
+            |--------------------------------------------------------------------------
             */
 
             $topic = $thread->topic;
@@ -76,19 +82,19 @@ class AiSupportService
             }
 
             /*
-            |------------------------------------------------------------------
-            | PREVENT AI SELF LOOP
-            |------------------------------------------------------------------
+            |--------------------------------------------------------------------------
+            | LAST MESSAGE
+            |--------------------------------------------------------------------------
             */
 
             $lastMessage = $thread->messages()
                 ->latest()
                 ->first();
 
-            if ($lastMessage?->is_ai) {
+            if (! $lastMessage) {
 
                 Log::channel('ai')->warning(
-                    'Skipped AI Self Reply',
+                    'No Last Message Found',
                     [
                         'thread_id' => $thread->id,
                     ]
@@ -98,9 +104,66 @@ class AiSupportService
             }
 
             /*
-            |------------------------------------------------------------------
-            | BUILD / CACHE TOPIC CONTEXT
-            |------------------------------------------------------------------
+            |--------------------------------------------------------------------------
+            | SKIP AI SELF REPLY
+            |--------------------------------------------------------------------------
+            */
+
+            if ($lastMessage->is_ai) {
+
+                Log::channel('ai')->warning(
+                    'Skipped AI Self Reply',
+                    [
+                        'thread_id' => $thread->id,
+                        'message_id' => $lastMessage->id,
+                    ]
+                );
+
+                return null;
+            }
+
+            /*
+            |--------------------------------------------------------------------------
+            | SKIP ADMIN MESSAGE REPLY
+            |--------------------------------------------------------------------------
+            */
+
+            if ($lastMessage->is_admin) {
+
+                Log::channel('ai')->warning(
+                    'Skipped Admin Message AI Reply',
+                    [
+                        'thread_id' => $thread->id,
+                        'message_id' => $lastMessage->id,
+                    ]
+                );
+
+                return null;
+            }
+
+            /*
+            |--------------------------------------------------------------------------
+            | SKIP EMPTY MESSAGE
+            |--------------------------------------------------------------------------
+            */
+
+            if (! trim($lastMessage->message ?? '')) {
+
+                Log::channel('ai')->warning(
+                    'Skipped Empty Message',
+                    [
+                        'thread_id' => $thread->id,
+                        'message_id' => $lastMessage->id,
+                    ]
+                );
+
+                return null;
+            }
+
+            /*
+            |--------------------------------------------------------------------------
+            | BUILD CONTEXT
+            |--------------------------------------------------------------------------
             */
 
             $cache = app(
@@ -108,9 +171,9 @@ class AiSupportService
             )->cache($topic);
 
             /*
-            |------------------------------------------------------------------
+            |--------------------------------------------------------------------------
             | RECENT CONVERSATION
-            |------------------------------------------------------------------
+            |--------------------------------------------------------------------------
             */
 
             $recentMessages = $thread->messages()
@@ -130,79 +193,93 @@ class AiSupportService
                 $conversation[] = [
 
                     'role' => (
-
                         $msg->is_admin
                         || $msg->is_ai
-
                     )
                         ? 'assistant'
                         : 'user',
 
-                    'content' => trim(
-                        $msg->message
-                    ),
+                    'content' =>
+                    trim($msg->message),
                 ];
             }
 
             /*
-            |------------------------------------------------------------------
-            | OPENAI MESSAGES
-            |------------------------------------------------------------------
+            |--------------------------------------------------------------------------
+            | SYSTEM PROMPT
+            |--------------------------------------------------------------------------
             */
 
             $messages = [
 
                 [
-
                     'role' => 'system',
 
                     'content' =>
 
                     "You are AVANTE-AI.
 
-                            You are an internal LMS training assistant.
+                    You are an internal LMS training assistant.
 
-                            Rules:
-                            - Only answer from provided training context.
-                            - Never invent medical facts.
-                            - Never provide diagnosis or treatment advice.
-                            - Never answer beyond training material.
-                            - If answer is not available,
-                            ask learner to contact trainer/admin.
-                            - Keep replies concise and educational.
-                            - Use professional language.
+                    Rules:
+                    - Only answer from provided training context.
+                    - Never invent facts.
+                    - Never provide diagnosis or treatment advice.
+                    - Never answer beyond training material.
+                    - If answer is not available,
+                      ask learner to contact trainer/admin.
+                    - Keep replies concise and educational.
+                    - Use professional language.
+                    - Answer in simple understandable format.
+                    - If learner says hello/greetings,
+                      greet politely.
 
-                            TRAINING CONTEXT:
+                    TRAINING CONTEXT:
 
-                            "
+                    "
 
-                        . substr(
-
-                            $cache->context,
-
-                            0,
-
-                            config(
-                                'ai.max_context_chars'
-                            )
-                        ),
+                    . substr(
+                        $cache->context,
+                        0,
+                        config('ai.max_context_chars')
+                    )
                 ],
             ];
+
+            /*
+            |--------------------------------------------------------------------------
+            | MERGE CHAT
+            |--------------------------------------------------------------------------
+            */
 
             $messages = array_merge(
                 $messages,
                 $conversation
             );
 
+            Log::channel('ai')->info(
+                'AI Prompt Prepared',
+                [
+                    'thread_id' => $thread->id,
+                    'message_count' => count($messages),
+                ]
+            );
+
             /*
-            |------------------------------------------------------------------
-            | GENERATE AI RESPONSE
-            |------------------------------------------------------------------
+            |--------------------------------------------------------------------------
+            | OPENAI REQUEST
+            |--------------------------------------------------------------------------
             */
 
             $reply = app(
                 OpenAIService::class
             )->chat($messages);
+
+            /*
+            |--------------------------------------------------------------------------
+            | NO REPLY
+            |--------------------------------------------------------------------------
+            */
 
             if (! $reply) {
 
@@ -217,9 +294,9 @@ class AiSupportService
             }
 
             /*
-            |------------------------------------------------------------------
-            | CREATE AI MESSAGE
-            |------------------------------------------------------------------
+            |--------------------------------------------------------------------------
+            | SAVE MESSAGE
+            |--------------------------------------------------------------------------
             */
 
             $message = SupportMessage::create([
@@ -244,13 +321,16 @@ class AiSupportService
 
                     'generated_at' =>
                     now()->toDateTimeString(),
+
+                    'topic_id' =>
+                    $topic->id,
                 ],
             ]);
 
             /*
-            |------------------------------------------------------------------
+            |--------------------------------------------------------------------------
             | UPDATE THREAD
-            |------------------------------------------------------------------
+            |--------------------------------------------------------------------------
             */
 
             $thread->update([
@@ -261,21 +341,21 @@ class AiSupportService
             ]);
 
             /*
-            |------------------------------------------------------------------
+            |--------------------------------------------------------------------------
             | BROADCAST
-            |------------------------------------------------------------------
+            |--------------------------------------------------------------------------
             */
 
             broadcast(
                 new SupportMessageSent(
-                    $message
+                    $message->load('sender')
                 )
             );
 
             /*
-            |------------------------------------------------------------------
-            | LOG SUCCESS
-            |------------------------------------------------------------------
+            |--------------------------------------------------------------------------
+            | SUCCESS LOG
+            |--------------------------------------------------------------------------
             */
 
             Log::channel('ai')->info(
@@ -283,18 +363,39 @@ class AiSupportService
                 [
                     'thread_id' => $thread->id,
                     'message_id' => $message->id,
+                    'reply_preview' => substr(
+                        $reply,
+                        0,
+                        150
+                    ),
                 ]
             );
 
             return $message;
         } catch (\Throwable $e) {
 
+            /*
+            |--------------------------------------------------------------------------
+            | ERROR
+            |--------------------------------------------------------------------------
+            */
+
             Log::channel('ai')->error(
                 'AI Support Error',
                 [
-                    'thread_id' => $thread->id,
-                    'message' => $e->getMessage(),
-                    'trace' => $e->getTraceAsString(),
+                    'thread_id' => $thread->id ?? null,
+
+                    'message' =>
+                    $e->getMessage(),
+
+                    'file' =>
+                    $e->getFile(),
+
+                    'line' =>
+                    $e->getLine(),
+
+                    'trace' =>
+                    $e->getTraceAsString(),
                 ]
             );
 
