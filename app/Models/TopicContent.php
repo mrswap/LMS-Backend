@@ -1,7 +1,11 @@
 <?php
 
 namespace App\Models;
+
 use App\Models\Traits\HasPublishStatus;
+use App\Services\AI\TopicContextService;
+use Illuminate\Support\Facades\Log;
+
 
 class TopicContent extends BaseModel
 {
@@ -30,6 +34,62 @@ class TopicContent extends BaseModel
         'publish_status' => 'string',
     ];
 
+
+    protected static function booted()
+    {
+        static::saved(function ($content) {
+
+            try {
+
+                if (! $content->topic) {
+                    return;
+                }
+
+                app(TopicContextService::class)
+                    ->cache($content->topic);
+
+                Log::channel('ai')->info(
+                    'Topic AI Context Regenerated',
+                    [
+                        'topic_id' => $content->topic_id,
+                        'content_id' => $content->id,
+                    ]
+                );
+            } catch (\Throwable $e) {
+
+                Log::channel('ai')->error(
+                    'AI Context Regeneration Failed',
+                    [
+                        'topic_id' => $content->topic_id,
+                        'content_id' => $content->id,
+                        'message' => $e->getMessage(),
+                    ]
+                );
+            }
+        });
+
+        static::deleted(function ($content) {
+
+            try {
+
+                if (! $content->topic) {
+                    return;
+                }
+
+                app(TopicContextService::class)
+                    ->cache($content->topic);
+            } catch (\Throwable $e) {
+
+                Log::channel('ai')->error(
+                    'AI Context Delete Sync Failed',
+                    [
+                        'topic_id' => $content->topic_id,
+                        'message' => $e->getMessage(),
+                    ]
+                );
+            }
+        });
+    }
     /*
     |--------------------------------------------------------------------------
     | Relationships

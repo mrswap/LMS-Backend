@@ -2,22 +2,22 @@
 
 namespace App\Modules\Trainee\Support\Controllers;
 
+use App\Events\SupportMessageSent;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\StoreSupportMessageRequest;
+use App\Jobs\GenerateAiReplyJob;
+use App\Models\SupportMessage;
+use App\Models\SupportThread;
+use App\Models\Topic;
+use App\Models\User;
+use App\Services\NotificationService;
 
 use Illuminate\Support\Facades\DB;
-use App\Events\SupportMessageSent;
-use App\Models\Topic;
-use App\Models\SupportThread;
-use App\Models\SupportMessage;
-use App\Models\User;
-
-use App\Http\Requests\StoreSupportMessageRequest;
-
-use App\Services\NotificationService;
+use Illuminate\Support\Facades\Log;
 
 class SupportController extends Controller
 {
-    protected $notification;
+    protected NotificationService $notification;
 
     public function __construct(
         NotificationService $notification
@@ -26,26 +26,34 @@ class SupportController extends Controller
     }
 
     /*
-    |--------------------------------------------------------------------------
+    |----------------------------------------------------------------------
     | GET OR CREATE THREAD
-    |--------------------------------------------------------------------------
+    |----------------------------------------------------------------------
     */
 
     public function thread($topicId)
     {
         $user = auth()->user();
 
+        /*
+        |------------------------------------------------------------------
+        | LOAD TOPIC
+        |------------------------------------------------------------------
+        */
+
         $topic = Topic::with([
+
             'program',
             'level',
             'module',
             'chapter',
+
         ])->findOrFail($topicId);
 
         /*
-        |--------------------------------------------------------------------------
-        | THREAD
-        |--------------------------------------------------------------------------
+        |------------------------------------------------------------------
+        | CREATE THREAD
+        |------------------------------------------------------------------
         */
 
         $thread = SupportThread::firstOrCreate(
@@ -59,37 +67,48 @@ class SupportController extends Controller
 
             [
 
-                'program_id' => $topic->program_id,
+                'program_id' =>
+                $topic->program_id,
 
-                'level_id' => $topic->level_id,
+                'level_id' =>
+                $topic->level_id,
 
-                'module_id' => $topic->module_id,
+                'module_id' =>
+                $topic->module_id,
 
-                'chapter_id' => $topic->chapter_id,
+                'chapter_id' =>
+                $topic->chapter_id,
 
-                'status' => SupportThread::STATUS_OPEN,
+                'status' =>
+                SupportThread::STATUS_OPEN,
 
-                'last_message_at' => now(),
+                'ai_enabled' => true,
+
+                'last_message_at' =>
+                now(),
             ]
         );
 
         /*
-        |--------------------------------------------------------------------------
-        | NOTIFICATION ON FIRST CREATE
-        |--------------------------------------------------------------------------
+        |------------------------------------------------------------------
+        | NOTIFY ADMINS
+        |------------------------------------------------------------------
         */
 
         if ($thread->wasRecentlyCreated) {
 
-            $admins = User::whereHas('role', function ($q) {
+            $admins = User::whereHas(
+                'role',
+                function ($q) {
 
-                $q->whereIn('name', [
+                    $q->whereIn('name', [
 
-                    'admin',
-                    'superadmin',
-                    'staff',
-                ]);
-            })
+                        'admin',
+                        'superadmin',
+                        'staff',
+                    ]);
+                }
+            )
                 ->where('is_active', true)
                 ->get();
 
@@ -101,7 +120,8 @@ class SupportController extends Controller
 
                 [
 
-                    'title' => 'New Topic Clarification',
+                    'title' =>
+                    'New Topic Clarification',
 
                     'message' =>
 
@@ -113,20 +133,31 @@ class SupportController extends Controller
 
                     'meta' => [
 
-                        'thread_id' => $thread->id,
+                        'thread_id' =>
+                        $thread->id,
 
-                        'topic_id' => $topic->id,
+                        'topic_id' =>
+                        $topic->id,
                     ]
                 ],
 
                 ['db', 'push', 'mail']
             );
+
+            Log::channel('ai')->info(
+                'Support Thread Created',
+                [
+                    'thread_id' => $thread->id,
+                    'topic_id' => $topic->id,
+                    'user_id' => $user->id,
+                ]
+            );
         }
 
         /*
-        |--------------------------------------------------------------------------
+        |------------------------------------------------------------------
         | LOAD RELATIONS
-        |--------------------------------------------------------------------------
+        |------------------------------------------------------------------
         */
 
         $thread->load([
@@ -141,14 +172,31 @@ class SupportController extends Controller
         ]);
 
         /*
-        |--------------------------------------------------------------------------
+        |------------------------------------------------------------------
         | MARK ADMIN MESSAGES READ
-        |--------------------------------------------------------------------------
+        |------------------------------------------------------------------
         */
 
         $thread->messages()
 
             ->where('is_admin', true)
+
+            ->whereNull('read_at')
+
+            ->update([
+
+                'read_at' => now(),
+            ]);
+
+        /*
+        |------------------------------------------------------------------
+        | MARK AI MESSAGES READ
+        |------------------------------------------------------------------
+        */
+
+        $thread->messages()
+
+            ->where('is_ai', true)
 
             ->whereNull('read_at')
 
@@ -166,9 +214,9 @@ class SupportController extends Controller
     }
 
     /*
-    |--------------------------------------------------------------------------
+    |----------------------------------------------------------------------
     | SEND MESSAGE
-    |--------------------------------------------------------------------------
+    |----------------------------------------------------------------------
     */
 
     public function send(
@@ -182,15 +230,21 @@ class SupportController extends Controller
 
             $user = auth()->user();
 
+            /*
+            |------------------------------------------------------------------
+            | VALID THREAD
+            |------------------------------------------------------------------
+            */
+
             $thread = SupportThread::where(
                 'user_id',
                 $user->id
             )->findOrFail($threadId);
 
             /*
-            |--------------------------------------------------------------------------
+            |------------------------------------------------------------------
             | REOPEN IF RESOLVED
-            |--------------------------------------------------------------------------
+            |------------------------------------------------------------------
             */
 
             if ($thread->isResolved()) {
@@ -198,20 +252,23 @@ class SupportController extends Controller
                 $thread->reopen();
 
                 /*
-                |--------------------------------------------------------------------------
+                |--------------------------------------------------------------
                 | NOTIFY ADMINS
-                |--------------------------------------------------------------------------
+                |--------------------------------------------------------------
                 */
 
-                $admins = User::whereHas('role', function ($q) {
+                $admins = User::whereHas(
+                    'role',
+                    function ($q) {
 
-                    $q->whereIn('name', [
+                        $q->whereIn('name', [
 
-                        'admin',
-                        'superadmin',
-                        'staff',
-                    ]);
-                })
+                            'admin',
+                            'superadmin',
+                            'staff',
+                        ]);
+                    }
+                )
                     ->where('is_active', true)
                     ->get();
 
@@ -223,7 +280,8 @@ class SupportController extends Controller
 
                     [
 
-                        'title' => 'Clarification Reopened',
+                        'title' =>
+                        'Clarification Reopened',
 
                         'message' =>
 
@@ -234,7 +292,8 @@ class SupportController extends Controller
 
                         'meta' => [
 
-                            'thread_id' => $thread->id,
+                            'thread_id' =>
+                            $thread->id,
                         ]
                     ],
 
@@ -243,9 +302,9 @@ class SupportController extends Controller
             }
 
             /*
-            |--------------------------------------------------------------------------
+            |------------------------------------------------------------------
             | ATTACHMENT
-            |--------------------------------------------------------------------------
+            |------------------------------------------------------------------
             */
 
             $attachment = null;
@@ -254,7 +313,9 @@ class SupportController extends Controller
 
                 $file = $request->file('attachment');
 
-                $filename = time()
+                $filename =
+
+                    time()
                     . '_'
                     . uniqid()
                     . '.'
@@ -262,43 +323,48 @@ class SupportController extends Controller
 
                 $file->move(
 
-                    public_path('uploads/support-message'),
+                    public_path(
+                        'uploads/support-message'
+                    ),
 
                     $filename
                 );
 
                 $attachment =
+
                     'uploads/support-message/'
                     . $filename;
             }
 
             /*
-            |--------------------------------------------------------------------------
+            |------------------------------------------------------------------
             | CREATE MESSAGE
-            |--------------------------------------------------------------------------
+            |------------------------------------------------------------------
             */
 
             $message = SupportMessage::create([
 
-                'thread_id' => $thread->id,
+                'thread_id' =>
+                $thread->id,
 
-                'sender_id' => $user->id,
+                'sender_id' =>
+                $user->id,
 
-                'message' => $request->message,
+                'message' =>
+                trim($request->message),
 
-                'attachment' => $attachment,
+                'attachment' =>
+                $attachment,
 
                 'is_admin' => false,
+
+                'is_ai' => false,
             ]);
 
-
-            broadcast(
-                new SupportMessageSent($message)
-            )->toOthers();
             /*
-            |--------------------------------------------------------------------------
+            |------------------------------------------------------------------
             | UPDATE THREAD
-            |--------------------------------------------------------------------------
+            |------------------------------------------------------------------
             */
 
             $thread->update([
@@ -306,7 +372,65 @@ class SupportController extends Controller
                 'last_message_at' => now(),
             ]);
 
+            /*
+            |------------------------------------------------------------------
+            | LOG
+            |------------------------------------------------------------------
+            */
+
+            Log::channel('ai')->info(
+                'Trainee Message Created',
+                [
+                    'thread_id' => $thread->id,
+                    'message_id' => $message->id,
+                    'user_id' => $user->id,
+                ]
+            );
+
+            /*
+            |------------------------------------------------------------------
+            | BROADCAST
+            |------------------------------------------------------------------
+            */
+
+            broadcast(
+                new SupportMessageSent(
+                    $message
+                )
+            )->toOthers();
+
+            /*
+            |------------------------------------------------------------------
+            | COMMIT BEFORE JOB
+            |------------------------------------------------------------------
+            */
+
             DB::commit();
+
+            /*
+            |------------------------------------------------------------------
+            | AI AUTO REPLY
+            |------------------------------------------------------------------
+            */
+
+            if (
+
+                config('ai.auto_reply')
+                && $thread->ai_enabled
+
+            ) {
+
+                GenerateAiReplyJob::dispatch(
+                    $thread->id
+                );
+
+                Log::channel('ai')->info(
+                    'AI Job Dispatched',
+                    [
+                        'thread_id' => $thread->id,
+                    ]
+                );
+            }
 
             return response()->json([
 
@@ -316,17 +440,28 @@ class SupportController extends Controller
                 'Message sent successfully.',
 
                 'data' =>
+
                 $message->load('sender'),
             ]);
         } catch (\Throwable $e) {
 
             DB::rollBack();
 
+            Log::channel('ai')->error(
+                'Support Send Error',
+                [
+                    'thread_id' => $threadId,
+                    'message' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString(),
+                ]
+            );
+
             return response()->json([
 
                 'success' => false,
 
-                'message' => $e->getMessage(),
+                'message' =>
+                'Failed to send message.',
             ], 500);
         }
     }

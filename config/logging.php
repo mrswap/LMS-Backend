@@ -73,6 +73,12 @@ return [
             'replace_placeholders' => true,
         ],
 
+        'ai' => [
+            'driver' => 'daily',
+            'path' => storage_path('logs/ai.log'),
+            'level' => 'debug',
+            'days' => 14,
+        ],
 
         'daily' => [
             'driver' => 'daily',

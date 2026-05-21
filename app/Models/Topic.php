@@ -94,6 +94,15 @@ class Topic extends BaseModel
     {
         return $this->hasMany(SupportThread::class);
     }
+
+    public function aiContext()
+    {
+        return $this->hasOne(
+            TopicAiContext::class
+        )->withDefault();
+    }
+
+
     /*
     |--------------------------------------------------------------------------
     | Scopes

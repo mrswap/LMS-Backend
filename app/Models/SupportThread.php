@@ -11,9 +11,7 @@ class SupportThread extends BaseModel
     */
 
     const STATUS_OPEN = 'open';
-
     const STATUS_RESOLVED = 'resolved';
-
     const STATUS_REOPENED = 'reopened';
 
     /*
@@ -21,7 +19,6 @@ class SupportThread extends BaseModel
     | FILLABLE
     |--------------------------------------------------------------------------
     */
-
     protected $fillable = [
 
         'user_id',
@@ -34,6 +31,9 @@ class SupportThread extends BaseModel
 
         'status',
 
+        'ai_enabled',
+        'ai_last_reply_at',
+
         'last_message_at',
 
         'resolved_by',
@@ -45,12 +45,12 @@ class SupportThread extends BaseModel
     | CASTS
     |--------------------------------------------------------------------------
     */
-
     protected $casts = [
 
         'last_message_at' => 'datetime',
-
         'resolved_at' => 'datetime',
+        'ai_enabled' => 'boolean',
+        'ai_last_reply_at' => 'datetime',
     ];
 
     /*
@@ -112,7 +112,7 @@ class SupportThread extends BaseModel
         )
             ->latestOfMany();
     }
-    
+
     public function resolver()
     {
         return $this->belongsTo(

@@ -5,25 +5,35 @@ namespace App\Models;
 class SupportMessage extends BaseModel
 {
     protected $fillable = [
-
         'thread_id',
         'sender_id',
-
         'message',
         'attachment',
-
         'is_admin',
-
+        'is_ai',
+        'ai_provider',
+        'ai_meta',
         'read_at',
     ];
 
     protected $casts = [
-
         'is_admin' => 'boolean',
-
+        'is_ai' => 'boolean',
+        'ai_meta' => 'array',
         'read_at' => 'datetime',
     ];
 
+    protected $appends = [
+        'sender_name',
+        'ai_meta'
+    ];
+
+    protected $hidden = [
+        'ai_meta',
+    ];
+
+
+    
     /*
     |--------------------------------------------------------------------------
     | RELATIONS
@@ -76,5 +86,24 @@ class SupportMessage extends BaseModel
                 'read_at' => now(),
             ]);
         }
+    }
+
+    public function isAi(): bool
+    {
+        return $this->is_ai === true;
+    }
+
+    public function getSenderNameAttribute()
+    {
+        if ($this->is_ai) {
+
+            return config(
+                'ai.name',
+                'AVANTE-AI'
+            );
+        }
+
+        return $this->sender?->name
+            ?? 'Unknown User';
     }
 }
