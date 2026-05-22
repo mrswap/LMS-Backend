@@ -30,7 +30,7 @@ class AiSupportService
 
             /*
             |--------------------------------------------------------------------------
-            | AI ENABLED?
+            | GLOBAL AI ENABLED?
             |--------------------------------------------------------------------------
             */
 
@@ -115,7 +115,6 @@ class AiSupportService
                     'Skipped AI Self Reply',
                     [
                         'thread_id' => $thread->id,
-                        'message_id' => $lastMessage->id,
                     ]
                 );
 
@@ -134,7 +133,6 @@ class AiSupportService
                     'Skipped Admin Message AI Reply',
                     [
                         'thread_id' => $thread->id,
-                        'message_id' => $lastMessage->id,
                     ]
                 );
 
@@ -143,17 +141,20 @@ class AiSupportService
 
             /*
             |--------------------------------------------------------------------------
-            | SKIP EMPTY MESSAGE
+            | USER QUESTION
             |--------------------------------------------------------------------------
             */
 
-            if (! trim($lastMessage->message ?? '')) {
+            $question = trim(
+                $lastMessage->message ?? ''
+            );
+
+            if (! $question) {
 
                 Log::channel('ai')->warning(
-                    'Skipped Empty Message',
+                    'Empty User Question',
                     [
                         'thread_id' => $thread->id,
-                        'message_id' => $lastMessage->id,
                     ]
                 );
 
@@ -162,7 +163,7 @@ class AiSupportService
 
             /*
             |--------------------------------------------------------------------------
-            | BUILD CONTEXT
+            | TOPIC CONTEXT
             |--------------------------------------------------------------------------
             */
 
@@ -170,39 +171,14 @@ class AiSupportService
                 TopicContextService::class
             )->cache($topic);
 
-            /*
-            |--------------------------------------------------------------------------
-            | RECENT CONVERSATION
-            |--------------------------------------------------------------------------
-            */
-
-            $recentMessages = $thread->messages()
-                ->latest()
-                ->take(10)
-                ->get()
-                ->reverse();
-
-            $conversation = [];
-
-            foreach ($recentMessages as $msg) {
-
-                if (! trim($msg->message ?? '')) {
-                    continue;
-                }
-
-                $conversation[] = [
-
-                    'role' => (
-                        $msg->is_admin
-                        || $msg->is_ai
-                    )
-                        ? 'assistant'
-                        : 'user',
-
-                    'content' =>
-                    trim($msg->message),
-                ];
-            }
+            Log::channel('ai')->info(
+                'Topic Context Loaded',
+                [
+                    'topic_id' => $topic->id,
+                    'context_length' =>
+                    strlen($cache->context),
+                ]
+            );
 
             /*
             |--------------------------------------------------------------------------
@@ -210,58 +186,89 @@ class AiSupportService
             |--------------------------------------------------------------------------
             */
 
+            $systemPrompt = "
+
+You are AVANTE-AI.
+
+You are an intelligent LMS learning assistant.
+
+Your purpose is to help learners understand
+their CURRENT TOPIC and CURRENT TRAINING CONTENT.
+
+IMPORTANT RULES:
+
+1. PRIORITIZE CURRENT TOPIC CONTENT.
+2. Answer ONLY from provided training material.
+3. Explain concepts in simple educational language.
+4. Help learner understand the topic better.
+5. If learner asks doubts,
+   explain them clearly from context.
+6. If learner greets casually,
+   greet politely BUT still stay topic-focused.
+7. Never invent medical information.
+8. Never provide diagnosis or treatment advice.
+9. Never answer outside LMS topic scope.
+10. Keep answers educational, practical and easy.
+
+If answer is unavailable in topic content,
+say:
+
+'Please contact your trainer/admin for further clarification.'
+
+CURRENT LEARNING HIERARCHY:
+
+Program:
+{$topic->program?->title}
+
+Level:
+{$topic->level?->title}
+
+Module:
+{$topic->module?->title}
+
+Chapter:
+{$topic->chapter?->title}
+
+Current Topic:
+{$topic->title}
+
+Topic Description:
+{$topic->description}
+
+TRAINING CONTENT:
+
+" . substr(
+                $cache->context,
+                0,
+                config('ai.max_context_chars')
+            );
+
+            /*
+            |--------------------------------------------------------------------------
+            | FINAL MESSAGES
+            |--------------------------------------------------------------------------
+            */
+
             $messages = [
 
                 [
                     'role' => 'system',
+                    'content' => $systemPrompt,
+                ],
 
-                    'content' =>
-
-                    "You are AVANTE-AI.
-
-                    You are an internal LMS training assistant.
-
-                    Rules:
-                    - Only answer from provided training context.
-                    - Never invent facts.
-                    - Never provide diagnosis or treatment advice.
-                    - Never answer beyond training material.
-                    - If answer is not available,
-                      ask learner to contact trainer/admin.
-                    - Keep replies concise and educational.
-                    - Use professional language.
-                    - Answer in simple understandable format.
-                    - If learner says hello/greetings,
-                      greet politely.
-
-                    TRAINING CONTEXT:
-
-                    "
-
-                    . substr(
-                        $cache->context,
-                        0,
-                        config('ai.max_context_chars')
-                    )
+                [
+                    'role' => 'user',
+                    'content' => $question,
                 ],
             ];
 
-            /*
-            |--------------------------------------------------------------------------
-            | MERGE CHAT
-            |--------------------------------------------------------------------------
-            */
-
-            $messages = array_merge(
-                $messages,
-                $conversation
-            );
-
             Log::channel('ai')->info(
-                'AI Prompt Prepared',
+                'AI Final Prompt Prepared',
                 [
                     'thread_id' => $thread->id,
-                    'message_count' => count($messages),
+                    'question' => $question,
+                    'context_length' =>
+                    strlen($systemPrompt),
                 ]
             );
 
@@ -277,7 +284,7 @@ class AiSupportService
 
             /*
             |--------------------------------------------------------------------------
-            | NO REPLY
+            | EMPTY AI RESPONSE
             |--------------------------------------------------------------------------
             */
 
@@ -324,6 +331,9 @@ class AiSupportService
 
                     'topic_id' =>
                     $topic->id,
+
+                    'question' =>
+                    $question,
                 ],
             ]);
 
@@ -354,7 +364,7 @@ class AiSupportService
 
             /*
             |--------------------------------------------------------------------------
-            | SUCCESS LOG
+            | SUCCESS
             |--------------------------------------------------------------------------
             */
 
@@ -366,7 +376,7 @@ class AiSupportService
                     'reply_preview' => substr(
                         $reply,
                         0,
-                        150
+                        300
                     ),
                 ]
             );
