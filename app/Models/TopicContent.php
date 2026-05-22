@@ -2,19 +2,45 @@
 
 namespace App\Models;
 
+use Illuminate\Support\Facades\Log;
 use App\Models\Traits\HasPublishStatus;
 use App\Services\AI\TopicContextService;
-use Illuminate\Support\Facades\Log;
-
+use App\Jobs\GenerateTopicContentAudioJob;
 
 class TopicContent extends BaseModel
 {
     use HasPublishStatus;
+
+    /*
+    |--------------------------------------------------------------------------
+    | GOVERNANCE
+    |--------------------------------------------------------------------------
+    */
+
     protected $hasPublishStatus = true;
+
     const PUBLISH_DRAFT = 'draft';
     const PUBLISH_PUBLISHED = 'published';
     const PUBLISH_UNPUBLISHED = 'unpublished';
 
+    /*
+    |--------------------------------------------------------------------------
+    | RUNTIME FLAGS
+    |--------------------------------------------------------------------------
+    |
+    | IMPORTANT:
+    | Runtime only property
+    | DB me save nahi hogi
+    |
+    */
+
+    protected bool $shouldGenerateAudio = false;
+
+    /*
+    |--------------------------------------------------------------------------
+    | FILLABLE
+    |--------------------------------------------------------------------------
+    */
 
     protected $fillable = [
         'topic_id',
@@ -25,65 +51,129 @@ class TopicContent extends BaseModel
         'order',
         'status',
         'publish_status',
-        'created_by'
+        'created_by',
+
+        // TTS
+        'audio_path',
+        'audio_generated_at',
+        'audio_provider',
     ];
+
+    /*
+    |--------------------------------------------------------------------------
+    | CASTS
+    |--------------------------------------------------------------------------
+    */
 
     protected $casts = [
         'meta' => 'array',
         'status' => 'boolean',
         'publish_status' => 'string',
+        'audio_generated_at' => 'datetime',
     ];
 
+    /*
+    |--------------------------------------------------------------------------
+    | APPENDS
+    |--------------------------------------------------------------------------
+    */
+
+    protected $appends = [
+        'audio_url',
+    ];
+
+    /*
+    |--------------------------------------------------------------------------
+    | MODEL EVENTS
+    |--------------------------------------------------------------------------
+    */
 
     protected static function booted()
     {
+        /*
+    |--------------------------------------------------------------------------
+    | CREATE
+    |--------------------------------------------------------------------------
+    */
+
+        static::creating(function ($content) {
+
+            $content->shouldGenerateAudio =
+                $content->type === 'text';
+        });
+
+        /*
+    |--------------------------------------------------------------------------
+    | UPDATE
+    |--------------------------------------------------------------------------
+    */
+
+        static::updating(function ($content) {
+
+            $content->shouldGenerateAudio =
+                $content->type === 'text'
+                && (
+                    $content->isDirty('content')
+                    || $content->isDirty('title')
+                );
+
+            Log::info('UPDATE AUDIO CHECK', [
+                'isDirtyContent' => $content->isDirty('content'),
+                'isDirtyTitle' => $content->isDirty('title'),
+                'shouldGenerateAudio' => $content->shouldGenerateAudio,
+            ]);
+        });
+
+        /*
+    |--------------------------------------------------------------------------
+    | SAVED
+    |--------------------------------------------------------------------------
+    */
+
         static::saved(function ($content) {
 
             try {
 
-                if (! $content->topic) {
-                    return;
+                if ($content->topic) {
+
+                    app(TopicContextService::class)
+                        ->cache($content->topic);
+
+                    Log::channel('ai')->info(
+                        'Topic AI Context Regenerated',
+                        [
+                            'topic_id' => $content->topic_id,
+                            'content_id' => $content->id,
+                        ]
+                    );
                 }
 
-                app(TopicContextService::class)
-                    ->cache($content->topic);
+                if (
+                    env('OPENAI_TTS_ENABLED', true)
+                    && $content->shouldGenerateAudio
+                ) {
 
-                Log::channel('ai')->info(
-                    'Topic AI Context Regenerated',
-                    [
-                        'topic_id' => $content->topic_id,
-                        'content_id' => $content->id,
-                    ]
-                );
-            } catch (\Throwable $e) {
+                    Log::info('DISPATCHING AUDIO JOB', [
+                        'content_id' => $content->id
+                    ]);
 
-                Log::channel('ai')->error(
-                    'AI Context Regeneration Failed',
-                    [
-                        'topic_id' => $content->topic_id,
-                        'content_id' => $content->id,
-                        'message' => $e->getMessage(),
-                    ]
-                );
-            }
-        });
+                    GenerateTopicContentAudioJob::dispatch(
+                        $content->id
+                    );
 
-        static::deleted(function ($content) {
-
-            try {
-
-                if (! $content->topic) {
-                    return;
+                    Log::channel('ai')->info(
+                        'Topic Content TTS Job Dispatched',
+                        [
+                            'topic_id' => $content->topic_id,
+                            'content_id' => $content->id,
+                        ]
+                    );
                 }
-
-                app(TopicContextService::class)
-                    ->cache($content->topic);
             } catch (\Throwable $e) {
 
-                Log::channel('ai')->error(
-                    'AI Context Delete Sync Failed',
+                Log::error(
+                    'AI Context / TTS Sync Failed',
                     [
-                        'topic_id' => $content->topic_id,
                         'message' => $e->getMessage(),
                     ]
                 );
@@ -92,33 +182,57 @@ class TopicContent extends BaseModel
     }
     /*
     |--------------------------------------------------------------------------
-    | Relationships
+    | ACCESSORS
+    |--------------------------------------------------------------------------
+    */
+
+    public function getAudioUrlAttribute(): ?string
+    {
+        if (!$this->audio_path) {
+            return null;
+        }
+
+        return asset($this->audio_path);
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | RELATIONSHIPS
     |--------------------------------------------------------------------------
     */
 
     public function topic()
     {
-        return $this->belongsTo(Topic::class)->withTrashed();
+        return $this->belongsTo(Topic::class)
+            ->withTrashed();
     }
 
     public function progress()
     {
-        return $this->hasMany(UserContentProgress::class, 'topic_content_id');
+        return $this->hasMany(
+            UserContentProgress::class,
+            'topic_content_id'
+        );
     }
 
     public function translations()
     {
-        return $this->hasMany(TopicContentTranslation::class);
+        return $this->hasMany(
+            TopicContentTranslation::class
+        );
     }
 
     public function creator()
     {
-        return $this->belongsTo(User::class, 'created_by')->withTrashed();
+        return $this->belongsTo(
+            User::class,
+            'created_by'
+        )->withTrashed();
     }
 
     /*
     |--------------------------------------------------------------------------
-    | Scopes (Optional but useful)
+    | SCOPES
     |--------------------------------------------------------------------------
     */
 
@@ -129,41 +243,56 @@ class TopicContent extends BaseModel
 
     /*
     |--------------------------------------------------------------------------
-    | Cascade Soft Delete
+    | CASCADE SOFT DELETE
     |--------------------------------------------------------------------------
     */
 
     public function cascadeSoftDelete()
     {
-        // ❗ IMPORTANT:
-        // We DO NOT delete user progress
-        // Reason: audit + resume + reporting
+        /*
+        |--------------------------------------------------------------------------
+        | IMPORTANT
+        |--------------------------------------------------------------------------
+        |
+        | We DO NOT delete user progress
+        | Reason:
+        | audit + reporting + resume support
+        |
+        */
     }
 
     /*
     |--------------------------------------------------------------------------
-    | Cascade Restore
+    | CASCADE RESTORE
     |--------------------------------------------------------------------------
     */
 
     public function cascadeRestore()
     {
         // Nothing required
-        // progress already exists
     }
+
+    /*
+    |--------------------------------------------------------------------------
+    | PUBLISH HELPERS
+    |--------------------------------------------------------------------------
+    */
 
     public function isPublished(): bool
     {
-        return $this->publish_status === self::PUBLISH_PUBLISHED;
+        return $this->publish_status
+            === self::PUBLISH_PUBLISHED;
     }
 
     public function isDraft(): bool
     {
-        return $this->publish_status === self::PUBLISH_DRAFT;
+        return $this->publish_status
+            === self::PUBLISH_DRAFT;
     }
 
     public function isUnpublished(): bool
     {
-        return $this->publish_status === self::PUBLISH_UNPUBLISHED;
+        return $this->publish_status
+            === self::PUBLISH_UNPUBLISHED;
     }
 }

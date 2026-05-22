@@ -250,6 +250,8 @@ class SectionContentController extends Controller
                 'status' => (bool)$item->status,
                 'publish_status' => $item->publish_status,
 
+                'audio_url' => $item->audio_url,
+                'audio_generated_at' => $item->audio_generated_at,
 
                 'media_shortcode' => $item->meta['shortcode'] ?? null,
             ];
@@ -506,6 +508,7 @@ class SectionContentController extends Controller
                         $translation->update([
                             'title'
                             => $section['title'] ?? null,
+
                             'content'
                             => $section['content'] ?? null,
                         ]);
@@ -513,12 +516,23 @@ class SectionContentController extends Controller
 
                         $content->translations()->create([
                             'language_code' => $lang,
+
                             'title'
                             => $section['title'] ?? null,
+
                             'content'
                             => $section['content'] ?? null,
                         ]);
                     }
+
+                    /*
+                    |---------------------------------------------------
+                    | IMPORTANT
+                    |---------------------------------------------------
+                    | Trigger TopicContent saved event
+                    | So multilingual TTS works
+                    */
+                    $content->touch();
                 }
 
                 $result[] = $content;
@@ -679,6 +693,8 @@ class SectionContentController extends Controller
                 'order' => $item->order,
                 'status' => (bool)$item->status,
                 'publish_status' => $item->publish_status,
+                'audio_url' => $item->audio_url,
+                'audio_generated_at' => $item->audio_generated_at,
                 'creator' => [
                     'id' => $item->creator->id ?? null,
                     'name' => $item->creator->name ?? null,
@@ -806,7 +822,8 @@ class SectionContentController extends Controller
                 'order' => $item->order,
                 'status' => (bool)$item->status,
                 'publish_status' => $item->publish_status,
-
+                'audio_url' => $item->audio_url,
+                'audio_generated_at' => $item->audio_generated_at,
                 'topic' => [
                     'id' => $item->topic->id ?? null,
                     'title' => $item->topic->title ?? null,
@@ -888,7 +905,9 @@ class SectionContentController extends Controller
                 return [
                     'type' => 'text',
                     'title' => $title,
-                    'content' => $content
+                    'content' => $content,
+                    'audio_url' => $item->audio_url,
+                    'audio_generated_at' => $item->audio_generated_at,
                 ];
             }
 
@@ -907,28 +926,55 @@ class SectionContentController extends Controller
     {
         $lang = $this->resolveLanguage($request);
 
-        $content = TopicContent::where('topic_id', $topicId)->findOrFail($id);
+        $content = TopicContent::where('topic_id', $topicId)
+            ->findOrFail($id);
+
         $data = $request->validated();
 
         if ($lang === 'en') {
-            $content->update($data);
+
+            $content->update([
+                ...$data,
+                'created_by' => auth()->id(),
+            ]);
         } else {
+
             $translation = $content->translations()
                 ->where('language_code', $lang)
                 ->first();
 
             if ($translation) {
-                $translation->update($data);
+
+                $translation->update([
+                    'title' => $data['title'] ?? null,
+                    'content' => $data['content'] ?? null,
+                ]);
             } else {
+
                 $content->translations()->create([
                     'language_code' => $lang,
                     'title' => $data['title'] ?? null,
                     'content' => $data['content'] ?? null,
                 ]);
             }
+
+            /*
+            |---------------------------------------------------
+            | IMPORTANT
+            |---------------------------------------------------
+            | Trigger TopicContent saved event
+            | So TTS + AI Context regenerate works
+            */
+            $content->touch();
         }
 
-        return response()->json(['message' => 'Updated']);
+        return response()->json([
+            'success' => true,
+            'message' => 'Updated',
+            'data' => $content->fresh([
+                'translations'
+            ])
+        ]);
     }
 
     /*
@@ -978,18 +1024,14 @@ class SectionContentController extends Controller
     | TOGGLE STATUS
     |--------------------------------------------------------------------------
     */
-    /*
-|--------------------------------------------------------------------------
-| TOGGLE STATUS
-|--------------------------------------------------------------------------
-*/
+
     public function toggleStatus($topicId, $id)
     {
         /*
-    |--------------------------------------------------------------------------
-    | SYSTEM USER VALIDATION
-    |--------------------------------------------------------------------------
-    */
+        |--------------------------------------------------------------------------
+        | SYSTEM USER VALIDATION
+        |--------------------------------------------------------------------------
+        */
 
         if (!$this->isSystemUser()) {
 
@@ -1161,6 +1203,8 @@ class SectionContentController extends Controller
                 ),
 
                 'order' => $current->order,
+                'audio_url' => $current->audio_url,
+                'audio_generated_at' => $current->audio_generated_at,
                 'is_read' => $isRead,
                 'read_at' => $readAt,
             ];
@@ -1209,6 +1253,8 @@ class SectionContentController extends Controller
                 ),
 
                 'order' => $current->order,
+                'audio_url' => $current->audio_url,
+                'audio_generated_at' => $current->audio_generated_at,
                 'is_read' => $isRead,
                 'read_at' => $readAt,
             ];

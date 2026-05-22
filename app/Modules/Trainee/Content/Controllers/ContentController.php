@@ -380,6 +380,10 @@ class ContentController extends Controller
                     ? $current->content
                     : $current->content,
 
+                'audio_url' => $current->audio_url,
+                'audio_content' => $current->audio_url ?? "https://lms-backend.netswaptech.com/public/uploads/content-management/media/6a02db0e57aac.mp3",
+                'audio_generated_at' => $current->audio_generated_at,
+
                 'media' => $resolvedMedia ? [
                     'id' => $resolvedMedia->id,
                     'title' => $resolvedMedia->title,
