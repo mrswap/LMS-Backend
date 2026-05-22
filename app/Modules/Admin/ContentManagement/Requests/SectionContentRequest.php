@@ -31,7 +31,8 @@ class SectionContentRequest extends FormRequest
             |--------------------------------------------------------------------------
             */
 
-            'content' => 'required_if:type,text|nullable|string',
+            //'content' => 'required_if:type,text|nullable|string',
+            'content' => 'nullable',
 
             /*
             |--------------------------------------------------------------------------

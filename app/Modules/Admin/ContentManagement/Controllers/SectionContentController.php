@@ -221,9 +221,19 @@ class SectionContentController extends Controller
             ->orderBy('order')
             ->get();
 
-        // 🔥 Get topic info from first record (safe because same topic_id)
-        $topic = optional($contents->first())->topic;
+        /*
+        |--------------------------------------------------------------------------
+        | FETCH TOPIC DIRECTLY
+        |--------------------------------------------------------------------------
+        */
 
+        $topic = \App\Models\Topic::with([
+            'program:id,title',
+            'level:id,title',
+            'module:id,title',
+            'chapter:id,title',
+        ])
+            ->find($topicId);
         $data = $contents->map(function ($item) use ($lang) {
 
             $translation = $item->translations
