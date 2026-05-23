@@ -11,7 +11,7 @@ use App\Models\SupportThread;
 use App\Models\Topic;
 use App\Models\User;
 use App\Services\NotificationService;
-
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -30,13 +30,16 @@ class SupportController extends Controller
     |--------------------------------------------------------------------------
     */
 
-    public function inbox()
+
+    public function inbox(Request $request)
     {
         $user = auth()->user();
 
         $threads = SupportThread::query()
 
             ->with([
+
+                'user',
 
                 'program',
                 'level',
@@ -48,55 +51,107 @@ class SupportController extends Controller
             ])
 
             /*
-            |--------------------------------------------------------------------------
-            | UNREAD COUNT
-            |--------------------------------------------------------------------------
-            */
+        |--------------------------------------------------------------------------
+        | UNREAD COUNT
+        |--------------------------------------------------------------------------
+        */
 
             ->withCount([
 
-                'messages as unread_count' => function ($q) {
-
-                    $q->whereNull('read_at')
-
-                        /*
-                    |--------------------------------------------------------------------------
-                    | ONLY ADMIN + AI MESSAGES
-                    |--------------------------------------------------------------------------
-                    */
-
-                        ->where(function ($query) {
-
-                            $query
-
-                                ->where('is_admin', true)
-
-                                ->orWhere('is_ai', true);
-                        });
-                },
+                'traineeUnreadMessages as unread_messages_count',
 
                 'messages',
             ])
 
             /*
-            |--------------------------------------------------------------------------
-            | ONLY CURRENT TRAINEE
-            |--------------------------------------------------------------------------
-            */
+        |--------------------------------------------------------------------------
+        | ONLY CURRENT TRAINEE
+        |--------------------------------------------------------------------------
+        */
 
             ->where('user_id', $user->id)
 
             /*
-            |--------------------------------------------------------------------------
-            | ORDER
-            |--------------------------------------------------------------------------
-            */
+        |--------------------------------------------------------------------------
+        | FILTERS
+        |--------------------------------------------------------------------------
+        */
+
+            ->when(
+
+                $request->filled('status'),
+
+                function ($q) use ($request) {
+
+                    $q->where(
+                        'status',
+                        $request->status
+                    );
+                }
+            )
+
+            ->when(
+
+                $request->filled('topic_id'),
+
+                function ($q) use ($request) {
+
+                    $q->where(
+                        'topic_id',
+                        $request->topic_id
+                    );
+                }
+            )
+
+            /*
+        |--------------------------------------------------------------------------
+        | SEARCH
+        |--------------------------------------------------------------------------
+        */
+
+            ->when(
+
+                $request->filled('search'),
+
+                function ($q) use ($request) {
+
+                    $search = trim($request->search);
+
+                    $q->whereHas(
+
+                        'topic',
+
+                        function ($topic) use ($search) {
+
+                            $topic->where(
+                                'title',
+                                'LIKE',
+                                "%{$search}%"
+                            );
+                        }
+                    );
+                }
+            )
+
+            /*
+        |--------------------------------------------------------------------------
+        | ORDER
+        |--------------------------------------------------------------------------
+        */
 
             ->orderByDesc('last_message_at')
 
             ->orderByDesc('id')
 
-            ->get();
+            /*
+        |--------------------------------------------------------------------------
+        | PAGINATION
+        |--------------------------------------------------------------------------
+        */
+
+            ->paginate(
+                $request->per_page ?? 20
+            );
 
         return response()->json([
 

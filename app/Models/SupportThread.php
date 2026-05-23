@@ -197,4 +197,34 @@ class SupportThread extends BaseModel
             }
         });
     }
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | TRAINEE UNREAD
+    |--------------------------------------------------------------------------
+    */
+
+    public function traineeUnreadMessages()
+    {
+        return $this->hasMany(
+            SupportMessage::class,
+            'thread_id'
+        )
+
+            ->whereNull('read_at')
+
+            /*
+        |--------------------------------------------------------------------------
+        | ONLY ADMIN + AI
+        |--------------------------------------------------------------------------
+        */
+
+            ->where(function ($q) {
+
+                $q->where('is_admin', true)
+
+                    ->orWhere('is_ai', true);
+            });
+    }
 }
