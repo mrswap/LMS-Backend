@@ -14,6 +14,7 @@ use App\Services\AuditService;
 use App\Models\Assessment;
 use App\Models\AssessmentAttempt;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\ValidationException;
 
 
 class SectionContentController extends Controller
@@ -63,6 +64,8 @@ class SectionContentController extends Controller
         $lang = $this->resolveLanguage($request);
 
         $data = $request->validated();
+
+        $this->validateMediaShortcode($data);
 
         $baseData = [
             'topic_id' => $topicId,
@@ -134,42 +137,43 @@ class SectionContentController extends Controller
             $created = [];
 
             /*
-        |--------------------------------------------------------------------------
-        | Current Max Order
-        |--------------------------------------------------------------------------
-        */
+            |--------------------------------------------------------------------------
+            | Current Max Order
+            |--------------------------------------------------------------------------
+            */
             $currentMaxOrder = TopicContent::where('topic_id', $topicId)
                 ->max('order') ?? 0;
 
             /*
-        |--------------------------------------------------------------------------
-        | Used Orders Tracker
-        |--------------------------------------------------------------------------
-        */
+            |--------------------------------------------------------------------------
+            | Used Orders Tracker
+            |--------------------------------------------------------------------------
+            */
             $usedOrders = TopicContent::where('topic_id', $topicId)
                 ->pluck('order')
                 ->toArray();
 
             foreach ($request->sections as $section) {
 
+                $this->validateMediaShortcode($section);
                 /*
-            |--------------------------------------------------------------------------
-            | Requested Order
-            |--------------------------------------------------------------------------
-            */
+                |--------------------------------------------------------------------------
+                | Requested Order
+                |--------------------------------------------------------------------------
+                */
                 $requestedOrder = isset($section['order'])
                     ? (int) $section['order']
                     : null;
 
                 /*
-            |--------------------------------------------------------------------------
-            | Auto Resolve Order Conflict
-            |--------------------------------------------------------------------------
-            |
-            | If order already exists:
-            | assign next available order
-            |
-            */
+                |--------------------------------------------------------------------------
+                | Auto Resolve Order Conflict
+                |--------------------------------------------------------------------------
+                |
+                | If order already exists:
+                | assign next available order
+                |
+                */
                 if (
                     !$requestedOrder ||
                     in_array($requestedOrder, $usedOrders)
@@ -188,17 +192,17 @@ class SectionContentController extends Controller
                 }
 
                 /*
-            |--------------------------------------------------------------------------
-            | Mark Order As Used
-            |--------------------------------------------------------------------------
-            */
+                |--------------------------------------------------------------------------
+                | Mark Order As Used
+                |--------------------------------------------------------------------------
+                */
                 $usedOrders[] = $finalOrder;
 
                 /*
-            |--------------------------------------------------------------------------
-            | Media Meta Handling
-            |--------------------------------------------------------------------------
-            */
+                |--------------------------------------------------------------------------
+                | Media Meta Handling
+                |--------------------------------------------------------------------------
+                */
                 if ($section['type'] === 'media') {
 
                     $section['meta'] = [
@@ -208,10 +212,10 @@ class SectionContentController extends Controller
                 }
 
                 /*
-            |--------------------------------------------------------------------------
-            | Base Data
-            |--------------------------------------------------------------------------
-            */
+                |--------------------------------------------------------------------------
+                | Base Data
+                |--------------------------------------------------------------------------
+                */
                 $baseData = [
                     'topic_id' => $topicId,
                     'type' => $section['type'],
@@ -223,10 +227,10 @@ class SectionContentController extends Controller
                 ];
 
                 /*
-            |--------------------------------------------------------------------------
-            | English Content
-            |--------------------------------------------------------------------------
-            */
+                |--------------------------------------------------------------------------
+                | English Content
+                |--------------------------------------------------------------------------
+                */
                 if ($lang === 'en') {
 
                     $content = TopicContent::create([
@@ -237,10 +241,10 @@ class SectionContentController extends Controller
                 } else {
 
                     /*
-                |--------------------------------------------------------------------------
-                | Multilingual Content
-                |--------------------------------------------------------------------------
-                */
+                    |--------------------------------------------------------------------------
+                    | Multilingual Content
+                    |--------------------------------------------------------------------------
+                    */
                     $content = TopicContent::create([
                         ...$baseData,
                         'title' => 'BASE_RECORD',
@@ -265,7 +269,18 @@ class SectionContentController extends Controller
                 'count' => count($created),
                 'data' => $created
             ]);
-        } catch (\Exception $e) {
+        } catch (ValidationException $e) {
+
+            DB::rollBack();
+
+            return response()->json([
+                'success' => false,
+                'message' => collect($e->errors())
+                    ->flatten()
+                    ->first(),
+                'errors' => $e->errors(),
+            ], 422);
+        } catch (\Throwable $e) {
 
             DB::rollBack();
 
@@ -489,6 +504,7 @@ class SectionContentController extends Controller
                     | MEDIA META
                     |--------------------------------------------------------------------------
                     */
+                    $this->validateMediaShortcode($section);
 
                     if ($section['type'] === 'media') {
 
@@ -762,6 +778,17 @@ class SectionContentController extends Controller
                 'count' => count($result),
                 'data' => $result
             ]);
+        } catch (ValidationException $e) {
+
+            DB::rollBack();
+
+            return response()->json([
+                'success' => false,
+                'message' => collect($e->errors())
+                    ->flatten()
+                    ->first(),
+                'errors' => $e->errors(),
+            ], 422);
         } catch (\Throwable $e) {
 
             DB::rollBack();
@@ -1153,6 +1180,8 @@ class SectionContentController extends Controller
             ->findOrFail($id);
 
         $data = $request->validated();
+
+        $this->validateMediaShortcode($data);
 
         if ($lang === 'en') {
 
@@ -1604,5 +1633,44 @@ class SectionContentController extends Controller
         }
 
         return $requestedOrder;
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | VALIDATE MEDIA SHORTCODE
+    |--------------------------------------------------------------------------
+    */
+
+    private function validateMediaShortcode(array $section): void
+    {
+        if (($section['type'] ?? null) !== 'media') {
+            return;
+        }
+
+        $shortcode = $section['media_shortcode']
+            ?? ($section['meta']['shortcode'] ?? null);
+
+        if (!$shortcode) {
+
+            throw ValidationException::withMessages([
+                'media_shortcode' => [
+                    'Media shortcode is required'
+                ]
+            ]);
+        }
+
+        $exists = Media::where(
+            'shortcode',
+            $shortcode
+        )->exists();
+
+        if (!$exists) {
+
+            throw ValidationException::withMessages([
+                'media_shortcode' => [
+                    "Media not found for shortcode: {$shortcode}"
+                ]
+            ]);
+        }
     }
 }
