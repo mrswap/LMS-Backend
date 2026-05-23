@@ -201,7 +201,7 @@ Route::prefix('v1/admin')->group(function () {
         */
 
         Route::post('content-topics/{topic_id}/contents/bulk', [SectionContentController::class, 'bulkStore'])->middleware('permission:content.bulk-create');
-        Route::patch('content-topics/{topic_id}/contents/update-bulk', [SectionContentController::class, 'bulkUpdate'])->middleware('permission:content.bulk-edit');
+        Route::post('content-topics/{topic_id}/contents/update-bulk', [SectionContentController::class, 'bulkUpdate'])->middleware('permission:content.bulk-edit');
         Route::get('content-topics/{topic_id}/contents/bulk-edit', [SectionContentController::class, 'bulkEdit'])->middleware('permission:content.bulk-edit');
         Route::post('content-topics/{topic_id}/contents/reorder', [SectionContentController::class, 'reorder'])->middleware('permission:content.reorder');
         Route::post('content-topics/{topic_id}/contents/{id}/toggle-status', [SectionContentController::class, 'toggleStatus'])->whereNumber('id')->middleware('permission:content.status');

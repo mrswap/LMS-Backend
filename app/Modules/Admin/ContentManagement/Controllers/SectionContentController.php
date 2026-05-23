@@ -13,6 +13,7 @@ use App\Models\UserProgress;
 use App\Services\AuditService;
 use App\Models\Assessment;
 use App\Models\AssessmentAttempt;
+use Illuminate\Support\Facades\Log;
 
 
 class SectionContentController extends Controller
@@ -34,6 +35,7 @@ class SectionContentController extends Controller
     {
         return auth()->user()?->isSystemUser() ?? false;
     }
+
 
     /*
     |--------------------------------------------------------------------------
@@ -66,7 +68,10 @@ class SectionContentController extends Controller
             'topic_id' => $topicId,
             'type' => $data['type'],
             'meta' => $data['meta'] ?? null,
-            'order' => $data['order'] ?? 0,
+            'order' => $this->resolveSafeOrder(
+                $topicId,
+                $data['order'] ?? null
+            ),
             'created_by' => auth()->id(),
 
             ...$this->governanceDefaults(),
@@ -107,6 +112,7 @@ class SectionContentController extends Controller
     | BULK STORE
     |--------------------------------------------------------------------------
     */
+
     public function bulkStore(Request $request, $topicId)
     {
         $lang = $this->resolveLanguage($request);
@@ -116,21 +122,10 @@ class SectionContentController extends Controller
             'sections.*.type' => 'required|in:text,media,h5p,quiz',
             'sections.*.title' => 'nullable|string',
             'sections.*.content' => 'nullable|string',
-            'sections.*.order' => 'required|integer',
+            'sections.*.order' => 'nullable|integer|min:1',
             'sections.*.media_shortcode' => 'nullable|string',
             'sections.*.meta' => 'nullable|array',
         ]);
-
-        $orders = collect($request->sections)->pluck('order');
-
-        if ($orders->duplicates()->isNotEmpty()) {
-
-            return response()->json([
-                'success' => false,
-                'message'
-                => 'Duplicate order values not allowed'
-            ], 422);
-        }
 
         DB::beginTransaction();
 
@@ -138,27 +133,100 @@ class SectionContentController extends Controller
 
             $created = [];
 
+            /*
+        |--------------------------------------------------------------------------
+        | Current Max Order
+        |--------------------------------------------------------------------------
+        */
+            $currentMaxOrder = TopicContent::where('topic_id', $topicId)
+                ->max('order') ?? 0;
+
+            /*
+        |--------------------------------------------------------------------------
+        | Used Orders Tracker
+        |--------------------------------------------------------------------------
+        */
+            $usedOrders = TopicContent::where('topic_id', $topicId)
+                ->pluck('order')
+                ->toArray();
+
             foreach ($request->sections as $section) {
 
+                /*
+            |--------------------------------------------------------------------------
+            | Requested Order
+            |--------------------------------------------------------------------------
+            */
+                $requestedOrder = isset($section['order'])
+                    ? (int) $section['order']
+                    : null;
+
+                /*
+            |--------------------------------------------------------------------------
+            | Auto Resolve Order Conflict
+            |--------------------------------------------------------------------------
+            |
+            | If order already exists:
+            | assign next available order
+            |
+            */
+                if (
+                    !$requestedOrder ||
+                    in_array($requestedOrder, $usedOrders)
+                ) {
+
+                    $currentMaxOrder++;
+
+                    $finalOrder = $currentMaxOrder;
+                } else {
+
+                    $finalOrder = $requestedOrder;
+
+                    if ($finalOrder > $currentMaxOrder) {
+                        $currentMaxOrder = $finalOrder;
+                    }
+                }
+
+                /*
+            |--------------------------------------------------------------------------
+            | Mark Order As Used
+            |--------------------------------------------------------------------------
+            */
+                $usedOrders[] = $finalOrder;
+
+                /*
+            |--------------------------------------------------------------------------
+            | Media Meta Handling
+            |--------------------------------------------------------------------------
+            */
                 if ($section['type'] === 'media') {
 
                     $section['meta'] = [
-                        'shortcode'
-                        => $section['media_shortcode']
+                        'shortcode' => $section['media_shortcode']
                             ?? ($section['meta']['shortcode'] ?? null)
                     ];
                 }
 
+                /*
+            |--------------------------------------------------------------------------
+            | Base Data
+            |--------------------------------------------------------------------------
+            */
                 $baseData = [
                     'topic_id' => $topicId,
                     'type' => $section['type'],
-                    'order' => $section['order'],
+                    'order' => $finalOrder,
                     'meta' => $section['meta'] ?? null,
                     'created_by' => auth()->id(),
 
                     ...$this->governanceDefaults(),
                 ];
 
+                /*
+            |--------------------------------------------------------------------------
+            | English Content
+            |--------------------------------------------------------------------------
+            */
                 if ($lang === 'en') {
 
                     $content = TopicContent::create([
@@ -168,6 +236,11 @@ class SectionContentController extends Controller
                     ]);
                 } else {
 
+                    /*
+                |--------------------------------------------------------------------------
+                | Multilingual Content
+                |--------------------------------------------------------------------------
+                */
                     $content = TopicContent::create([
                         ...$baseData,
                         'title' => 'BASE_RECORD',
@@ -188,8 +261,7 @@ class SectionContentController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message'
-                => 'Bulk content created successfully',
+                'message' => 'Bulk content created successfully',
                 'count' => count($created),
                 'data' => $created
             ]);
@@ -197,7 +269,10 @@ class SectionContentController extends Controller
 
             DB::rollBack();
 
-            throw $e;
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage()
+            ], 500);
         }
     }
 
@@ -294,39 +369,77 @@ class SectionContentController extends Controller
     | BULK UPDATE
     |--------------------------------------------------------------------------
     */
+
     public function bulkUpdate(Request $request, $topicId)
     {
-        $lang = $this->resolveLanguage($request);
+        Log::info('================ BULK UPDATE START ================');
 
-        $isSystemUser = $this->isSystemUser();
-
-        $request->validate([
-            'sections' => 'required|array|min:1',
-            'sections.*.id' => 'nullable|integer',
-            'sections.*.type' => 'required|in:text,media,h5p,quiz',
-            'sections.*.title' => 'nullable|string',
-            'sections.*.content' => 'nullable|string',
-            'sections.*.order' => 'required|integer',
-            'sections.*.media_shortcode' => 'nullable|string',
-            'sections.*.meta' => 'nullable|array',
-            'sections.*.is_deleted' => 'nullable|boolean',
-            'sections.*.is_new' => 'nullable|boolean',
+        Log::info('Incoming Bulk Update Request', [
+            'topic_id' => $topicId,
+            'request_size_bytes' => strlen($request->getContent()),
+            'sections_count' => count($request->sections ?? []),
+            'memory_usage_mb' => round(memory_get_usage(true) / 1024 / 1024, 2),
+            'memory_peak_mb' => round(memory_get_peak_usage(true) / 1024 / 1024, 2),
+            'user_id' => auth()->id(),
+            'ip' => $request->ip(),
         ]);
 
-        $orders = collect($request->sections)->pluck('order');
-
-        if ($orders->duplicates()->isNotEmpty()) {
-
-            return response()->json([
-                'success' => false,
-                'message'
-                => 'Duplicate order values not allowed'
-            ], 422);
-        }
-
-        DB::beginTransaction();
-
         try {
+
+            $lang = $this->resolveLanguage($request);
+
+            $isSystemUser = $this->isSystemUser();
+
+            Log::info('Bulk Update Context', [
+                'language' => $lang,
+                'is_system_user' => $isSystemUser,
+            ]);
+
+            /*
+            |--------------------------------------------------------------------------
+            | VALIDATION
+            |--------------------------------------------------------------------------
+            */
+
+            $request->validate([
+                'sections' => 'required|array|min:1',
+                'sections.*.id' => 'nullable|integer',
+                'sections.*.type' => 'required|in:text,media,h5p,quiz',
+                'sections.*.title' => 'nullable|string',
+                'sections.*.content' => 'nullable|string',
+                'sections.*.order' => 'required|integer',
+                'sections.*.media_shortcode' => 'nullable|string',
+                'sections.*.meta' => 'nullable|array',
+                'sections.*.is_deleted' => 'nullable|boolean',
+                'sections.*.is_new' => 'nullable|boolean',
+            ]);
+
+            Log::info('Validation Passed');
+
+            /*
+            |--------------------------------------------------------------------------
+            | DUPLICATE ORDER CHECK
+            |--------------------------------------------------------------------------
+            */
+
+            $orders = collect($request->sections)->pluck('order');
+
+            if ($orders->duplicates()->isNotEmpty()) {
+
+                Log::warning('Duplicate Orders Found', [
+                    'orders' => $orders,
+                    'duplicates' => $orders->duplicates(),
+                ]);
+
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Duplicate order values not allowed'
+                ], 422);
+            }
+
+            DB::beginTransaction();
+
+            Log::info('DB Transaction Started');
 
             $result = [];
 
@@ -334,224 +447,337 @@ class SectionContentController extends Controller
                 $request->sections
             )->pluck('id')->filter();
 
+            Log::info('Fetching Existing Contents', [
+                'ids' => $ids,
+            ]);
+
             $contents = TopicContent::withTrashed()
                 ->where('topic_id', $topicId)
                 ->whereIn('id', $ids)
                 ->get()
                 ->keyBy('id');
 
-            foreach ($request->sections as $section) {
+            Log::info('Existing Contents Loaded', [
+                'loaded_count' => $contents->count(),
+            ]);
 
-                if ($section['type'] === 'media') {
-
-                    $section['meta'] = [
-                        'shortcode'
-                        => $section['media_shortcode']
-                            ?? ($section['meta']['shortcode'] ?? null)
-                    ];
-                }
-
-                $baseData = [
-                    'topic_id' => $topicId,
-                    'type' => $section['type'],
-                    'order' => $section['order'],
-                    'meta' => $section['meta'] ?? null,
-                    'created_by' => auth()->id(),
-                ];
-
-                /*
+            /*
             |--------------------------------------------------------------------------
-            | CREATE NEW
+            | LOOP
             |--------------------------------------------------------------------------
             */
 
-                if (
-                    empty($section['id'])
-                    || !empty($section['is_new'])
-                ) {
+            foreach ($request->sections as $index => $section) {
 
-                    $baseData = [
-                        ...$baseData,
-                        ...$this->governanceDefaults(),
-                    ];
+                Log::info('------------------------------------------------');
 
-                    if ($lang === 'en') {
+                Log::info('Processing Section', [
+                    'index' => $index,
+                    'id' => $section['id'] ?? null,
+                    'type' => $section['type'] ?? null,
+                    'order' => $section['order'] ?? null,
+                    'is_new' => $section['is_new'] ?? false,
+                    'is_deleted' => $section['is_deleted'] ?? false,
+                    'content_length' => strlen($section['content'] ?? ''),
+                    'memory_usage_mb' => round(memory_get_usage(true) / 1024 / 1024, 2),
+                ]);
 
-                        $content = TopicContent::create([
-                            ...$baseData,
-                            'title'
-                            => $section['title'] ?? null,
-                            'content'
-                            => $section['content'] ?? null,
-                        ]);
-                    } else {
+                try {
 
-                        $content = TopicContent::create([
-                            ...$baseData,
-                            'title' => 'BASE_RECORD',
-                            'content' => null,
-                        ]);
+                    /*
+                    |--------------------------------------------------------------------------
+                    | MEDIA META
+                    |--------------------------------------------------------------------------
+                    */
 
-                        $content->translations()->create([
-                            'language_code' => $lang,
-                            'title'
-                            => $section['title'] ?? null,
-                            'content'
-                            => $section['content'] ?? null,
-                        ]);
-                    }
+                    if ($section['type'] === 'media') {
 
-                    $result[] = $content;
-
-                    continue;
-                }
-
-                /*
-            |--------------------------------------------------------------------------
-            | EXISTING
-            |--------------------------------------------------------------------------
-            */
-
-                $content = $contents[$section['id']] ?? null;
-
-                if (!$content) {
-                    continue;
-                }
-
-                /*
-            |--------------------------------------------------------------------------
-            | DELETE
-            |--------------------------------------------------------------------------
-            */
-
-                if (!empty($section['is_deleted'])) {
-
-                    if (!$content->trashed()) {
-                        $content->delete();
-                    }
-
-                    continue;
-                }
-
-                /*
-            |--------------------------------------------------------------------------
-            | RESTORE
-            |--------------------------------------------------------------------------
-            */
-
-                if ($content->trashed()) {
-                    $content->restore();
-                }
-
-                /*
-            |--------------------------------------------------------------------------
-            | SYSTEM USER CONTROLS
-            |--------------------------------------------------------------------------
-            */
-
-                if ($isSystemUser) {
-
-                    if (isset($section['status'])) {
-
-                        $baseData['status']
-                            = (bool) $section['status'];
-                    }
-
-                    if (
-                        !empty($section['publish_status'])
-                    ) {
-
-                        $allowedStatuses = [
-                            TopicContent::PUBLISH_DRAFT,
-                            TopicContent::PUBLISH_PUBLISHED,
-                            TopicContent::PUBLISH_UNPUBLISHED,
+                        $section['meta'] = [
+                            'shortcode'
+                            => $section['media_shortcode']
+                                ?? ($section['meta']['shortcode'] ?? null)
                         ];
 
-                        if (
-                            in_array(
-                                $section['publish_status'],
-                                $allowedStatuses
-                            )
-                        ) {
-
-                            $baseData['publish_status']
-                                = $section['publish_status'];
-                        }
+                        Log::info('Media Meta Prepared', [
+                            'meta' => $section['meta'],
+                        ]);
                     }
-                }
 
-                /*
-            |--------------------------------------------------------------------------
-            | UPDATE
-            |--------------------------------------------------------------------------
-            */
+                    $resolvedOrder = $this->resolveSafeOrder(
+                        $topicId,
+                        $section['order'] ?? null,
+                        $section['id'] ?? null
+                    );
+                    /*
+                    |--------------------------------------------------------------------------
+                    | BASE DATA
+                    |--------------------------------------------------------------------------
+                    */
 
-                if ($lang === 'en') {
+                    $baseData = [
+                        'topic_id' => $topicId,
+                        'type' => $section['type'],
+                        'order' => $resolvedOrder,
+                        'meta' => $section['meta'] ?? null,
+                        'created_by' => auth()->id(),
+                    ];
 
-                    $content->update([
-                        ...$baseData,
-                        'title'
-                        => $section['title'] ?? null,
-                        'content'
-                        => $section['content'] ?? null,
-                    ]);
-                } else {
+                    /*
+                    |--------------------------------------------------------------------------
+                    | CREATE NEW
+                    |--------------------------------------------------------------------------
+                    */
 
-                    $content->update($baseData);
+                    if (
+                        empty($section['id'])
+                        || !empty($section['is_new'])
+                    ) {
 
-                    $translation = $content->translations()
-                        ->where('language_code', $lang)
-                        ->first();
+                        Log::info('Creating New Content');
 
-                    if ($translation) {
+                        $baseData = [
+                            ...$baseData,
+                            ...$this->governanceDefaults(),
+                        ];
 
-                        $translation->update([
-                            'title'
-                            => $section['title'] ?? null,
+                        if ($lang === 'en') {
 
-                            'content'
-                            => $section['content'] ?? null,
+                            Log::info('Creating EN Content');
+
+                            $content = TopicContent::create([
+                                ...$baseData,
+                                'title' => $section['title'] ?? null,
+                                'content' => $section['content'] ?? null,
+                            ]);
+                        } else {
+
+                            Log::info('Creating Multilingual Base Record');
+
+                            $content = TopicContent::create([
+                                ...$baseData,
+                                'title' => 'BASE_RECORD',
+                                'content' => null,
+                            ]);
+
+                            Log::info('Creating Translation');
+
+                            $content->translations()->create([
+                                'language_code' => $lang,
+                                'title' => $section['title'] ?? null,
+                                'content' => $section['content'] ?? null,
+                            ]);
+                        }
+
+                        Log::info('New Content Created', [
+                            'content_id' => $content->id,
                         ]);
-                    } else {
 
-                        $content->translations()->create([
-                            'language_code' => $lang,
+                        $result[] = $content;
 
-                            'title'
-                            => $section['title'] ?? null,
-
-                            'content'
-                            => $section['content'] ?? null,
-                        ]);
+                        continue;
                     }
 
                     /*
-                    |---------------------------------------------------
-                    | IMPORTANT
-                    |---------------------------------------------------
-                    | Trigger TopicContent saved event
-                    | So multilingual TTS works
+                    |--------------------------------------------------------------------------
+                    | EXISTING
+                    |--------------------------------------------------------------------------
                     */
-                    $content->touch();
-                }
 
-                $result[] = $content;
+                    Log::info('Finding Existing Content');
+
+                    $content = $contents[$section['id']] ?? null;
+
+                    if (!$content) {
+
+                        Log::warning('Content Not Found', [
+                            'id' => $section['id']
+                        ]);
+
+                        continue;
+                    }
+
+                    Log::info('Existing Content Loaded', [
+                        'content_id' => $content->id,
+                        'trashed' => $content->trashed(),
+                    ]);
+
+                    /*
+                    |--------------------------------------------------------------------------
+                    | DELETE
+                    |--------------------------------------------------------------------------
+                    */
+
+                    if (!empty($section['is_deleted'])) {
+
+                        Log::info('Deleting Content', [
+                            'content_id' => $content->id
+                        ]);
+
+                        if (!$content->trashed()) {
+                            $content->delete();
+                        }
+
+                        continue;
+                    }
+
+                    /*
+                    |--------------------------------------------------------------------------
+                    | RESTORE
+                    |--------------------------------------------------------------------------
+                    */
+
+                    if ($content->trashed()) {
+
+                        Log::info('Restoring Content', [
+                            'content_id' => $content->id
+                        ]);
+
+                        $content->restore();
+                    }
+
+                    /*
+                    |--------------------------------------------------------------------------
+                    | SYSTEM USER CONTROLS
+                    |--------------------------------------------------------------------------
+                    */
+
+                    if ($isSystemUser) {
+
+                        Log::info('Applying System User Controls');
+
+                        if (isset($section['status'])) {
+
+                            $baseData['status']
+                                = (bool) $section['status'];
+                        }
+
+                        if (!empty($section['publish_status'])) {
+
+                            $allowedStatuses = [
+                                TopicContent::PUBLISH_DRAFT,
+                                TopicContent::PUBLISH_PUBLISHED,
+                                TopicContent::PUBLISH_UNPUBLISHED,
+                            ];
+
+                            if (
+                                in_array(
+                                    $section['publish_status'],
+                                    $allowedStatuses
+                                )
+                            ) {
+
+                                $baseData['publish_status']
+                                    = $section['publish_status'];
+                            }
+                        }
+                    }
+
+                    /*
+                    |--------------------------------------------------------------------------
+                    | UPDATE
+                    |--------------------------------------------------------------------------
+                    */
+
+                    Log::info('Updating Content', [
+                        'content_id' => $content->id,
+                    ]);
+
+                    if ($lang === 'en') {
+
+                        $content->update([
+                            ...$baseData,
+                            'title' => $section['title'] ?? null,
+                            'content' => $section['content'] ?? null,
+                        ]);
+                    } else {
+
+                        $content->update($baseData);
+
+                        $translation = $content->translations()
+                            ->where('language_code', $lang)
+                            ->first();
+
+                        if ($translation) {
+
+                            Log::info('Updating Translation');
+
+                            $translation->update([
+                                'title' => $section['title'] ?? null,
+                                'content' => $section['content'] ?? null,
+                            ]);
+                        } else {
+
+                            Log::info('Creating Translation');
+
+                            $content->translations()->create([
+                                'language_code' => $lang,
+                                'title' => $section['title'] ?? null,
+                                'content' => $section['content'] ?? null,
+                            ]);
+                        }
+
+                        Log::info('Touching Content');
+
+                        $content->touch();
+                    }
+
+                    Log::info('Content Updated Successfully', [
+                        'content_id' => $content->id,
+                    ]);
+
+                    $result[] = $content;
+                } catch (\Throwable $sectionError) {
+
+                    Log::error('SECTION FAILED', [
+                        'index' => $index,
+                        'id' => $section['id'] ?? null,
+                        'message' => $sectionError->getMessage(),
+                        'line' => $sectionError->getLine(),
+                        'file' => $sectionError->getFile(),
+                        'trace' => $sectionError->getTraceAsString(),
+                    ]);
+
+                    throw $sectionError;
+                }
             }
+
+            /*
+        |--------------------------------------------------------------------------
+        | COMMIT
+        |--------------------------------------------------------------------------
+        */
 
             DB::commit();
 
+            Log::info('DB Transaction Committed');
+
+            Log::info('================ BULK UPDATE SUCCESS ================', [
+                'result_count' => count($result),
+                'memory_peak_mb' => round(memory_get_peak_usage(true) / 1024 / 1024, 2),
+            ]);
+
             return response()->json([
                 'success' => true,
-                'message'
-                => 'Bulk operation successful',
+                'message' => 'Bulk operation successful',
                 'count' => count($result),
                 'data' => $result
             ]);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
 
             DB::rollBack();
 
-            throw $e;
+            Log::error('================ BULK UPDATE FAILED ================', [
+                'message' => $e->getMessage(),
+                'line' => $e->getLine(),
+                'file' => $e->getFile(),
+                'memory_peak_mb' => round(memory_get_peak_usage(true) / 1024 / 1024, 2),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 500);
         }
     }
 
@@ -734,8 +960,6 @@ class SectionContentController extends Controller
         ]);
     }
 
-
-
     /*
     |--------------------------------------------------------------------------
     | SHOW
@@ -852,7 +1076,6 @@ class SectionContentController extends Controller
         ]);
     }
 
-
     /*
     |--------------------------------------------------------------------------
     | FULL (Frontend API)
@@ -935,6 +1158,13 @@ class SectionContentController extends Controller
 
             $content->update([
                 ...$data,
+
+                'order' => $this->resolveSafeOrder(
+                    $topicId,
+                    $data['order'] ?? null,
+                    $content->id
+                ),
+
                 'created_by' => auth()->id(),
             ]);
         } else {
@@ -999,24 +1229,47 @@ class SectionContentController extends Controller
     {
         $request->validate([
             'items' => 'required|array',
-            'items.*.id' => [
-                'required',
-                'integer',
-                Rule::exists('topic_contents', 'id')->where(
-                    fn($q) =>
-                    $q->where('topic_id', $topicId)
-                )
-            ],
+            'items.*.id' => 'required|integer',
             'items.*.order' => 'required|integer',
         ]);
 
-        foreach ($request->items as $item) {
-            TopicContent::where('topic_id', $topicId)
-                ->where('id', $item['id'])
-                ->update(['order' => $item['order']]);
-        }
+        DB::transaction(function () use ($request, $topicId) {
 
-        return response()->json(['message' => 'Order updated']);
+            /*
+        |--------------------------------------------------------------------------
+        | TEMP SHIFT
+        |--------------------------------------------------------------------------
+        */
+
+            foreach ($request->items as $item) {
+
+                TopicContent::where('topic_id', $topicId)
+                    ->where('id', $item['id'])
+                    ->update([
+                        'order' => 100000 + $item['order']
+                    ]);
+            }
+
+            /*
+        |--------------------------------------------------------------------------
+        | FINAL ORDER
+        |--------------------------------------------------------------------------
+        */
+
+            foreach ($request->items as $item) {
+
+                TopicContent::where('topic_id', $topicId)
+                    ->where('id', $item['id'])
+                    ->update([
+                        'order' => $item['order']
+                    ]);
+            }
+        });
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Order updated'
+        ]);
     }
 
     /*
@@ -1024,7 +1277,6 @@ class SectionContentController extends Controller
     | TOGGLE STATUS
     |--------------------------------------------------------------------------
     */
-
     public function toggleStatus($topicId, $id)
     {
         /*
@@ -1051,18 +1303,18 @@ class SectionContentController extends Controller
         )->findOrFail($id);
 
         /*
-    |--------------------------------------------------------------------------
-    | TOGGLE STATUS
-    |--------------------------------------------------------------------------
-    */
+        |--------------------------------------------------------------------------
+        | TOGGLE STATUS
+        |--------------------------------------------------------------------------
+        */
 
         $newStatus = !$content->status;
 
         /*
-    |--------------------------------------------------------------------------
-    | AUTO PUBLISH STATUS HANDLING
-    |--------------------------------------------------------------------------
-    */
+        |--------------------------------------------------------------------------
+        | AUTO PUBLISH STATUS HANDLING
+        |--------------------------------------------------------------------------
+        */
 
         $publishStatus = $newStatus
             ? TopicContent::PUBLISH_PUBLISHED
@@ -1312,5 +1564,45 @@ class SectionContentController extends Controller
                 ]
             ]
         ]);
+    }
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | RESOLVE SAFE ORDER
+    |--------------------------------------------------------------------------
+    */
+    private function resolveSafeOrder(int $topicId, ?int $requestedOrder = null, ?int $ignoreId = null): int
+    {
+
+        $query = TopicContent::where('topic_id', $topicId);
+
+        if ($ignoreId) {
+            $query->where('id', '!=', $ignoreId);
+        }
+
+        $usedOrders = $query
+            ->pluck('order')
+            ->toArray();
+
+        $maxOrder = empty($usedOrders)
+            ? 0
+            : max($usedOrders);
+
+        /*
+        |--------------------------------------------------------------------------
+        | AUTO ORDER
+        |--------------------------------------------------------------------------
+        */
+
+        if (
+            !$requestedOrder
+            || in_array($requestedOrder, $usedOrders)
+        ) {
+
+            return $maxOrder + 1;
+        }
+
+        return $requestedOrder;
     }
 }

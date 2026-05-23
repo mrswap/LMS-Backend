@@ -90,6 +90,9 @@ class TopicContent extends BaseModel
 
     protected static function booted()
     {
+
+        parent::booted();
+
         /*
     |--------------------------------------------------------------------------
     | CREATE
