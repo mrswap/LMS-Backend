@@ -83,9 +83,7 @@ class AuthController extends Controller
             | 🔥 VERIFY LINK LOGIC
             |-----------------------------------------
             */
-
-            $source = $request->get('source', 'web');
-
+            $source = $request->input('source', 'web');
             if ($source == 'app') {
                 $verifyLink = rtrim(env('APP_DEEP_LINK', 'avante://'), '/')
                     . "/verify-email?token=$token";
