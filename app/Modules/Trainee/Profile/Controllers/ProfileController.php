@@ -38,9 +38,19 @@ class ProfileController extends Controller
                 $q->where(
                     'user_id',
                     $user->id
-                );
-            })
+                )
 
+                    /*
+                    |--------------------------------------------------------------------------
+                    | IGNORE SOFT DELETED TOPICS
+                    |--------------------------------------------------------------------------
+                    */
+
+                    ->whereHas('topic', function ($topic) {
+
+                        $topic->whereNull('deleted_at');
+                    });
+            })
             /*
             |--------------------------------------------------------------------------
             | ONLY UNREAD

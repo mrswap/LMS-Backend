@@ -195,9 +195,12 @@ class TopicContent extends BaseModel
             return null;
         }
 
-        return asset($this->audio_path);
-    }
+        $path = str_starts_with($this->audio_path, 'public/')
+            ? $this->audio_path
+            : 'public/' . ltrim($this->audio_path, '/');
 
+        return asset($path);
+    }
     /*
     |--------------------------------------------------------------------------
     | RELATIONSHIPS

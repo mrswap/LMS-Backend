@@ -72,13 +72,19 @@ class PasswordController extends Controller
         | DYNAMIC LINK (DEFAULT = MOBILE)
         |-----------------------------------------
         */
-        $source = $request->get('source'); // null OR 'web'
-
-        if ($source === 'web') {
-            $resetLink = rtrim(env('FRONT_END_URL'), '/') . "/trainee/reset-password?token=$token";
+        $source = $request->input('source', 'app');
+        if ($source == 'app') {
+            $verifyLink = env('APP_DEEP_LINK', 'avante://')
+                . "trainee/reset-password?token=$token";
+        } else if ($source == 'web') {
+            $verifyLink = rtrim(env('FRONT_END_SALES_URL'), '/')
+                . "/trainee/reset-password?token=$token";
+        } else if ($source == 'ios') {
+            $verifyLink = rtrim(env('IOS_DEEP_LINK'), '/')
+                . "/trainee/reset-password?token=$token";
         } else {
-            // DEFAULT → MOBILE APP
-            $resetLink = rtrim(env('FRONT_END_SALES_URL'), '/') . "/reset-password?token=$token";
+            $verifyLink = env('APP_DEEP_LINK', 'avante://')
+                . "trainee/reset-password?token=$token";
         }
 
         /*

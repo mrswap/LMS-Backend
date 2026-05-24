@@ -623,6 +623,26 @@ class NotificationService
                 'meta' => $data['meta']
                     ?? [],
             ],
+            'AI_SUPPORT_REPLY' => [
+
+                'title' => $data['title']
+                    ?? 'AVANTE-AI Replied',
+
+                'message' => $data['message']
+                    ?? 'AVANTE-AI replied to your support request.',
+
+                'screen' => $data['screen']
+                    ?? 'SupportThread',
+
+                'id' => $data['id']
+                    ?? null,
+
+                'image' => $data['image']
+                    ?? null,
+
+                'meta' => $data['meta']
+                    ?? [],
+            ],
             /*
             |--------------------------------------------------------------------------
             | 🔥 DEFAULT

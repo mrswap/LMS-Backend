@@ -83,16 +83,19 @@ class AuthController extends Controller
             | 🔥 VERIFY LINK LOGIC
             |-----------------------------------------
             */
-            $source = $request->input('source', 'web');
+            $source = $request->input('source', 'app');
             if ($source == 'app') {
-                $verifyLink = rtrim(env('APP_DEEP_LINK', 'avante://'), '/')
-                    . "/verify-email?token=$token";
+                $verifyLink = env('APP_DEEP_LINK', 'avante://')
+                    . "verify-email?token=$token";
             } else if ($source == 'web') {
                 $verifyLink = rtrim(env('FRONT_END_SALES_URL'), '/')
                     . "/verify-email?token=$token";
-            } else {
-                $verifyLink = rtrim(env('APP_DEEP_LINK', 'avante://'), '/')
+            } else if ($source == 'ios') {
+                $verifyLink = rtrim(env('IOS_DEEP_LINK'), '/')
                     . "/verify-email?token=$token";
+            } else {
+                $verifyLink = env('APP_DEEP_LINK', 'avante://')
+                    . "verify-email?token=$token";
             }
 
             /*

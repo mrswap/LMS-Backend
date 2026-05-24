@@ -396,6 +396,49 @@ class AiSupportService
             ]);
 
             /*
+            |--------------------------------------------------------------
+            | 🔔 AI REPLY NOTIFICATION
+            |--------------------------------------------------------------
+            */
+
+            if ($thread->user) {
+
+                app(\App\Services\NotificationService::class)->send(
+
+                    $thread->user,
+
+                    'AI_SUPPORT_REPLY',
+
+                    [
+
+                        'title' => 'New AI Trainer Reply',
+
+                        'message' =>
+                        'AVANTE-AI replied to your support question.',
+
+                        'screen' => 'SupportThread',
+
+                        'id' => $thread->id,
+
+                        'meta' => [
+
+                            'thread_id' => $thread->id,
+
+                            'message_id' => $message->id,
+
+                            'topic_id' => $topic->id ?? null,
+
+                            'topic_title' => $topic->title ?? null,
+
+                            'ai' => true,
+                        ]
+                    ],
+
+                    ['db', 'push']
+                );
+            }
+
+            /*
         |--------------------------------------------------------------
         | UPDATE THREAD
         |--------------------------------------------------------------

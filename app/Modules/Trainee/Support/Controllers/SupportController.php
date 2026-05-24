@@ -63,6 +63,10 @@ class SupportController extends Controller
                 'messages',
             ])
 
+            ->whereHas('topic', function ($q) {
+
+                $q->whereNull('deleted_at');
+            })
             /*
         |--------------------------------------------------------------------------
         | ONLY CURRENT TRAINEE
@@ -72,7 +76,7 @@ class SupportController extends Controller
             ->where('user_id', $user->id)
 
             /*
-        |--------------------------------------------------------------------------
+         |--------------------------------------------------------------------------
         | FILTERS
         |--------------------------------------------------------------------------
         */
