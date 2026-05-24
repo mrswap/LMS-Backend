@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use App\Services\AuditService;
 use App\Models\User;
+use App\Models\SupportMessage;
 use App\Services\NotificationService;
 
 class ProfileController extends Controller
@@ -17,13 +18,67 @@ class ProfileController extends Controller
     public function profile(Request $request)
     {
 
-        AuditService::log('profile_viewed', 'User viewed their profile');
+        AuditService::log(
+            'profile_viewed',
+            'User viewed their profile'
+        );
 
-        $user = auth()->id();
+        $user = auth()->user();
 
-        $user = User::where('id', $user)->first();
+        /*
+        |--------------------------------------------------------------------------
+        | SUPPORT UNREAD COUNT
+        |--------------------------------------------------------------------------
+        */
 
-        return response()->json(['data' => $request->user()]);
+        $supportUnreadCount = SupportMessage::query()
+
+            ->whereHas('thread', function ($q) use ($user) {
+
+                $q->where(
+                    'user_id',
+                    $user->id
+                );
+            })
+
+            /*
+            |--------------------------------------------------------------------------
+            | ONLY UNREAD
+            |--------------------------------------------------------------------------
+            */
+
+            ->whereNull('read_at')
+
+            /*
+            |--------------------------------------------------------------------------
+            | ONLY ADMIN + AI
+            |--------------------------------------------------------------------------
+            */
+
+            ->where(function ($q) {
+
+                $q->where('is_admin', true)
+
+                    ->orWhere('is_ai', true);
+            })
+
+            ->count();
+
+        /*
+        |--------------------------------------------------------------------------
+        | APPEND EXTRA DATA
+        |--------------------------------------------------------------------------
+        */
+
+        $user->support_unread_count =
+            $supportUnreadCount;
+
+        return response()->json([
+
+            'success' => true,
+
+            'data' => $user,
+        ]);
     }
 
 

@@ -86,13 +86,14 @@ class AuthController extends Controller
 
             $source = $request->get('source', 'web');
 
-            if ($source != 'web') {
-                // 👉 MOBILE APP DEEP LINK
+            if ($source == 'app') {
                 $verifyLink = rtrim(env('APP_DEEP_LINK', 'avante://'), '/')
                     . "/verify-email?token=$token";
-            } else {
-                // 👉 WEB LINK (DEFAULT)
+            } else if ($source == 'web') {
                 $verifyLink = rtrim(env('FRONT_END_SALES_URL'), '/')
+                    . "/verify-email?token=$token";
+            } else {
+                $verifyLink = rtrim(env('APP_DEEP_LINK', 'avante://'), '/')
                     . "/verify-email?token=$token";
             }
 
