@@ -455,4 +455,60 @@ class SupportController extends Controller
             'message' => 'Thread reopened successfully.',
         ]);
     }
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | MARK THREAD AS READ
+    |--------------------------------------------------------------------------
+    */
+
+    public function markAsRead($id)
+    {
+        $thread = SupportThread::query()
+
+            /*
+            |--------------------------------------------------------------------------
+            | IGNORE DELETED TOPICS
+            |--------------------------------------------------------------------------
+            */
+
+            ->whereHas('topic', function ($q) {
+
+                $q->whereNull('deleted_at');
+            })
+
+            ->findOrFail($id);
+
+        /*
+        |--------------------------------------------------------------------------
+        | MARK TRAINEE + AI MESSAGES READ
+        |--------------------------------------------------------------------------
+        */
+
+        $thread->messages()
+
+            ->whereNull('read_at')
+
+            ->where(function ($q) {
+
+                /*
+            |--------------------------------------------------------------------------
+            | TRAINEE OR AI
+            |--------------------------------------------------------------------------
+            */
+
+                $q->where('is_admin', false);
+            })
+
+            ->update([
+
+                'read_at' => now(),
+            ]);
+
+        return response()->json([
+
+            'success' => true,
+        ]);
+    }
 }

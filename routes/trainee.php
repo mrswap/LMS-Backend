@@ -91,6 +91,7 @@ Route::prefix('v1/trainee')->group(function () {
             Route::get('inbox', [SupportController::class, 'inbox']);
             Route::get('topics/{topicId}/thread', [SupportController::class, 'thread'])->whereNumber('topicId');
             Route::post('threads/{threadId}/message', [SupportController::class, 'send'])->whereNumber('threadId');
+            Route::post('threads/{threadId}/read', [SupportController::class, 'markAsRead'])->whereNumber('threadId');
         });
     });
 });

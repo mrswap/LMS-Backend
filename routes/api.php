@@ -316,6 +316,7 @@ Route::prefix('v1/admin')->group(function () {
             Route::post('/{id}/reply', [AdminSupportController::class, 'reply'])->whereNumber('id');
             Route::post('/{id}/resolve', [AdminSupportController::class, 'resolve'])->whereNumber('id');
             Route::post('/{id}/reopen', [AdminSupportController::class, 'reopen'])->whereNumber('id');
+            Route::post('/{id}/read', [AdminSupportController::class, 'markAsRead'])->whereNumber('id');
         });
     });
 });

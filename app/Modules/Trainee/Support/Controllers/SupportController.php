@@ -607,4 +607,70 @@ class SupportController extends Controller
             ], 500);
         }
     }
+
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | MARK THREAD AS READ
+    |--------------------------------------------------------------------------
+    */
+
+    public function markAsRead($threadId)
+    {
+        $user = auth()->user();
+
+        /*
+        |--------------------------------------------------------------------------
+        | VALID THREAD
+        |--------------------------------------------------------------------------
+        */
+
+        $thread = SupportThread::query()
+
+            ->where(
+                'user_id',
+                $user->id
+            )
+
+            /*
+        |--------------------------------------------------------------------------
+        | IGNORE DELETED TOPICS
+        |--------------------------------------------------------------------------
+        */
+
+            ->whereHas('topic', function ($q) {
+
+                $q->whereNull('deleted_at');
+            })
+
+            ->findOrFail($threadId);
+
+        /*
+        |--------------------------------------------------------------------------
+        | MARK ADMIN + AI MESSAGES READ
+        |--------------------------------------------------------------------------
+        */
+
+        $thread->messages()
+
+            ->whereNull('read_at')
+
+            ->where(function ($q) {
+
+                $q->where('is_admin', true)
+
+                    ->orWhere('is_ai', true);
+            })
+
+            ->update([
+
+                'read_at' => now(),
+            ]);
+
+        return response()->json([
+
+            'success' => true,
+        ]);
+    }
 }
