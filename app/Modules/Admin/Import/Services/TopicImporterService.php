@@ -6,6 +6,7 @@ use App\Models\Chapter;
 use App\Models\Module;
 use App\Models\Topic;
 use App\Models\TopicContent;
+use App\Jobs\GenerateTopicContentAudioJob;
 
 class TopicImporterService
 {
@@ -126,7 +127,7 @@ class TopicImporterService
                             continue;
                         }
 
-                        TopicContent::create([
+                        $topicContent = TopicContent::create([
 
                             'topic_id' => $topic->id,
 
@@ -163,6 +164,25 @@ class TopicImporterService
                             'created_by' =>
                             $createdBy,
                         ]);
+
+                        /*
+                        |--------------------------------------------------------------------------
+                        | GENERATE AUDIO
+                        |--------------------------------------------------------------------------
+                        */
+
+                        $plainText = trim(
+                            strip_tags(
+                                $topicContent->content
+                            )
+                        );
+
+                        if (strlen($plainText) > 100) {
+
+                            GenerateTopicContentAudioJob::dispatch(
+                                $topicContent->id
+                            )->onQueue('audio');
+                        }
                     }
                 }
             }
