@@ -56,9 +56,16 @@ class AttemptController extends Controller
         }
 
         // 🔹 max attempts config
-        $maxAttempts = $assessment->type === 'level'
-            ? config('assessment.exam.max_attempts', 2)
-            : config('assessment.quiz.max_attempts', 5);
+        $examTypes = config('assessment.exam.types', []);
+
+        $isExam = in_array(
+            $assessment->type,
+            $examTypes
+        );
+
+        $maxAttempts = $isExam
+            ? config('assessment.exam.max_attempts', 50)
+            : config('assessment.quiz.max_attempts', 50);
 
         // 🔹 completed attempts count (IMPORTANT)
         $completedAttempts = AssessmentAttempt::where('user_id', $userId)
@@ -558,10 +565,15 @@ class AttemptController extends Controller
         ]);
     }
 
-
     public function submit($id, Request $request)
     {
-        AuditService::log('assessment_submitted', 'User submitted an assessment', ['assessment_id' => $id]);
+        AuditService::log(
+            'assessment_submitted',
+            'User submitted an assessment',
+            [
+                'assessment_id' => $id
+            ]
+        );
 
         /*
         |--------------------------------------------------
@@ -576,13 +588,26 @@ class AttemptController extends Controller
 
         $userId = auth()->id();
 
-        $attempt = AssessmentAttempt::with(['answers', 'assessment.questions'])
+        /*
+        |--------------------------------------------------
+        | 📦 ATTEMPT
+        |--------------------------------------------------
+        */
+        $attempt = AssessmentAttempt::with([
+            'answers',
+            'assessment.questions'
+        ])
             ->where('id', $request->attempt_id)
             ->where('user_id', $userId)
             ->firstOrFail();
 
-        // ❌ already submitted
+        /*
+        |--------------------------------------------------
+        | ❌ ALREADY SUBMITTED
+        |--------------------------------------------------
+        */
         if ($attempt->status !== 'in_progress') {
+
             return response()->json([
                 'message' => 'Already submitted'
             ], 422);
@@ -592,13 +617,45 @@ class AttemptController extends Controller
 
         /*
         |--------------------------------------------------
+        | 🔒 ASSESSMENT VALIDATION
+        |--------------------------------------------------
+        */
+        if ((int) $assessment->id !== (int) $id) {
+
+            return response()->json([
+                'message' => 'Assessment mismatch'
+            ], 422);
+        }
+
+        /*
+        |--------------------------------------------------
+        | 🔒 VALID ASSESSMENT TYPE
+        |--------------------------------------------------
+        */
+        $allowedTypes = array_merge(
+            config('assessment.quiz.types', []),
+            config('assessment.exam.types', [])
+        );
+
+        if (!in_array($assessment->type, $allowedTypes, true)) {
+
+            return response()->json([
+                'message' => 'Invalid assessment type'
+            ], 422);
+        }
+
+        /*
+        |--------------------------------------------------
         | ⏱ SUBMIT TYPE
         |--------------------------------------------------
         */
         $submitType = $request->submit_type ?? 'manual';
 
         if ($assessment->duration) {
-            $expire = $attempt->started_at->copy()->addMinutes($assessment->duration);
+
+            $expire = $attempt->started_at
+                ->copy()
+                ->addMinutes($assessment->duration);
 
             if (now()->greaterThan($expire)) {
                 $submitType = 'timeout';
@@ -612,7 +669,9 @@ class AttemptController extends Controller
         */
         $totalQuestions = $assessment->questions->count();
 
-        $answeredCount = $attempt->answers->whereNotNull('selected_option_id')->count();
+        $answeredCount = $attempt->answers
+            ->whereNotNull('selected_option_id')
+            ->count();
 
         $remainingCount = $totalQuestions - $answeredCount;
 
@@ -622,9 +681,15 @@ class AttemptController extends Controller
         |--------------------------------------------------
         */
         if ($request->filled('time_taken_seconds')) {
-            $timeTaken = max(0, (int)$request->time_taken_seconds);
+
+            $timeTaken = max(
+                0,
+                (int) $request->time_taken_seconds
+            );
         } else {
+
             $startedAt = Carbon::parse($attempt->started_at);
+
             $timeTaken = $startedAt->diffInSeconds(now());
         }
 
@@ -633,11 +698,25 @@ class AttemptController extends Controller
         | 📊 ATTEMPT LIMIT
         |--------------------------------------------------
         */
-        $maxAttempts = $assessment->type === 'level'
-            ? config('assessment.exam.max_attempts', 2)
-            : config('assessment.quiz.max_attempts', 5);
+        $examTypes = config(
+            'assessment.exam.types',
+            ['module']
+        );
 
-        $completedAttempts = AssessmentAttempt::where('user_id', $userId)
+        $isExam = in_array(
+            $assessment->type,
+            $examTypes,
+            true
+        );
+
+        $maxAttempts = $isExam
+            ? config('assessment.exam.max_attempts', 50)
+            : config('assessment.quiz.max_attempts', 50);
+
+        $completedAttempts = AssessmentAttempt::where(
+            'user_id',
+            $userId
+        )
             ->where('assessment_id', $assessment->id)
             ->whereIn('status', ['passed', 'failed'])
             ->count();
@@ -649,30 +728,43 @@ class AttemptController extends Controller
         */
         $context = null;
 
+        /*
+        |--------------------------------------------------
+        | TOPIC QUIZ
+        |--------------------------------------------------
+        */
         if ($assessment->assessmentable_type === Topic::class) {
 
-            $topic = Topic::with('chapter.module.level.program')
-                ->find($assessment->assessmentable_id);
+            $topic = Topic::with(
+                'chapter.module.level.program'
+            )->find($assessment->assessmentable_id);
 
             if ($topic) {
+
                 $context = [
+
                     'type' => 'topic',
+
                     'topic' => [
                         'id' => $topic->id,
                         'title' => $topic->title,
                     ],
+
                     'chapter' => [
                         'id' => $topic->chapter->id ?? null,
                         'title' => $topic->chapter->title ?? null,
                     ],
+
                     'module' => [
                         'id' => $topic->chapter->module->id ?? null,
                         'title' => $topic->chapter->module->title ?? null,
                     ],
+
                     'level' => [
                         'id' => $topic->chapter->module->level->id ?? null,
                         'title' => $topic->chapter->module->level->title ?? null,
                     ],
+
                     'program' => [
                         'id' => $topic->chapter->module->level->program->id ?? null,
                         'title' => $topic->chapter->module->level->program->title ?? null,
@@ -681,18 +773,60 @@ class AttemptController extends Controller
             }
         }
 
-        if ($assessment->assessmentable_type === Level::class) {
+        /*
+        |--------------------------------------------------
+        | MODULE EXAM
+        |--------------------------------------------------
+        */ elseif ($assessment->assessmentable_type === Module::class) {
+
+            $module = Module::with(
+                'level.program'
+            )->find($assessment->assessmentable_id);
+
+            if ($module) {
+
+                $context = [
+
+                    'type' => 'module',
+
+                    'module' => [
+                        'id' => $module->id,
+                        'title' => $module->title,
+                    ],
+
+                    'level' => [
+                        'id' => $module->level->id ?? null,
+                        'title' => $module->level->title ?? null,
+                    ],
+
+                    'program' => [
+                        'id' => $module->level->program->id ?? null,
+                        'title' => $module->level->program->title ?? null,
+                    ],
+                ];
+            }
+        }
+
+        /*
+        |--------------------------------------------------
+        | RESERVED LEVEL EXAM SUPPORT
+        |--------------------------------------------------
+        */ elseif ($assessment->assessmentable_type === Level::class) {
 
             $level = Level::with('program')
                 ->find($assessment->assessmentable_id);
 
             if ($level) {
+
                 $context = [
+
                     'type' => 'level',
+
                     'level' => [
                         'id' => $level->id,
                         'title' => $level->title,
                     ],
+
                     'program' => [
                         'id' => $level->program->id ?? null,
                         'title' => $level->program->title ?? null,
@@ -707,6 +841,7 @@ class AttemptController extends Controller
         |--------------------------------------------------
         */
         return DB::transaction(function () use (
+
             $attempt,
             $assessment,
             $submitType,
@@ -718,10 +853,16 @@ class AttemptController extends Controller
             $maxAttempts,
             $completedAttempts,
             $context
+
         ) {
 
-            // 🔍 evaluate
-            $result = $this->service->evaluateAttempt($attempt);
+            /*
+            |--------------------------------------------------
+            | 🔍 EVALUATE
+            |--------------------------------------------------
+            */
+            $result = $this->service
+                ->evaluateAttempt($attempt);
 
             $percentage = (float) $result['percentage'];
 
@@ -729,13 +870,25 @@ class AttemptController extends Controller
 
             $isPassed = $percentage >= $passingPercentage;
 
-            // 💾 update attempt
+            /*
+            |--------------------------------------------------
+            | 💾 UPDATE ATTEMPT
+            |--------------------------------------------------
+            */
             $attempt->update([
+
                 'score' => $result['marks'],
+
                 'percentage' => $result['percentage'],
+
                 'submitted_at' => now(),
-                'status' => $isPassed ? 'passed' : 'failed',
+
+                'status' => $isPassed
+                    ? 'passed'
+                    : 'failed',
+
                 'time_taken' => $timeTaken,
+
                 'submit_type' => $submitType
             ]);
 
@@ -753,34 +906,44 @@ class AttemptController extends Controller
             */
             if ($user) {
 
-                app(\App\Services\NotificationService::class)->send(
-                    $user,
-                    'ASSESSMENT_COMPLETED',
-                    [
-                        'title' => $isPassed
-                            ? 'Assessment Passed'
-                            : 'Assessment Failed',
+                app(\App\Services\NotificationService::class)
+                    ->send(
 
-                        'message' => $isPassed
-                            ? 'You passed the assessment successfully'
-                            : 'You failed the assessment',
+                        $user,
 
-                        'screen' => 'AssessmentResult',
-                        'id' => $assessment->id,
+                        'ASSESSMENT_COMPLETED',
 
-                        'meta' => [
-                            'assessment_id' => $assessment->id,
-                            'assessment_type' => $assessment->type,
+                        [
+                            'title' => $isPassed
+                                ? 'Assessment Passed'
+                                : 'Assessment Failed',
 
-                            'attempt_id' => $attempt->id,
+                            'message' => $isPassed
+                                ? 'You passed the assessment successfully'
+                                : 'You failed the assessment',
 
-                            'score' => $result['marks'],
-                            'percentage' => $result['percentage'],
-                            'status' => $attempt->status,
-                        ]
-                    ],
-                    ['db', 'push']
-                );
+                            'screen' => 'AssessmentResult',
+
+                            'id' => $assessment->id,
+
+                            'meta' => [
+
+                                'assessment_id' => $assessment->id,
+
+                                'assessment_type' => $assessment->type,
+
+                                'attempt_id' => $attempt->id,
+
+                                'score' => $result['marks'],
+
+                                'percentage' => $result['percentage'],
+
+                                'status' => $attempt->status,
+                            ]
+                        ],
+
+                        ['db', 'push']
+                    );
 
                 /*
                 |--------------------------------------------------
@@ -788,6 +951,7 @@ class AttemptController extends Controller
                 |--------------------------------------------------
                 */
                 $adminPayload = [
+
                     'title' => $isPassed
                         ? 'Assessment Passed'
                         : 'Assessment Failed',
@@ -797,126 +961,231 @@ class AttemptController extends Controller
                         : "{$user->name} failed an assessment",
 
                     'screen' => 'AssessmentReview',
+
                     'id' => $assessment->id,
 
                     'meta' => [
+
                         'user_id' => $user->id,
+
                         'user_name' => $user->name,
 
                         'assessment_id' => $assessment->id,
+
                         'assessment_type' => $assessment->type,
 
                         'attempt_id' => $attempt->id,
 
                         'score' => $result['marks'],
+
                         'percentage' => $result['percentage'],
+
                         'status' => $attempt->status,
                     ]
                 ];
 
                 /*
-            |--------------------------------------------------
-            | 🛡 ADMINS
-            |--------------------------------------------------
-            */
-                app(\App\Services\NotificationService::class)->sendToRole(
-                    'admin',
-                    'ASSESSMENT_COMPLETED',
-                    $adminPayload,
-                    ['db', 'push']
-                );
+                |--------------------------------------------------
+                | 🛡 ADMINS
+                |--------------------------------------------------
+                */
+                app(\App\Services\NotificationService::class)
+                    ->sendToRole(
+                        'admin',
+                        'ASSESSMENT_COMPLETED',
+                        $adminPayload,
+                        ['db', 'push']
+                    );
 
                 /*
                 |--------------------------------------------------
                 | 👑 SUPER ADMINS
                 |--------------------------------------------------
                 */
-                app(\App\Services\NotificationService::class)->sendToRole(
-                    'superadmin',
-                    'ASSESSMENT_COMPLETED',
-                    $adminPayload,
-                    ['db', 'push']
-                );
+                app(\App\Services\NotificationService::class)
+                    ->sendToRole(
+                        'superadmin',
+                        'ASSESSMENT_COMPLETED',
+                        $adminPayload,
+                        ['db', 'push']
+                    );
             }
 
+            /*
+            |--------------------------------------------------
+            | 🎓 CERTIFICATE
+            |--------------------------------------------------
+            */
             $certificate = null;
 
             /*
             |--------------------------------------------------
-            | 🔓 PROGRESSION + CERTIFICATE
+            | 🔓 PROGRESSION
             |--------------------------------------------------
             */
             if ($isPassed) {
 
-                $progressionService = app(ProgressionService::class);
+                $progressionService = app(
+                    ProgressionService::class
+                );
 
+                /*
+                |--------------------------------------------------
+                | TOPIC QUIZ FLOW
+                |--------------------------------------------------
+                */
                 if ($assessment->type === 'topic') {
 
-                    $topic = Topic::find($assessment->assessmentable_id);
+                    $topic = Topic::find(
+                        $assessment->assessmentable_id
+                    );
 
                     if ($topic) {
-                        $progressionService->handleTopicCompletion($userId, $topic);
 
-                        $certificate = app(\App\Services\CertificationService::class)
-                            ->generate(auth()->user(), $topic, $attempt, 'topic');
+                        $progressionService
+                            ->handleTopicCompletion(
+                                $userId,
+                                $topic
+                            );
+
+                        /*
+                    |--------------------------------------------------
+                    | TOPIC CERTIFICATE
+                    |--------------------------------------------------
+                    */
+                        if (
+                            in_array(
+                                'topic',
+                                config(
+                                    'assessment.certification.enabled_for_assessment_types',
+                                    []
+                                ),
+                                true
+                            )
+                        ) {
+
+                            $certificate = app(
+                                \App\Services\CertificationService::class
+                            )->generate(
+                                auth()->user(),
+                                $topic,
+                                $attempt,
+                                'topic'
+                            );
+                        }
                     }
                 }
 
-                if ($assessment->type === 'level') {
+                /*
+                |--------------------------------------------------
+                | MODULE / FUTURE EXAM FLOW
+                |--------------------------------------------------
+                */
+                $assessmentCertificate = $progressionService
+                    ->handleAssessmentPass(
+                        $userId,
+                        $assessment,
+                        $attempt
+                    );
 
-                    $level = Level::find($assessment->assessmentable_id);
+                if (
+                    $assessmentCertificate
+                    && !$certificate
+                ) {
 
-                    if ($level) {
-                        $progressionService->handleLevelExamPass($userId, $level);
-
-                        $certificate = app(\App\Services\CertificationService::class)
-                            ->generate(auth()->user(), $level, $attempt, 'level');
-                    }
+                    $certificate = $assessmentCertificate;
                 }
             }
 
             /*
-        |--------------------------------------------------
-        | 📦 FINAL RESPONSE
-        |--------------------------------------------------
-        */
+            |--------------------------------------------------
+            | 📦 FINAL RESPONSE
+            |--------------------------------------------------
+            */
             return response()->json([
 
-                // 🎯 RESULT
+                /*
+                |--------------------------------------------------
+                | 🎯 RESULT
+                |--------------------------------------------------
+                */
                 'score' => $result['marks'],
+
                 'obtained_marks' => $result['marks'],
+
                 'total_marks' => $assessment->total_marks,
+
                 'passing_marks' => $assessment->passing_score,
 
                 'total' => $totalQuestions,
+
                 'percentage' => $result['percentage'],
+
                 'correct' => $result['correct'],
+
                 'wrong' => $result['wrong'],
+
                 'skipped' => $result['skipped'],
+
                 'status' => $attempt->status,
 
-                // 📊 ATTEMPT
+                /*
+                |--------------------------------------------------
+                | 📊 ATTEMPT
+                |--------------------------------------------------
+                */
                 'attempt_id' => $attempt->id,
+
                 'type' => $assessment->type,
 
                 'total_attempts_allowed' => $maxAttempts,
-                'attempts_used' => $completedAttempts + 1,
-                'attempts_remaining' => max(0, $maxAttempts - ($completedAttempts + 1)),
 
-                // 📊 QUESTIONS
+                'attempts_used' => $completedAttempts + 1,
+
+                'attempts_remaining' => max(
+                    0,
+                    $maxAttempts - ($completedAttempts + 1)
+                ),
+
+                /*
+                |--------------------------------------------------
+                | 📊 QUESTIONS
+                |--------------------------------------------------
+                */
                 'answered_questions' => $answeredCount,
+
                 'remaining_questions' => $remainingCount,
 
-                // ⏱ TIME
+                /*
+                |--------------------------------------------------
+                | ⏱ TIME
+                |--------------------------------------------------
+                */
                 'submit_type' => $submitType,
-                'time_taken_seconds' => $timeTaken,
-                'time_taken_minutes' => round($timeTaken / 60, 2),
 
-                // 🧠 HIERARCHY
+                'time_taken_seconds' => $timeTaken,
+
+                'time_taken_minutes' => round(
+                    $timeTaken / 60,
+                    2
+                ),
+
+                /*
+                |--------------------------------------------------
+                | 🧠 HIERARCHY
+                |--------------------------------------------------
+                */
                 'context' => $context,
 
-                // 🎓 CERTIFICATE
-                'certificate_generated' => $certificate ? true : false,
+                /*
+                |--------------------------------------------------
+                | 🎓 CERTIFICATE
+                |--------------------------------------------------
+                */
+                'certificate_generated' => $certificate
+                    ? true
+                    : false,
+
                 'certificate_id' => $certificate->certificate_id ?? null,
             ]);
         });

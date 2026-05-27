@@ -39,6 +39,11 @@ class QuestionController extends Controller
     {
         $assessment = Assessment::findOrFail($assessment_id);
 
+        /*
+    |--------------------------------------------------------------------------
+    | 🔐 VALIDATION
+    |--------------------------------------------------------------------------
+    */
         $request->validate([
 
             'question_text' => 'required|string',
@@ -49,7 +54,12 @@ class QuestionController extends Controller
 
             'file' => 'nullable|file|max:2048',
 
-            // NEW
+            /*
+        |--------------------------------------------------------------------------
+        | CASE STUDY
+        |--------------------------------------------------------------------------
+        */
+
             'is_case' => 'nullable|boolean',
 
             'case_title' => 'nullable|string',
@@ -59,22 +69,82 @@ class QuestionController extends Controller
             'case_order' => 'nullable|integer|min:1',
         ]);
 
+        /*
+    |--------------------------------------------------------------------------
+    | CASE TYPE VALIDATION
+    |--------------------------------------------------------------------------
+    */
+        $caseEnabledFor = config(
+            'assessment.case_based.enabled_for',
+            []
+        );
+
         if (
             $request->boolean('is_case') &&
-            !in_array($assessment->type, ['chapter', 'module'])
+            !in_array($assessment->type, $caseEnabledFor)
         ) {
 
             return response()->json([
-                'message' => 'Case questions allowed only in chapter/module assessments'
+                'message' => 'Case questions are not allowed for this assessment type'
             ], 422);
         }
 
+        /*
+    |--------------------------------------------------------------------------
+    | CASE CONTENT VALIDATION
+    |--------------------------------------------------------------------------
+    */
+        if ($request->boolean('is_case')) {
+
+            if (
+                config(
+                    'assessment.case_based.require_case_content',
+                    true
+                )
+            ) {
+
+                if (!$request->filled('case_title')) {
+
+                    return response()->json([
+                        'message' => 'case_title is required for case questions'
+                    ], 422);
+                }
+
+                if (!$request->filled('case_text')) {
+
+                    return response()->json([
+                        'message' => 'case_text is required for case questions'
+                    ], 422);
+                }
+
+                if (!$request->filled('case_order')) {
+
+                    return response()->json([
+                        'message' => 'case_order is required for case questions'
+                    ], 422);
+                }
+            }
+        }
+
+        /*
+    |--------------------------------------------------------------------------
+    | FILE UPLOAD
+    |--------------------------------------------------------------------------
+    */
         $filePath = null;
 
         if ($request->hasFile('file')) {
-            $filePath = $this->uploadFile($request->file('file'));
+
+            $filePath = $this->uploadFile(
+                $request->file('file')
+            );
         }
 
+        /*
+    |--------------------------------------------------------------------------
+    | CREATE QUESTION
+    |--------------------------------------------------------------------------
+    */
         $question = AssessmentQuestion::create([
 
             'assessment_id' => $assessment_id,
@@ -83,11 +153,20 @@ class QuestionController extends Controller
 
             'file' => $filePath,
 
+            /*
+        |--------------------------------------------------------------------------
+        | MARKS AUTO MANAGED
+        |--------------------------------------------------------------------------
+        */
             'marks' => 0,
 
             'order' => $request->order,
 
-            // NEW
+            /*
+        |--------------------------------------------------------------------------
+        | CASE STUDY
+        |--------------------------------------------------------------------------
+        */
             'is_case' => $request->boolean('is_case'),
 
             'case_title' => $request->case_title,
@@ -97,8 +176,19 @@ class QuestionController extends Controller
             'case_order' => $request->case_order,
         ]);
 
-        $question->assessment->recalculateQuestionMarks();
+        /*
+    |--------------------------------------------------------------------------
+    | RECALCULATE MARKS
+    |--------------------------------------------------------------------------
+    */
+        $question->assessment
+            ->recalculateQuestionMarks();
 
+        /*
+    |--------------------------------------------------------------------------
+    | RESPONSE
+    |--------------------------------------------------------------------------
+    */
         return $question->fresh();
     }
 
@@ -108,6 +198,11 @@ class QuestionController extends Controller
 
         $assessment = $question->assessment;
 
+        /*
+    |--------------------------------------------------------------------------
+    | 🔐 VALIDATION
+    |--------------------------------------------------------------------------
+    */
         $request->validate([
 
             'question_text' => 'sometimes|string',
@@ -118,7 +213,12 @@ class QuestionController extends Controller
 
             'file' => 'nullable|file|max:2048',
 
-            // NEW
+            /*
+        |--------------------------------------------------------------------------
+        | CASE STUDY
+        |--------------------------------------------------------------------------
+        */
+
             'is_case' => 'nullable|boolean',
 
             'case_title' => 'nullable|string',
@@ -128,44 +228,274 @@ class QuestionController extends Controller
             'case_order' => 'nullable|integer|min:1',
         ]);
 
+        /*
+    |--------------------------------------------------------------------------
+    | CASE TYPE VALIDATION
+    |--------------------------------------------------------------------------
+    */
+        $caseEnabledFor = config(
+            'assessment.case_based.enabled_for',
+            []
+        );
+
         if (
             $request->boolean('is_case') &&
-            !in_array($assessment->type, ['chapter', 'module'])
+            !in_array($assessment->type, $caseEnabledFor)
         ) {
 
             return response()->json([
-                'message' => 'Case questions allowed only in chapter/module assessments'
+                'message' => 'Case questions are not allowed for this assessment type'
             ], 422);
         }
 
-        $data = $request->only([
+        /*
+    |--------------------------------------------------------------------------
+    | CASE CONTENT VALIDATION
+    |--------------------------------------------------------------------------
+    */
+        if ($request->boolean('is_case')) {
 
-            'question_text',
+            if (
+                config(
+                    'assessment.case_based.require_case_content',
+                    true
+                )
+            ) {
 
-            'marks',
+                if (
+                    $request->has('case_title') &&
+                    !$request->filled('case_title')
+                ) {
 
-            'order',
+                    return response()->json([
+                        'message' => 'case_title cannot be empty'
+                    ], 422);
+                }
 
-            'is_case',
+                if (
+                    $request->has('case_text') &&
+                    !$request->filled('case_text')
+                ) {
 
-            'case_title',
+                    return response()->json([
+                        'message' => 'case_text cannot be empty'
+                    ], 422);
+                }
 
-            'case_text',
+                if (
+                    $request->has('case_order') &&
+                    !$request->filled('case_order')
+                ) {
 
-            'case_order'
-        ]);
-
-        if ($request->hasFile('file')) {
-
-            $data['file'] = $this->uploadFile($request->file('file'));
+                    return response()->json([
+                        'message' => 'case_order cannot be empty'
+                    ], 422);
+                }
+            }
         }
 
+        /*
+    |--------------------------------------------------------------------------
+    | SAFE UPDATE DATA
+    |--------------------------------------------------------------------------
+    */
+        $data = $request->only([
+            'question_text',
+            'marks',
+            'order',
+        ]);
+
+        /*
+    |--------------------------------------------------------------------------
+    | CASE FIELDS
+    |--------------------------------------------------------------------------
+    */
+        if ($request->has('is_case')) {
+
+            $data['is_case'] = $request->boolean('is_case');
+        }
+
+        if ($request->has('case_title')) {
+
+            $data['case_title'] = $request->case_title;
+        }
+
+        if ($request->has('case_text')) {
+
+            $data['case_text'] = $request->case_text;
+        }
+
+        if ($request->has('case_order')) {
+
+            $data['case_order'] = $request->case_order;
+        }
+
+        /*
+    |--------------------------------------------------------------------------
+    | FILE UPLOAD
+    |--------------------------------------------------------------------------
+    */
+        if ($request->hasFile('file')) {
+
+            $data['file'] = $this->uploadFile(
+                $request->file('file')
+            );
+        }
+
+        /*
+    |--------------------------------------------------------------------------
+    | UPDATE
+    |--------------------------------------------------------------------------
+    */
         $question->update($data);
 
-        $question->assessment->recalculateQuestionMarks();
+        /*
+    |--------------------------------------------------------------------------
+    | RECALCULATE MARKS
+    |--------------------------------------------------------------------------
+    */
+        $question->assessment
+            ->recalculateQuestionMarks();
 
+        /*
+    |--------------------------------------------------------------------------
+    | RESPONSE
+    |--------------------------------------------------------------------------
+    */
         return response()->json([
             'message' => 'Updated'
+        ]);
+    }
+
+    public function show($id)
+    {
+        $question = \App\Models\AssessmentQuestion::with([
+            'options',
+            'assessment'
+        ])->findOrFail($id);
+
+        $assessment = $question->assessment;
+
+        $hierarchy = null;
+
+        /*
+    |--------------------------------------------------------------------------
+    | TOPIC BASED ASSESSMENT
+    |--------------------------------------------------------------------------
+    */
+        if (
+            $assessment->assessmentable_type
+            === \App\Models\Topic::class
+        ) {
+
+            $topic = \App\Models\Topic::with([
+                'chapter.module.level.program'
+            ])->find($assessment->assessmentable_id);
+
+            $hierarchy = [
+
+                'type' => 'topic',
+
+                'topic' => [
+                    'id' => $topic->id,
+                    'title' => $topic->title,
+                ],
+
+                'chapter' => [
+                    'id' => $topic->chapter->id ?? null,
+                    'title' => $topic->chapter->title ?? null,
+                ],
+
+                'module' => [
+                    'id' => $topic->chapter->module->id ?? null,
+                    'title' => $topic->chapter->module->title ?? null,
+                ],
+
+                'level' => [
+                    'id' => $topic->chapter->module->level->id ?? null,
+                    'title' => $topic->chapter->module->level->title ?? null,
+                ],
+
+                'program' => [
+                    'id' => $topic->chapter->module->level->program->id ?? null,
+                    'title' => $topic->chapter->module->level->program->title ?? null,
+                ],
+            ];
+        }
+
+        /*
+    |--------------------------------------------------------------------------
+    | MODULE BASED ASSESSMENT
+    |--------------------------------------------------------------------------
+    */
+        if (
+            $assessment->assessmentable_type
+            === \App\Models\Module::class
+        ) {
+
+            $module = \App\Models\Module::with([
+                'level.program'
+            ])->find($assessment->assessmentable_id);
+
+            $hierarchy = [
+
+                'type' => 'module',
+
+                'module' => [
+                    'id' => $module->id,
+                    'title' => $module->title,
+                ],
+
+                'level' => [
+                    'id' => $module->level->id ?? null,
+                    'title' => $module->level->title ?? null,
+                ],
+
+                'program' => [
+                    'id' => $module->level->program->id ?? null,
+                    'title' => $module->level->program->title ?? null,
+                ],
+            ];
+        }
+
+        /*
+    |--------------------------------------------------------------------------
+    | RESERVED LEVEL ASSESSMENT
+    |--------------------------------------------------------------------------
+    */
+        if (
+            $assessment->assessmentable_type
+            === \App\Models\Level::class
+        ) {
+
+            $level = \App\Models\Level::with(
+                'program'
+            )->find($assessment->assessmentable_id);
+
+            $hierarchy = [
+
+                'type' => 'level',
+
+                'level' => [
+                    'id' => $level->id,
+                    'title' => $level->title,
+                ],
+
+                'program' => [
+                    'id' => $level->program->id ?? null,
+                    'title' => $level->program->title ?? null,
+                ],
+            ];
+        }
+
+        /*
+    |--------------------------------------------------------------------------
+    | RESPONSE
+    |--------------------------------------------------------------------------
+    */
+        return response()->json([
+            'question' => $question,
+            'hierarchy' => $hierarchy
         ]);
     }
 
@@ -194,81 +524,6 @@ class QuestionController extends Controller
 
         return response()->json([
             'message' => 'Question deleted successfully'
-        ]);
-    }
-
-    public function show($id)
-    {
-        $question = \App\Models\AssessmentQuestion::with([
-            'options',
-            'assessment'
-        ])->findOrFail($id);
-
-        $assessment = $question->assessment;
-
-        $hierarchy = null;
-
-        // 🔹 CASE 1: Topic based assessment
-        if ($assessment->assessmentable_type === \App\Models\Topic::class) {
-
-            $topic = \App\Models\Topic::with([
-                'chapter.module.level.program'
-            ])->find($assessment->assessmentable_id);
-
-            $hierarchy = [
-                'type' => 'topic',
-
-                'topic' => [
-                    'id' => $topic->id,
-                    'title' => $topic->title,
-                ],
-
-                'chapter' => [
-                    'id' => $topic->chapter->id,
-                    'title' => $topic->chapter->title,
-                ],
-
-                'module' => [
-                    'id' => $topic->chapter->module->id,
-                    'title' => $topic->chapter->module->title,
-                ],
-
-                'level' => [
-                    'id' => $topic->chapter->module->level->id,
-                    'title' => $topic->chapter->module->level->title,
-                ],
-
-                'program' => [
-                    'id' => $topic->chapter->module->level->program->id,
-                    'title' => $topic->chapter->module->level->program->title,
-                ],
-            ];
-        }
-
-        // 🔹 CASE 2: Level based assessment
-        if ($assessment->assessmentable_type === \App\Models\Level::class) {
-
-            $level = \App\Models\Level::with('program')
-                ->find($assessment->assessmentable_id);
-
-            $hierarchy = [
-                'type' => 'level',
-
-                'level' => [
-                    'id' => $level->id,
-                    'title' => $level->title,
-                ],
-
-                'program' => [
-                    'id' => $level->program->id,
-                    'title' => $level->program->title,
-                ],
-            ];
-        }
-
-        return response()->json([
-            'question' => $question,
-            'hierarchy' => $hierarchy
         ]);
     }
 }

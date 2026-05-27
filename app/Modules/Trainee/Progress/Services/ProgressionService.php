@@ -2,56 +2,82 @@
 
 namespace App\Modules\Trainee\Progress\Services;
 
-use App\Models\UserProgress;
+use App\Models\User;
 use App\Models\Topic;
 use App\Models\Chapter;
 use App\Models\Module;
+use App\Models\Level;
+use App\Models\UserProgress;
 use Illuminate\Support\Facades\DB;
 use App\Services\AuditService;
-use App\Models\User;
 use App\Services\NotificationService;
-
-
 
 class ProgressionService
 {
-    public function handleTopicCompletion($userId, Topic $topic)
-    {
-        DB::transaction(function () use ($userId, $topic) {
+    /*
+    |--------------------------------------------------------------------------
+    | TOPIC COMPLETION
+    |--------------------------------------------------------------------------
+    */
 
-            /*
-        |--------------------------------------------------
-        | 👤 USER
-        |--------------------------------------------------
-        */
+    public function handleTopicCompletion(
+        $userId,
+        Topic $topic
+    ) {
+
+        DB::transaction(function () use (
+            $userId,
+            $topic
+        ) {
+
             $user = User::find($userId);
 
             /*
-        |--------------------------------------------------
-        | ✅ 1. COMPLETE CURRENT TOPIC (SAFE)
-        |--------------------------------------------------
-        */
-            $progress = UserProgress::updateOrCreate(
+            |--------------------------------------------------------------------------
+            | COMPLETE TOPIC
+            |--------------------------------------------------------------------------
+            */
+
+            UserProgress::updateOrCreate(
+
                 [
                     'user_id' => $userId,
                     'topic_id' => $topic->id,
                 ],
+
                 [
                     'program_id' => $topic->program_id,
                     'level_id' => $topic->level_id,
                     'module_id' => $topic->module_id,
                     'chapter_id' => $topic->chapter_id,
+
                     'is_unlocked' => true,
                     'is_completed' => true,
+
                     'completed_at' => now(),
                 ]
             );
 
             /*
-        |--------------------------------------------------
-        | 🔔 USER NOTIFICATION
-        |--------------------------------------------------
-        */
+            |--------------------------------------------------------------------------
+            | AUDIT
+            |--------------------------------------------------------------------------
+            */
+
+            AuditService::log(
+                'lesson_completed',
+                'User completed topic',
+                [
+                    'topic_id' => $topic->id
+                ]
+            );
+
+            /*
+            |--------------------------------------------------------------------------
+            | USER NOTIFICATION
+            |--------------------------------------------------------------------------
+            */
+
             if ($user) {
 
                 app(NotificationService::class)->send(
@@ -59,848 +85,900 @@ class ProgressionService
                     'LESSON_COMPLETED',
                     [
                         'title' => 'Topic Completed',
+
                         'message' => 'You completed a topic successfully',
 
                         'screen' => 'TopicDetails',
+
                         'id' => $topic->id,
 
                         'meta' => [
                             'topic_id' => $topic->id,
-                            'topic_title' => $topic->title ?? null,
+                            'topic_title' => $topic->title,
                         ]
-                    ]
-                );
-
-                /*
-            |--------------------------------------------------
-            | 🛡 ADMIN NOTIFICATION
-            |--------------------------------------------------
-            */
-                $adminPayload = [
-                    'title' => 'Topic Completed',
-                    'message' => "{$user->name} completed a topic",
-
-                    'screen' => 'TopicDetails',
-                    'id' => $topic->id,
-
-                    'meta' => [
-                        'user_id' => $user->id,
-                        'user_name' => $user->name,
-                        'topic_id' => $topic->id,
-                        'topic_title' => $topic->title ?? null,
-                    ]
-                ];
-
-                app(NotificationService::class)->sendToRole(
-                    'admin',
-                    'LESSON_COMPLETED',
-                    $adminPayload,
-                    ['db', 'push']
-                );
-
-                app(NotificationService::class)->sendToRole(
-                    'superadmin',
-                    'LESSON_COMPLETED',
-                    $adminPayload,
+                    ],
                     ['db', 'push']
                 );
             }
 
-            AuditService::log(
-                'lesson_completed',
-                'User completed topic',
-                ['topic_id' => $topic->id]
-            );
-
             /*
-        |--------------------------------------------------
-        | ✅ 2. UNLOCK NEXT TOPIC (STRICT)
-        |--------------------------------------------------
-        */
-            $nextTopic = Topic::where('chapter_id', $topic->chapter_id)
+            |--------------------------------------------------------------------------
+            | NEXT TOPIC
+            |--------------------------------------------------------------------------
+            */
+
+            $nextTopic = Topic::where(
+                'chapter_id',
+                $topic->chapter_id
+            )
                 ->where('id', '>', $topic->id)
                 ->orderBy('id')
                 ->first();
 
+            /*
+            |--------------------------------------------------------------------------
+            | UNLOCK NEXT TOPIC
+            |--------------------------------------------------------------------------
+            */
+
             if ($nextTopic) {
 
-                $exists = UserProgress::where('user_id', $userId)
-                    ->where('topic_id', $nextTopic->id)
-                    ->exists();
+                UserProgress::firstOrCreate(
 
-                if (!$exists) {
-
-                    UserProgress::create([
+                    [
                         'user_id' => $userId,
+                        'topic_id' => $nextTopic->id,
+                    ],
+
+                    [
                         'program_id' => $nextTopic->program_id,
                         'level_id' => $nextTopic->level_id,
                         'module_id' => $nextTopic->module_id,
                         'chapter_id' => $nextTopic->chapter_id,
-                        'topic_id' => $nextTopic->id,
+
                         'is_unlocked' => true,
                         'is_completed' => false,
-                    ]);
+                    ]
+                );
 
-                    /*
-                |--------------------------------------------------
-                | 🔔 NEXT TOPIC UNLOCKED
-                |--------------------------------------------------
-                */
-                    if ($user) {
-
-                        app(NotificationService::class)->send(
-                            $user,
-                            'LESSON_UNLOCKED',
-                            [
-                                'title' => 'New Topic Unlocked',
-                                'message' => 'Next topic unlocked successfully',
-
-                                'screen' => 'TopicDetails',
-                                'id' => $nextTopic->id,
-
-                                'meta' => [
-                                    'topic_id' => $nextTopic->id,
-                                    'topic_title' => $nextTopic->title ?? null,
-                                ]
-                            ],
-                            ['db', 'push']
-                        );
-                    }
-
-                    AuditService::log(
-                        'lesson_unlocked',
-                        'User unlocked next topic',
-                        ['topic_id' => $nextTopic->id]
-                    );
-                }
-            } else {
+                AuditService::log(
+                    'lesson_unlocked',
+                    'Next topic unlocked',
+                    [
+                        'topic_id' => $nextTopic->id
+                    ]
+                );
 
                 /*
-            |--------------------------------------------------
-            | ✅ 3. NO NEXT TOPIC → CHECK CHAPTER
-            |--------------------------------------------------
-            */
-                $this->handleChapterCompletion(
-                    $userId,
-                    $topic->chapter_id
-                );
+                |--------------------------------------------------------------------------
+                | USER NOTIFICATION
+                |--------------------------------------------------------------------------
+                */
+
+                if ($user) {
+
+                    app(NotificationService::class)->send(
+                        $user,
+                        'LESSON_UNLOCKED',
+                        [
+                            'title' => 'New Topic Unlocked',
+
+                            'message' => 'Next topic unlocked successfully',
+
+                            'screen' => 'TopicDetails',
+
+                            'id' => $nextTopic->id,
+
+                            'meta' => [
+                                'topic_id' => $nextTopic->id,
+                                'topic_title' => $nextTopic->title,
+                            ]
+                        ],
+                        ['db', 'push']
+                    );
+                }
+
+                return;
             }
+
+            /*
+            |--------------------------------------------------------------------------
+            | LAST TOPIC OF CHAPTER
+            |--------------------------------------------------------------------------
+            */
+
+            $this->handleChapterCompletion(
+                $userId,
+                $topic->chapter_id
+            );
         });
     }
 
-    private function handleChapterCompletion($userId, $chapterId)
-    {
-        $total = Topic::where('chapter_id', $chapterId)->count();
+    /*
+    |--------------------------------------------------------------------------
+    | CHAPTER COMPLETION
+    |--------------------------------------------------------------------------
+    */
 
-        $completed = UserProgress::where('user_id', $userId)
+    private function handleChapterCompletion(
+        $userId,
+        $chapterId
+    ) {
+
+        $chapter = Chapter::find($chapterId);
+
+        if (!$chapter) {
+            return;
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | TOTAL TOPICS
+        |--------------------------------------------------------------------------
+        */
+
+        $totalTopics = Topic::where(
+            'chapter_id',
+            $chapterId
+        )->count();
+
+        /*
+        |--------------------------------------------------------------------------
+        | COMPLETED TOPICS
+        |--------------------------------------------------------------------------
+        */
+
+        $completedTopics = UserProgress::where(
+            'user_id',
+            $userId
+        )
             ->where('chapter_id', $chapterId)
-            ->whereNotNull('topic_id') // 🔥 IMPORTANT
+            ->whereNotNull('topic_id')
             ->where('is_completed', true)
             ->count();
 
-        if ($total > 0 && $total == $completed) {
-
-            /*
-        |--------------------------------------------------
-        | 👤 USER + CHAPTER
-        |--------------------------------------------------
+        /*
+        |--------------------------------------------------------------------------
+        | CHAPTER NOT COMPLETED
+        |--------------------------------------------------------------------------
         */
-            $user = User::find($userId);
 
-            $chapter = Chapter::find($chapterId);
+        if (
+            $totalTopics <= 0 ||
+            $totalTopics != $completedTopics
+        ) {
+            return;
+        }
 
-            if (!$chapter) {
-                return;
-            }
+        $user = User::find($userId);
 
-            /*
-        |--------------------------------------------------
-        | 🔔 CHAPTER COMPLETED
-        |--------------------------------------------------
+        /*
+        |--------------------------------------------------------------------------
+        | AUDIT
+        |--------------------------------------------------------------------------
         */
-            if ($user) {
 
-                app(NotificationService::class)->send(
-                    $user,
-                    'CHAPTER_COMPLETED',
-                    [
-                        'title' => 'Chapter Completed',
-                        'message' => 'You completed a chapter successfully',
+        AuditService::log(
+            'chapter_completed',
+            'User completed chapter',
+            [
+                'chapter_id' => $chapter->id
+            ]
+        );
 
-                        'screen' => 'ChapterDetails',
-                        'id' => $chapter->id,
+        /*
+        |--------------------------------------------------------------------------
+        | USER NOTIFICATION
+        |--------------------------------------------------------------------------
+        */
 
-                        'meta' => [
-                            'chapter_id' => $chapter->id,
-                            'chapter_title' => $chapter->title ?? null,
-                        ]
-                    ],
-                    ['db', 'push']
-                );
+        if ($user) {
 
-                /*
-            |--------------------------------------------------
-            | 🛡 ADMINS
-            |--------------------------------------------------
-            */
-                $adminPayload = [
+            app(NotificationService::class)->send(
+                $user,
+                'CHAPTER_COMPLETED',
+                [
                     'title' => 'Chapter Completed',
-                    'message' => "{$user->name} completed a chapter",
+
+                    'message' => 'You completed a chapter successfully',
 
                     'screen' => 'ChapterDetails',
+
                     'id' => $chapter->id,
 
                     'meta' => [
-                        'user_id' => $user->id,
-                        'user_name' => $user->name,
                         'chapter_id' => $chapter->id,
-                        'chapter_title' => $chapter->title ?? null,
+                        'chapter_title' => $chapter->title,
                     ]
-                ];
+                ],
+                ['db', 'push']
+            );
+        }
 
-                app(NotificationService::class)->sendToRole(
-                    'admin',
-                    'CHAPTER_COMPLETED',
-                    $adminPayload,
-                    ['db', 'push']
-                );
-
-                app(NotificationService::class)->sendToRole(
-                    'superadmin',
-                    'CHAPTER_COMPLETED',
-                    $adminPayload,
-                    ['db', 'push']
-                );
-            }
-
-            /*
-        |--------------------------------------------------
-        | 🔓 UNLOCK NEXT CHAPTER
-        |--------------------------------------------------
+        /*
+        |--------------------------------------------------------------------------
+        | NEXT CHAPTER
+        |--------------------------------------------------------------------------
         */
-            $nextChapter = Chapter::where('module_id', $chapter->module_id)
-                ->where('id', '>', $chapter->id)
+
+        $nextChapter = Chapter::where(
+            'module_id',
+            $chapter->module_id
+        )
+            ->where('id', '>', $chapter->id)
+            ->orderBy('id')
+            ->first();
+
+        /*
+        |--------------------------------------------------------------------------
+        | UNLOCK NEXT CHAPTER
+        |--------------------------------------------------------------------------
+        */
+
+        if ($nextChapter) {
+
+            $firstTopic = Topic::where(
+                'chapter_id',
+                $nextChapter->id
+            )
                 ->orderBy('id')
                 ->first();
 
-            if ($nextChapter) {
+            if ($firstTopic) {
 
-                $firstTopic = Topic::where('chapter_id', $nextChapter->id)
-                    ->orderBy('id')
-                    ->first();
+                UserProgress::firstOrCreate(
 
-                if ($firstTopic) {
+                    [
+                        'user_id' => $userId,
+                        'topic_id' => $firstTopic->id,
+                    ],
 
-                    UserProgress::firstOrCreate(
-                        [
-                            'user_id' => $userId,
-                            'topic_id' => $firstTopic->id,
-                        ],
-                        [
-                            'program_id' => $firstTopic->program_id,
-                            'level_id' => $firstTopic->level_id,
-                            'module_id' => $firstTopic->module_id,
-                            'chapter_id' => $firstTopic->chapter_id,
-                            'is_unlocked' => true,
-                        ]
-                    );
+                    [
+                        'program_id' => $firstTopic->program_id,
+                        'level_id' => $firstTopic->level_id,
+                        'module_id' => $firstTopic->module_id,
+                        'chapter_id' => $firstTopic->chapter_id,
 
-                    /*
-                |--------------------------------------------------
-                | 🔔 NEXT CHAPTER UNLOCKED
-                |--------------------------------------------------
-                */
-                    if ($user) {
-
-                        app(NotificationService::class)->send(
-                            $user,
-                            'CHAPTER_UNLOCKED',
-                            [
-                                'title' => 'New Chapter Unlocked',
-                                'message' => 'Next chapter unlocked successfully',
-
-                                'screen' => 'ChapterDetails',
-                                'id' => $nextChapter->id,
-
-                                'meta' => [
-                                    'chapter_id' => $nextChapter->id,
-                                    'chapter_title' => $nextChapter->title ?? null,
-                                ]
-                            ],
-                            ['db', 'push']
-                        );
-                    }
-                }
+                        'is_unlocked' => true,
+                        'is_completed' => false,
+                    ]
+                );
 
                 AuditService::log(
                     'chapter_unlocked',
-                    'User unlocked the next chapter',
+                    'Next chapter unlocked',
                     [
-                        'chapter_id' => $nextChapter->id ?? null
+                        'chapter_id' => $nextChapter->id
                     ]
                 );
+
+                /*
+                |--------------------------------------------------------------------------
+                | USER NOTIFICATION
+                |--------------------------------------------------------------------------
+                */
+
+                if ($user) {
+
+                    app(NotificationService::class)->send(
+                        $user,
+                        'CHAPTER_UNLOCKED',
+                        [
+                            'title' => 'New Chapter Unlocked',
+
+                            'message' => 'Next chapter unlocked successfully',
+
+                            'screen' => 'ChapterDetails',
+
+                            'id' => $nextChapter->id,
+
+                            'meta' => [
+                                'chapter_id' => $nextChapter->id,
+                                'chapter_title' => $nextChapter->title,
+                            ]
+                        ],
+                        ['db', 'push']
+                    );
+                }
             }
 
-            /*
-        |--------------------------------------------------
-        | ✅ CHECK MODULE COMPLETION
-        |--------------------------------------------------
+            return;
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | MODULE ASSESSMENT CONFIG
+        |--------------------------------------------------------------------------
         */
-            $this->handleModuleCompletion(
+
+        $moduleAssessmentRequired = config(
+            'assessment.progression.assessment_required_for.module.enabled',
+            false
+        );
+
+        /*
+        |--------------------------------------------------------------------------
+        | MODULE EXAM REQUIRED
+        |--------------------------------------------------------------------------
+        */
+
+        if ($moduleAssessmentRequired) {
+
+            $this->unlockModuleExam(
                 $userId,
                 $chapter->module_id
             );
+
+            return;
         }
+
+        /*
+        |--------------------------------------------------------------------------
+        | AUTO COMPLETE MODULE
+        |--------------------------------------------------------------------------
+        */
+
+        $this->completeModuleWithoutAssessment(
+            $userId,
+            $chapter->module_id
+        );
     }
 
-    private function handleModuleCompletion($userId, $moduleId)
-    {
-        /*
-        |--------------------------------------------------
-        | 🔹 GET ALL CHAPTERS
-        |--------------------------------------------------
-        */
-        $chapters = Chapter::where('module_id', $moduleId)
-            ->pluck('id');
+    /*
+    |--------------------------------------------------------------------------
+    | MODULE EXAM UNLOCK
+    |--------------------------------------------------------------------------
+    */
 
-        $totalChapters = $chapters->count();
-        $completedChapters = 0;
+    private function unlockModuleExam(
+        $userId,
+        $moduleId
+    ) {
 
-        foreach ($chapters as $chapterId) {
+        $module = Module::find($moduleId);
 
-            /*
-            |--------------------------------------------------
-            | 🔹 TOTAL TOPICS
-            |--------------------------------------------------
-            */
-            $totalTopics = Topic::where('chapter_id', $chapterId)
-                ->pluck('id');
-
-            /*
-            |--------------------------------------------------
-            | 🔹 COMPLETED TOPICS (STRICT)
-            |--------------------------------------------------
-            */
-            $completedTopicIds = UserProgress::where('user_id', $userId)
-                ->whereIn('topic_id', $totalTopics)
-                ->whereNotNull('topic_id') // 🔥 IMPORTANT
-                ->where('is_completed', true)
-                ->pluck('topic_id')
-                ->unique();
-
-            /*
-            |--------------------------------------------------
-            | ✅ CHAPTER COMPLETED
-            |--------------------------------------------------
-            */
-            if (
-                $totalTopics->count() > 0
-                && $totalTopics->count() === $completedTopicIds->count()
-            ) {
-                $completedChapters++;
-            }
+        if (!$module) {
+            return;
         }
 
         /*
-        |--------------------------------------------------
-        | ✅ MODULE COMPLETED
-        |--------------------------------------------------
+        |--------------------------------------------------------------------------
+        | ALL MODULE TOPICS
+        |--------------------------------------------------------------------------
         */
-        if (
-            $totalChapters > 0
-            && $totalChapters === $completedChapters
-        ) {
 
-            $module = Module::find($moduleId);
+        $totalTopics = Topic::where(
+            'module_id',
+            $moduleId
+        )->count();
+
+        $completedTopics = UserProgress::where(
+            'user_id',
+            $userId
+        )
+            ->where('module_id', $moduleId)
+            ->whereNotNull('topic_id')
+            ->where('is_completed', true)
+            ->count();
+
+        /*
+        |--------------------------------------------------------------------------
+        | NOT ELIGIBLE
+        |--------------------------------------------------------------------------
+        */
+
+        if (
+            $totalTopics <= 0 ||
+            $totalTopics != $completedTopics
+        ) {
+            return;
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | EXAM ENTRY
+        |--------------------------------------------------------------------------
+        */
+
+        UserProgress::updateOrCreate(
+
+            [
+                'user_id' => $userId,
+                'module_id' => $moduleId,
+                'topic_id' => null,
+            ],
+
+            [
+                'program_id' => $module->program_id,
+                'level_id' => $module->level_id,
+
+                'is_unlocked' => true,
+                'is_completed' => false,
+            ]
+        );
+
+        AuditService::log(
+            'module_exam_unlocked',
+            'Module exam unlocked',
+            [
+                'module_id' => $module->id
+            ]
+        );
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | COMPLETE MODULE WITHOUT EXAM
+    |--------------------------------------------------------------------------
+    */
+
+    private function completeModuleWithoutAssessment(
+        $userId,
+        $moduleId
+    ) {
+
+        $module = Module::find($moduleId);
+
+        if (!$module) {
+            return;
+        }
+
+        $this->completeModule(
+            $userId,
+            $module
+        );
+
+        $this->unlockNextModule(
+            $userId,
+            $module
+        );
+
+        $this->checkLevelCompletion(
+            $userId,
+            $module->level_id
+        );
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | ASSESSMENT PASS
+    |--------------------------------------------------------------------------
+    */
+
+    public function handleAssessmentPass(
+        $userId,
+        $assessment,
+        $attempt
+    ) {
+
+        $certificate = null;
+
+        /*
+        |--------------------------------------------------------------------------
+        | ACTIVE EXAM TYPES
+        |--------------------------------------------------------------------------
+        */
+
+        $examTypes = config(
+            'assessment.exam.types',
+            []
+        );
+
+        /*
+        |--------------------------------------------------------------------------
+        | NOT EXAM TYPE
+        |--------------------------------------------------------------------------
+        */
+
+        if (
+            !in_array(
+                $assessment->type,
+                $examTypes,
+                true
+            )
+        ) {
+            return null;
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | MODULE EXAM
+        |--------------------------------------------------------------------------
+        */
+
+        if ($assessment->type === 'module') {
+
+            $module = Module::find(
+                $assessment->assessmentable_id
+            );
 
             if (!$module) {
-                return;
+                return null;
             }
 
-            /*
-            |--------------------------------------------------
-            | 👤 USER
-            |--------------------------------------------------
-            */
-            $user = User::find($userId);
+            DB::transaction(function () use (
+                $userId,
+                $module,
+                $attempt,
+                &$certificate
+            ) {
 
-            /*
-            |--------------------------------------------------
-            | 🔥 STORE MODULE COMPLETION
-            |--------------------------------------------------
-            */
-            UserProgress::updateOrCreate(
-                [
-                    'user_id' => $userId,
-                    'module_id' => $moduleId,
-                    'topic_id' => null // 🔥 IMPORTANT
-                ],
-                [
-                    'program_id' => $module->program_id ?? null,
-                    'level_id' => $module->level_id,
-                    'is_completed' => true,
-                    'completed_at' => now(),
-                ]
-            );
+                /*
+                |--------------------------------------------------------------------------
+                | COMPLETE MODULE
+                |--------------------------------------------------------------------------
+                */
 
-            /*
-            |--------------------------------------------------
-            | 📝 AUDIT
-            |--------------------------------------------------
-            */
-            AuditService::log(
-                'module_completed',
-                'User completed module',
-                [
-                    'module_id' => $module->id
-                ]
-            );
-
-            /*
-            |--------------------------------------------------
-            | 🔔 USER NOTIFICATION
-            |--------------------------------------------------
-            */
-            if ($user) {
-
-                app(NotificationService::class)->send(
-                    $user,
-                    'MODULE_COMPLETED',
-                    [
-                        'title' => 'Module Completed',
-                        'message' => 'You completed a module successfully',
-
-                        'screen' => 'ModuleDetails',
-                        'id' => $module->id,
-
-                        'meta' => [
-                            'module_id' => $module->id,
-                            'module_title' => $module->title ?? null,
-                        ]
-                    ],
-                    ['db', 'push']
+                $this->completeModule(
+                    $userId,
+                    $module
                 );
 
                 /*
-                |--------------------------------------------------
-                | 🛡 ADMIN PAYLOAD
-                |--------------------------------------------------
+                |--------------------------------------------------------------------------
+                | CERTIFICATE
+                |--------------------------------------------------------------------------
                 */
-                $adminPayload = [
+
+                if (
+                    in_array(
+                        'module',
+                        config(
+                            'assessment.certification.enabled_for',
+                            []
+                        ),
+                        true
+                    )
+                ) {
+
+                    $certificate = app(
+                        \App\Services\CertificationService::class
+                    )->generate(
+
+                        auth()->user(),
+
+                        $module,
+
+                        $attempt,
+
+                        'module'
+                    );
+                }
+
+                /*
+                |--------------------------------------------------------------------------
+                | NEXT MODULE
+                |--------------------------------------------------------------------------
+                */
+
+                $this->unlockNextModule(
+                    $userId,
+                    $module
+                );
+
+                /*
+                |--------------------------------------------------------------------------
+                | LEVEL CHECK
+                |--------------------------------------------------------------------------
+                */
+
+                $this->checkLevelCompletion(
+                    $userId,
+                    $module->level_id
+                );
+            });
+        }
+
+        return $certificate;
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | COMPLETE MODULE
+    |--------------------------------------------------------------------------
+    */
+
+    private function completeModule(
+        $userId,
+        Module $module
+    ) {
+
+        $user = User::find($userId);
+
+        /*
+        |--------------------------------------------------------------------------
+        | COMPLETE MODULE ENTRY
+        |--------------------------------------------------------------------------
+        */
+
+        UserProgress::updateOrCreate(
+
+            [
+                'user_id' => $userId,
+                'module_id' => $module->id,
+                'topic_id' => null,
+            ],
+
+            [
+                'program_id' => $module->program_id,
+                'level_id' => $module->level_id,
+
+                'is_unlocked' => true,
+                'is_completed' => true,
+
+                'completed_at' => now(),
+            ]
+        );
+
+        /*
+        |--------------------------------------------------------------------------
+        | AUDIT
+        |--------------------------------------------------------------------------
+        */
+
+        AuditService::log(
+            'module_completed',
+            'User completed module exam',
+            [
+                'module_id' => $module->id
+            ]
+        );
+
+        /*
+        |--------------------------------------------------------------------------
+        | USER NOTIFICATION
+        |--------------------------------------------------------------------------
+        */
+
+        if ($user) {
+
+            app(NotificationService::class)->send(
+                $user,
+                'MODULE_COMPLETED',
+                [
                     'title' => 'Module Completed',
-                    'message' => "{$user->name} completed a module",
+
+                    'message' => 'You completed module assessment successfully',
 
                     'screen' => 'ModuleDetails',
+
                     'id' => $module->id,
 
                     'meta' => [
-                        'user_id' => $user->id,
-                        'user_name' => $user->name,
-
                         'module_id' => $module->id,
-                        'module_title' => $module->title ?? null,
+                        'module_title' => $module->title,
                     ]
-                ];
-
-                /*
-                |--------------------------------------------------
-                | 🛡 ADMINS
-                |--------------------------------------------------
-                */
-                app(NotificationService::class)->sendToRole(
-                    'admin',
-                    'MODULE_COMPLETED',
-                    $adminPayload,
-                    ['db', 'push']
-                );
-
-                /*
-                |--------------------------------------------------
-                | 👑 SUPER ADMINS
-                |--------------------------------------------------
-                */
-                app(NotificationService::class)->sendToRole(
-                    'superadmin',
-                    'MODULE_COMPLETED',
-                    $adminPayload,
-                    ['db', 'push']
-                );
-            }
-
-            /*
-            |--------------------------------------------------
-            | 🔓 UNLOCK NEXT MODULE
-            |--------------------------------------------------
-            */
-            $nextModule = Module::where('level_id', $module->level_id)
-                ->where('id', '>', $module->id)
-                ->orderBy('id')
-                ->first();
-
-            if ($nextModule) {
-
-                AuditService::log(
-                    'module_unlocked',
-                    'User unlocked next module',
-                    [
-                        'module_id' => $nextModule->id
-                    ]
-                );
-
-                /*
-                |--------------------------------------------------
-                | 🔹 FIRST TOPIC OF NEXT MODULE
-                |--------------------------------------------------
-                */
-                $firstTopic = Topic::where('module_id', $nextModule->id)
-                    ->orderBy('id')
-                    ->first();
-
-                if ($firstTopic) {
-
-                    UserProgress::firstOrCreate(
-                        [
-                            'user_id' => $userId,
-                            'topic_id' => $firstTopic->id,
-                        ],
-                        [
-                            'program_id' => $firstTopic->program_id,
-                            'level_id' => $firstTopic->level_id,
-                            'module_id' => $firstTopic->module_id,
-                            'chapter_id' => $firstTopic->chapter_id,
-                            'is_unlocked' => true,
-                        ]
-                    );
-
-                    /*
-                    |--------------------------------------------------
-                    | 🔔 NEXT MODULE UNLOCKED
-                    |--------------------------------------------------
-                    */
-                    if ($user) {
-
-                        app(NotificationService::class)->send(
-                            $user,
-                            'MODULE_UNLOCKED',
-                            [
-                                'title' => 'New Module Unlocked',
-                                'message' => 'Next module unlocked successfully',
-
-                                'screen' => 'ModuleDetails',
-                                'id' => $nextModule->id,
-
-                                'meta' => [
-                                    'module_id' => $nextModule->id,
-                                    'module_title' => $nextModule->title ?? null,
-                                ]
-                            ],
-                            ['db', 'push']
-                        );
-                    }
-                }
-
-                AuditService::log(
-                    'module_unlocked',
-                    'User unlocked next module',
-                    [
-                        'module_id' => $nextModule->id ?? null
-                    ]
-                );
-            }
-
-            /*
-            |--------------------------------------------------
-            | 🔥 LEVEL CHECK TRIGGER
-            |--------------------------------------------------
-            */
-            // $this->handleLevelCompletion(
-            //     $userId,
-            //     $module->level_id
-            // );
+                ],
+                ['db', 'push']
+            );
         }
     }
 
-    private function handleLevelCompletion($userId, $levelId)
-    {
+    /*
+    |--------------------------------------------------------------------------
+    | NEXT MODULE
+    |--------------------------------------------------------------------------
+    */
+
+    private function unlockNextModule(
+        $userId,
+        Module $currentModule
+    ) {
+
+        $nextModule = Module::where(
+            'level_id',
+            $currentModule->level_id
+        )
+            ->where('id', '>', $currentModule->id)
+            ->orderBy('id')
+            ->first();
+
+        if (!$nextModule) {
+            return;
+        }
+
+        $firstTopic = Topic::where(
+            'module_id',
+            $nextModule->id
+        )
+            ->orderBy('id')
+            ->first();
+
+        if (!$firstTopic) {
+            return;
+        }
+
+        UserProgress::firstOrCreate(
+
+            [
+                'user_id' => $userId,
+                'topic_id' => $firstTopic->id,
+            ],
+
+            [
+                'program_id' => $firstTopic->program_id,
+                'level_id' => $firstTopic->level_id,
+                'module_id' => $firstTopic->module_id,
+                'chapter_id' => $firstTopic->chapter_id,
+
+                'is_unlocked' => true,
+                'is_completed' => false,
+            ]
+        );
+
+        AuditService::log(
+            'module_unlocked',
+            'User unlocked next module',
+            [
+                'module_id' => $nextModule->id
+            ]
+        );
+
         /*
-        |--------------------------------------------------
-        | 🔹 ALL MODULES
-        |--------------------------------------------------
+        |--------------------------------------------------------------------------
+        | USER NOTIFICATION
+        |--------------------------------------------------------------------------
         */
-        $modules = Module::where('level_id', $levelId)
-            ->pluck('id');
 
-        $totalModules = $modules->count();
-        $completedModules = 0;
+        $user = User::find($userId);
 
-        foreach ($modules as $moduleId) {
+        if ($user) {
 
-            /*
-            |--------------------------------------------------
-            | 🔹 CHAPTERS
-            |--------------------------------------------------
-            */
-            $chapters = Chapter::where('module_id', $moduleId)
-                ->pluck('id');
+            app(NotificationService::class)->send(
+                $user,
+                'MODULE_UNLOCKED',
+                [
+                    'title' => 'New Module Unlocked',
 
-            $totalChapters = $chapters->count();
-            $completedChapters = 0;
+                    'message' => 'Next module unlocked successfully',
 
-            foreach ($chapters as $chapterId) {
+                    'screen' => 'ModuleDetails',
 
-                /*
-                |--------------------------------------------------
-                | 🔹 TOTAL TOPICS
-                |--------------------------------------------------
-                */
-                $totalTopics = Topic::where('chapter_id', $chapterId)
-                    ->pluck('id');
+                    'id' => $nextModule->id,
 
-                /*
-                |--------------------------------------------------
-                | 🔹 COMPLETED TOPICS (STRICT)
-                |--------------------------------------------------
-                */
-                $completedTopicIds = UserProgress::where('user_id', $userId)
-                    ->whereIn('topic_id', $totalTopics)
-                    ->whereNotNull('topic_id') // 🔥 IMPORTANT
-                    ->where('is_completed', true)
-                    ->pluck('topic_id')
-                    ->unique();
+                    'meta' => [
+                        'module_id' => $nextModule->id,
+                        'module_title' => $nextModule->title,
+                    ]
+                ],
+                ['db', 'push']
+            );
+        }
+    }
 
-                /*
-                |--------------------------------------------------
-                | ✅ CHAPTER COMPLETED
-                |--------------------------------------------------
-                */
-                if (
-                    $totalTopics->count() > 0
-                    && $totalTopics->count() === $completedTopicIds->count()
-                ) {
-                    $completedChapters++;
-                }
-            }
+    /*
+    |--------------------------------------------------------------------------
+    | LEVEL COMPLETION CHECK
+    |--------------------------------------------------------------------------
+    */
 
-            /*
-            |--------------------------------------------------
-            | ✅ MODULE COMPLETED
-            |--------------------------------------------------
-            */
-            if (
-                $totalChapters > 0
-                && $totalChapters === $completedChapters
-            ) {
-                $completedModules++;
-            }
+    private function checkLevelCompletion(
+        $userId,
+        $levelId
+    ) {
+
+        $totalModules = Module::where(
+            'level_id',
+            $levelId
+        )->count();
+
+        $completedModules = UserProgress::where(
+            'user_id',
+            $userId
+        )
+            ->where('level_id', $levelId)
+            ->whereNull('topic_id')
+            ->whereNotNull('module_id')
+            ->where('is_completed', true)
+            ->count();
+
+        /*
+        |--------------------------------------------------------------------------
+        | LEVEL NOT COMPLETED
+        |--------------------------------------------------------------------------
+        */
+
+        if (
+            $totalModules <= 0 ||
+            $totalModules != $completedModules
+        ) {
+            return;
         }
 
         /*
-        |--------------------------------------------------
-        | ✅ LEVEL COMPLETED
-        |--------------------------------------------------
+        |--------------------------------------------------------------------------
+        | STORE LEVEL COMPLETION
+        |--------------------------------------------------------------------------
         */
-        if (
-            $totalModules > 0
-            && $totalModules === $completedModules
-        ) {
 
-            $level = \App\Models\Level::find($levelId);
+        UserProgress::updateOrCreate(
 
-            if (!$level) {
-                return;
-            }
+            [
+                'user_id' => $userId,
+                'level_id' => $levelId,
+                'module_id' => null,
+                'topic_id' => null,
+            ],
 
-            /*
-            |--------------------------------------------------
-            | 👤 USER
-            |--------------------------------------------------
-            */
-            $user = User::find($userId);
+            [
+                'is_completed' => true,
+                'completed_at' => now(),
+            ]
+        );
 
-            /*
-            |--------------------------------------------------
-            | 📝 AUDIT
-            |--------------------------------------------------
-            */
-            \App\Services\AuditService::log(
-                'level_completed',
-                'User completed a level',
+        AuditService::log(
+            'level_completed',
+            'User completed level',
+            [
+                'level_id' => $levelId
+            ]
+        );
+
+        $user = User::find($userId);
+
+        $level = Level::find($levelId);
+
+        /*
+        |--------------------------------------------------------------------------
+        | USER NOTIFICATION
+        |--------------------------------------------------------------------------
+        */
+
+        if ($user && $level) {
+
+            app(NotificationService::class)->send(
+                $user,
+                'LEVEL_COMPLETED',
                 [
-                    'level_id' => $level->id
-                ]
-            );
-
-            /*
-            |--------------------------------------------------
-            | 🔔 USER NOTIFICATION
-            |--------------------------------------------------
-            */
-            if ($user) {
-
-                app(NotificationService::class)->send(
-                    $user,
-                    'LEVEL_COMPLETED',
-                    [
-                        'title' => 'Level Completed',
-                        'message' => 'You completed a level successfully',
-
-                        'screen' => 'LevelDetails',
-                        'id' => $level->id,
-
-                        'meta' => [
-                            'level_id' => $level->id,
-                            'level_title' => $level->title ?? null,
-                        ]
-                    ],
-                    ['db', 'push']
-                );
-
-                /*
-                |--------------------------------------------------
-                | 🛡 ADMIN PAYLOAD
-                |--------------------------------------------------
-                */
-                $adminPayload = [
                     'title' => 'Level Completed',
-                    'message' => "{$user->name} completed a level",
+
+                    'message' => 'You completed a level successfully',
 
                     'screen' => 'LevelDetails',
+
                     'id' => $level->id,
 
                     'meta' => [
-                        'user_id' => $user->id,
-                        'user_name' => $user->name,
-
                         'level_id' => $level->id,
-                        'level_title' => $level->title ?? null,
+                        'level_title' => $level->title,
                     ]
-                ];
-
-                /*
-                |--------------------------------------------------
-                | 🛡 ADMINS
-                |--------------------------------------------------
-                */
-                app(NotificationService::class)->sendToRole(
-                    'admin',
-                    'LEVEL_COMPLETED',
-                    $adminPayload,
-                    ['db', 'push']
-                );
-
-                /*
-                |--------------------------------------------------
-                | 👑 SUPER ADMINS
-                |--------------------------------------------------
-                */
-                app(NotificationService::class)->sendToRole(
-                    'superadmin',
-                    'LEVEL_COMPLETED',
-                    $adminPayload,
-                    ['db', 'push']
-                );
-            }
-
-            /*
-            |--------------------------------------------------
-            | 🔓 UNLOCK NEXT LEVEL
-            |--------------------------------------------------
-            */
-            $nextLevel = \App\Models\Level::where('program_id', $level->program_id)
-                ->where('id', '>', $level->id)
-                ->orderBy('id')
-                ->first();
-
-            if ($nextLevel) {
-
-                /*
-                |--------------------------------------------------
-                | 📝 AUDIT
-                |--------------------------------------------------
-                */
-                \App\Services\AuditService::log(
-                    'level_unlocked',
-                    'User unlocked next level',
-                    [
-                        'level_id' => $nextLevel->id
-                    ]
-                );
-
-                /*
-                |--------------------------------------------------
-                | 🔹 FIRST MODULE
-                |--------------------------------------------------
-                */
-                $firstModule = Module::where('level_id', $nextLevel->id)
-                    ->orderBy('id')
-                    ->first();
-
-                if ($firstModule) {
-
-                    /*
-                    |--------------------------------------------------
-                    | 🔹 FIRST TOPIC
-                    |--------------------------------------------------
-                    */
-                    $firstTopic = Topic::where('module_id', $firstModule->id)
-                        ->orderBy('id')
-                        ->first();
-
-                    if ($firstTopic) {
-
-                        UserProgress::firstOrCreate(
-                            [
-                                'user_id' => $userId,
-                                'topic_id' => $firstTopic->id,
-                            ],
-                            [
-                                'program_id' => $firstTopic->program_id,
-                                'level_id' => $firstTopic->level_id,
-                                'module_id' => $firstTopic->module_id,
-                                'chapter_id' => $firstTopic->chapter_id,
-                                'is_unlocked' => true,
-                            ]
-                        );
-
-                        /*
-                        |--------------------------------------------------
-                        | 🔔 NEXT LEVEL UNLOCKED
-                        |--------------------------------------------------
-                        */
-                        if ($user) {
-
-                            app(NotificationService::class)->send(
-                                $user,
-                                'LEVEL_UNLOCKED',
-                                [
-                                    'title' => 'New Level Unlocked',
-                                    'message' => 'Next level unlocked successfully',
-
-                                    'screen' => 'LevelDetails',
-                                    'id' => $nextLevel->id,
-
-                                    'meta' => [
-                                        'level_id' => $nextLevel->id,
-                                        'level_title' => $nextLevel->title ?? null,
-                                    ]
-                                ],
-                                ['db', 'push']
-                            );
-                        }
-                    }
-                }
-            }
+                ],
+                ['db', 'push']
+            );
         }
+
+        /*
+        |--------------------------------------------------------------------------
+        | NEXT LEVEL
+        |--------------------------------------------------------------------------
+        */
+
+        $this->unlockNextLevel(
+            $userId,
+            $levelId
+        );
     }
 
-    public function handleLevelExamPass($userId, $currentLevel)
-    {
-        /*
-        |--------------------------------------------------
-        | 🔓 NEXT LEVEL
-        |--------------------------------------------------
-        */
-        $nextLevel = \App\Models\Level::where(
+    /*
+    |--------------------------------------------------------------------------
+    | NEXT LEVEL
+    |--------------------------------------------------------------------------
+    */
+
+    private function unlockNextLevel(
+        $userId,
+        $currentLevelId
+    ) {
+
+        $currentLevel = Level::find(
+            $currentLevelId
+        );
+
+        if (!$currentLevel) {
+            return;
+        }
+
+        $nextLevel = Level::where(
             'program_id',
             $currentLevel->program_id
         )
@@ -912,32 +990,7 @@ class ProgressionService
             return;
         }
 
-        /*
-        |--------------------------------------------------
-        | 👤 USER
-        |--------------------------------------------------
-        */
-        $user = User::find($userId);
-
-        /*
-        |--------------------------------------------------
-        | 📝 AUDIT
-        |--------------------------------------------------
-        */
-        \App\Services\AuditService::log(
-            'level_unlocked',
-            'User unlocked next level',
-            [
-                'level_id' => $nextLevel->id
-            ]
-        );
-
-        /*
-        |--------------------------------------------------
-        | 🔹 FIRST MODULE
-        |--------------------------------------------------
-        */
-        $firstModule = \App\Models\Module::where(
+        $firstModule = Module::where(
             'level_id',
             $nextLevel->id
         )
@@ -948,30 +1001,9 @@ class ProgressionService
             return;
         }
 
-        /*
-        |--------------------------------------------------
-        | 🔹 FIRST CHAPTER
-        |--------------------------------------------------
-        */
-        $firstChapter = \App\Models\Chapter::where(
+        $firstTopic = Topic::where(
             'module_id',
             $firstModule->id
-        )
-            ->orderBy('id')
-            ->first();
-
-        if (!$firstChapter) {
-            return;
-        }
-
-        /*
-        |--------------------------------------------------
-        | 🔹 FIRST TOPIC
-        |--------------------------------------------------
-        */
-        $firstTopic = \App\Models\Topic::where(
-            'chapter_id',
-            $firstChapter->id
         )
             ->orderBy('id')
             ->first();
@@ -980,93 +1012,59 @@ class ProgressionService
             return;
         }
 
-        /*
-        |--------------------------------------------------
-        | 🔥 UNLOCK ENTRY
-        |--------------------------------------------------
-        */
-        \App\Models\UserProgress::firstOrCreate(
+        UserProgress::firstOrCreate(
+
             [
                 'user_id' => $userId,
                 'topic_id' => $firstTopic->id,
             ],
+
             [
                 'program_id' => $firstTopic->program_id,
                 'level_id' => $firstTopic->level_id,
                 'module_id' => $firstTopic->module_id,
                 'chapter_id' => $firstTopic->chapter_id,
+
                 'is_unlocked' => true,
                 'is_completed' => false,
             ]
         );
 
+        AuditService::log(
+            'level_unlocked',
+            'User unlocked next level',
+            [
+                'level_id' => $nextLevel->id
+            ]
+        );
+
         /*
-        |--------------------------------------------------
-        | 🔔 USER NOTIFICATION
-        |--------------------------------------------------
+        |--------------------------------------------------------------------------
+        | USER NOTIFICATION
+        |--------------------------------------------------------------------------
         */
+
+        $user = User::find($userId);
+
         if ($user) {
 
             app(NotificationService::class)->send(
                 $user,
                 'LEVEL_UNLOCKED',
                 [
-                    'title' => 'Next Level Unlocked',
-                    'message' => 'You unlocked the next level successfully',
+                    'title' => 'New Level Unlocked',
+
+                    'message' => 'Next level unlocked successfully',
 
                     'screen' => 'LevelDetails',
+
                     'id' => $nextLevel->id,
 
                     'meta' => [
                         'level_id' => $nextLevel->id,
-                        'level_title' => $nextLevel->title ?? null,
+                        'level_title' => $nextLevel->title,
                     ]
                 ],
-                ['db', 'push']
-            );
-
-            /*
-            |--------------------------------------------------
-            | 🛡 ADMIN PAYLOAD
-            |--------------------------------------------------
-            */
-            $adminPayload = [
-                'title' => 'Level Unlocked',
-                'message' => "{$user->name} unlocked a new level",
-
-                'screen' => 'LevelDetails',
-                'id' => $nextLevel->id,
-
-                'meta' => [
-                    'user_id' => $user->id,
-                    'user_name' => $user->name,
-
-                    'level_id' => $nextLevel->id,
-                    'level_title' => $nextLevel->title ?? null,
-                ]
-            ];
-
-            /*
-            |--------------------------------------------------
-            | 🛡 ADMINS
-            |--------------------------------------------------
-            */
-            app(NotificationService::class)->sendToRole(
-                'admin',
-                'LEVEL_UNLOCKED',
-                $adminPayload,
-                ['db', 'push']
-            );
-
-            /*
-            |--------------------------------------------------
-            | 👑 SUPER ADMINS
-            |--------------------------------------------------
-            */
-            app(NotificationService::class)->sendToRole(
-                'superadmin',
-                'LEVEL_UNLOCKED',
-                $adminPayload,
                 ['db', 'push']
             );
         }

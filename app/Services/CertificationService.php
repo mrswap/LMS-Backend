@@ -8,25 +8,63 @@ use Illuminate\Support\Str;
 
 class CertificationService
 {
-    public function generate($user, $context, $attempt, $type = 'level')
+    public function generate($user, $context, $attempt, $type = 'topic')
     {
         /*
-        |--------------------------------------------------
+        |--------------------------------------------------------------------------
         | ❌ DUPLICATE PREVENTION
-        |--------------------------------------------------
+        |--------------------------------------------------------------------------
         */
-        $query = Certification::where('user_id', $user->id)
-            ->where('type', $type);
+
+        $query = Certification::where('user_id', $user->id)->where('type', $type);
+
+        /*
+        |--------------------------------------------------------------------------
+        | LEVEL CERTIFICATE
+        |--------------------------------------------------------------------------
+        */
 
         if ($type === 'level') {
 
-            $query->where('level_id', $context->id);
+            $query->where(
+                'level_id',
+                $context->id
+            );
         }
+
+        /*
+        |--------------------------------------------------------------------------
+        | MODULE CERTIFICATE
+        |--------------------------------------------------------------------------
+        */
+
+        if ($type === 'module') {
+
+            $query->where(
+                'module_id',
+                $context->id
+            );
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | TOPIC CERTIFICATE
+        |--------------------------------------------------------------------------
+        */
 
         if ($type === 'topic') {
 
-            $query->where('topic_id', $context->id);
+            $query->where(
+                'topic_id',
+                $context->id
+            );
         }
+
+        /*
+        |--------------------------------------------------------------------------
+        | ALREADY EXISTS
+        |--------------------------------------------------------------------------
+        */
 
         if ($query->exists()) {
 
@@ -34,14 +72,12 @@ class CertificationService
         }
 
         /*
-        |--------------------------------------------------
+        |--------------------------------------------------------------------------
         | 📊 FETCH ANSWERS
-        |--------------------------------------------------
+        |--------------------------------------------------------------------------
         */
-        $answers = AssessmentAnswer::where(
-            'attempt_id',
-            $attempt->id
-        )->get();
+
+        $answers = AssessmentAnswer::where('attempt_id',  $attempt->id)->get();
 
         $totalQuestions = $answers->count();
 
@@ -63,59 +99,78 @@ class CertificationService
             ->count();
 
         /*
-        |--------------------------------------------------
+        |--------------------------------------------------------------------------
         | 📊 MARKS CALCULATION
-        |--------------------------------------------------
+        |--------------------------------------------------------------------------
         */
-        $totalMarks = $answers->sum('marks_snapshot');
 
-        $obtainedMarks = $answers->sum('marks_obtained');
+        $totalMarks = $answers->sum(
+            'marks_snapshot'
+        );
+
+        $obtainedMarks = $answers->sum(
+            'marks_obtained'
+        );
 
         $passingMarks = $attempt->assessment->passing_score ?? null;
 
         /*
-        |--------------------------------------------------
+        |--------------------------------------------------------------------------
         | 🧠 CERTIFICATE ID
-        |--------------------------------------------------
+        |--------------------------------------------------------------------------
         */
+
         $certificateId = 'CERT-'
             . date('Y')
             . '-'
             . strtoupper(Str::random(6));
 
         /*
-        |--------------------------------------------------
+        |--------------------------------------------------------------------------
         | 🧾 META SNAPSHOT
-        |--------------------------------------------------
+        |--------------------------------------------------------------------------
         */
+
         $meta = [
 
             /*
-            |--------------------------------------------------
+            |--------------------------------------------------------------------------
             | 👤 USER
-            |--------------------------------------------------
+            |--------------------------------------------------------------------------
             */
+
             'user' => [
+
                 'id' => $user->id,
+
                 'name' => $user->name,
+
                 'email' => $user->email,
+
                 'employee_id' => $user->employee_id,
             ],
 
             /*
-            |--------------------------------------------------
+            |--------------------------------------------------------------------------
             | 📚 CONTEXT
-            |--------------------------------------------------
+            |--------------------------------------------------------------------------
             */
+
             'context' => [
+
                 'type' => $type,
+
                 'title' => $context->title,
 
                 'program_id' => $context->program_id ?? null,
 
                 'level_id' => $type === 'level'
                     ? $context->id
-                    : $context->level_id ?? null,
+                    : ($context->level_id ?? null),
+
+                'module_id' => $type === 'module'
+                    ? $context->id
+                    : ($context->module_id ?? null),
 
                 'topic_id' => $type === 'topic'
                     ? $context->id
@@ -123,68 +178,91 @@ class CertificationService
             ],
 
             /*
-            |--------------------------------------------------
+            |--------------------------------------------------------------------------
             | 📊 RESULT
-            |--------------------------------------------------
+            |--------------------------------------------------------------------------
             */
+
             'result' => [
+
                 'score' => $attempt->score,
+
                 'percentage' => $attempt->percentage,
+
                 'passing_score' => $passingMarks,
+
                 'status' => $attempt->status,
             ],
 
             /*
-            |--------------------------------------------------
+            |--------------------------------------------------------------------------
             | 📊 QUESTIONS ANALYTICS
-            |--------------------------------------------------
+            |--------------------------------------------------------------------------
             */
+
             'questions' => [
+
                 'total' => $totalQuestions,
+
                 'attempted' => $attempted,
+
                 'correct' => $correct,
+
                 'incorrect' => $incorrect,
+
                 'skipped' => $skipped,
             ],
 
             /*
-            |--------------------------------------------------
+            |--------------------------------------------------------------------------
             | 💯 MARKS
-            |--------------------------------------------------
+            |--------------------------------------------------------------------------
             */
+
             'marks' => [
+
                 'total_marks' => $totalMarks,
+
                 'obtained_marks' => $obtainedMarks,
+
                 'passing_marks' => $passingMarks,
             ],
 
             /*
-            |--------------------------------------------------
+            |--------------------------------------------------------------------------
             | ⏱ TIME DATA
-            |--------------------------------------------------
+            |--------------------------------------------------------------------------
             */
+
             'time' => [
+
                 'started_at' => $attempt->started_at,
+
                 'submitted_at' => $attempt->submitted_at,
+
                 'time_taken_seconds' => $attempt->time_taken,
             ],
 
             /*
-            |--------------------------------------------------
+            |--------------------------------------------------------------------------
             | 🔁 ATTEMPT INFO
-            |--------------------------------------------------
+            |--------------------------------------------------------------------------
             */
+
             'attempt' => [
+
                 'attempt_id' => $attempt->id,
+
                 'submit_type' => $attempt->submit_type,
             ],
         ];
 
         /*
-        |--------------------------------------------------
+        |--------------------------------------------------------------------------
         | 💾 SAVE CERTIFICATE
-        |--------------------------------------------------
+        |--------------------------------------------------------------------------
         */
+
         $certificate = Certification::create([
 
             'user_id' => $user->id,
@@ -193,7 +271,11 @@ class CertificationService
 
             'level_id' => $type === 'level'
                 ? $context->id
-                : null,
+                : ($context->level_id ?? null),
+
+            'module_id' => $type === 'module'
+                ? $context->id
+                : ($context->module_id ?? null),
 
             'topic_id' => $type === 'topic'
                 ? $context->id
@@ -215,14 +297,16 @@ class CertificationService
         ]);
 
         /*
-        |--------------------------------------------------
+        |--------------------------------------------------------------------------
         | 🔔 USER NOTIFICATION
-        |--------------------------------------------------
+        |--------------------------------------------------------------------------
         */
+
         app(NotificationService::class)->send(
             $user,
             'CERTIFICATE_GENERATED',
             [
+
                 'message' => "Certificate generated for {$context->title}",
 
                 'screen' => 'CertificateDetails',
@@ -230,8 +314,11 @@ class CertificationService
                 'model' => $certificate,
 
                 'meta' => [
+
                     'certificate_id' => $certificate->id,
+
                     'certificate_code' => $certificate->certificate_id,
+
                     'type' => $type,
                 ]
             ],
@@ -239,16 +326,18 @@ class CertificationService
         );
 
         /*
-        |--------------------------------------------------
+        |--------------------------------------------------------------------------
         | 🛡 ADMIN NOTIFICATION
-        |--------------------------------------------------
+        |--------------------------------------------------------------------------
         */
+
         $adminMessage = "{$user->name} earned a certificate for {$context->title}";
 
         app(NotificationService::class)->sendToRole(
             'admin',
             'CERTIFICATE_GENERATED',
             [
+
                 'message' => $adminMessage,
 
                 'screen' => 'CertificateReview',
@@ -256,9 +345,13 @@ class CertificationService
                 'model' => $certificate,
 
                 'meta' => [
+
                     'user_id' => $user->id,
+
                     'certificate_id' => $certificate->id,
+
                     'certificate_code' => $certificate->certificate_id,
+
                     'type' => $type,
                 ]
             ],
@@ -266,14 +359,16 @@ class CertificationService
         );
 
         /*
-        |--------------------------------------------------
+        |--------------------------------------------------------------------------
         | 👑 SUPERADMIN NOTIFICATION
-        |--------------------------------------------------
+        |--------------------------------------------------------------------------
         */
+
         app(NotificationService::class)->sendToRole(
             'superadmin',
             'CERTIFICATE_GENERATED',
             [
+
                 'message' => $adminMessage,
 
                 'screen' => 'CertificateReview',
@@ -281,9 +376,13 @@ class CertificationService
                 'model' => $certificate,
 
                 'meta' => [
+
                     'user_id' => $user->id,
+
                     'certificate_id' => $certificate->id,
+
                     'certificate_code' => $certificate->certificate_id,
+
                     'type' => $type,
                 ]
             ],
