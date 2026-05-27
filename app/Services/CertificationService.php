@@ -13,6 +13,7 @@ class CertificationService
         $context,
         $attempt,
         $type = 'topic'
+    ) {
 
         /*
         |------------------------------------------------------------------
