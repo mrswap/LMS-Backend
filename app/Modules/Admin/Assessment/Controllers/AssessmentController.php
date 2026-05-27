@@ -23,15 +23,28 @@ class AssessmentController extends Controller
 
     public function index(Request $request)
     {
-
         $query = Assessment::with([
+
             'questions:id,assessment_id',
+
             'creator:id,name,email',
+
             'assessmentable' => function (MorphTo $morphTo) {
+
                 $morphTo->morphWith([
+
                     \App\Models\Topic::class => [
                         'chapter.module.level.program'
                     ],
+
+                    \App\Models\Chapter::class => [
+                        'module.level.program'
+                    ],
+
+                    \App\Models\Module::class => [
+                        'level.program'
+                    ],
+
                     \App\Models\Level::class => [
                         'program'
                     ],
@@ -40,13 +53,18 @@ class AssessmentController extends Controller
         ]);
 
         /*
-        |-----------------------------
-        | FILTER: TYPE
-        |-----------------------------
-        */
+    |--------------------------------------------------
+    | FILTER: TYPE
+    |--------------------------------------------------
+    */
+
         if ($request->filled('type')) {
 
-            if (!in_array($request->type, ['topic', 'level'])) {
+            if (!in_array(
+                $request->type,
+                ['topic', 'chapter', 'module', 'level']
+            )) {
+
                 return response()->json([
                     'success' => false,
                     'message' => 'Invalid type'
@@ -57,11 +75,12 @@ class AssessmentController extends Controller
         }
 
         /*
-        |-----------------------------
-        | HIERARCHY FILTER (FINAL)
-        | topic > chapter > module > level
-        |-----------------------------
-        */
+    |--------------------------------------------------
+    | HIERARCHY FILTER
+    | topic > chapter > module > level
+    |--------------------------------------------------
+    */
+
         if (
             $request->filled('topic_id') ||
             $request->filled('chapter_id') ||
@@ -69,199 +88,566 @@ class AssessmentController extends Controller
             $request->filled('level_id')
         ) {
 
-            $topicQuery = \App\Models\Topic::query();
+            $query->where(function ($q) use ($request) {
 
-            // 🔴 topic
-            if ($request->filled('topic_id')) {
+                /*
+            |--------------------------------------------------
+            | TOPIC
+            |--------------------------------------------------
+            */
 
-                if (!\App\Models\Topic::find($request->topic_id)) {
-                    return response()->json(['success' => false, 'message' => 'Topic not found'], 404);
+                if ($request->filled('topic_id')) {
+
+                    $q->where(function ($qq) use ($request) {
+
+                        $qq->where(function ($x) use ($request) {
+
+                            $x->where(
+                                'assessmentable_type',
+                                \App\Models\Topic::class
+                            )
+                                ->where(
+                                    'assessmentable_id',
+                                    $request->topic_id
+                                );
+                        });
+                    });
+
+                    return;
                 }
 
-                $topicQuery->where('id', $request->topic_id);
-            }
+                /*
+            |--------------------------------------------------
+            | CHAPTER
+            |--------------------------------------------------
+            */
 
-            // 🟡 chapter
-            elseif ($request->filled('chapter_id')) {
+                if ($request->filled('chapter_id')) {
 
-                $topicQuery->where('chapter_id', $request->chapter_id);
-            }
+                    $q->where(function ($qq) use ($request) {
 
-            // 🟢 module
-            elseif ($request->filled('module_id')) {
+                        $topicIds = \App\Models\Topic::where(
+                            'chapter_id',
+                            $request->chapter_id
+                        )->pluck('id');
 
-                $topicQuery->whereHas('chapter', function ($q) use ($request) {
-                    $q->where('module_id', $request->module_id);
-                });
-            }
+                        /*
+                    |------------------------------------------
+                    | TOPIC ASSESSMENTS
+                    |------------------------------------------
+                    */
 
-            // 🔵 level
-            elseif ($request->filled('level_id')) {
+                        $qq->orWhere(function ($x) use ($topicIds) {
 
-                if (!\App\Models\Level::find($request->level_id)) {
-                    return response()->json(['success' => false, 'message' => 'Level not found'], 404);
-                }
-
-                $topicQuery->whereHas('chapter.module.level', function ($q) use ($request) {
-                    $q->where('id', $request->level_id);
-                });
-            }
-
-            $topicIds = $topicQuery->pluck('id');
-
-            $query->where(function ($q) use ($request, $topicIds) {
-
-                // 🔹 topic assessments
-                if ($request->type === 'topic') {
-
-                    $q->where('assessmentable_type', \App\Models\Topic::class)
-                        ->whereIn('assessmentable_id', $topicIds);
-                }
-
-                // 🔹 level exam
-                elseif ($request->type === 'level') {
-
-                    if ($request->filled('level_id')) {
-                        $q->where('assessmentable_type', \App\Models\Level::class)
-                            ->where('assessmentable_id', $request->level_id);
-                    }
-                }
-
-                // 🔹 both
-                else {
-
-                    $q->where(function ($qq) use ($topicIds, $request) {
-
-                        $qq->where(function ($q1) use ($topicIds) {
-                            $q1->where('assessmentable_type', \App\Models\Topic::class)
-                                ->whereIn('assessmentable_id', $topicIds);
+                            $x->where(
+                                'assessmentable_type',
+                                \App\Models\Topic::class
+                            )
+                                ->whereIn(
+                                    'assessmentable_id',
+                                    $topicIds
+                                );
                         });
 
-                        if ($request->filled('level_id')) {
-                            $qq->orWhere(function ($q2) use ($request) {
-                                $q2->where('assessmentable_type', \App\Models\Level::class)
-                                    ->where('assessmentable_id', $request->level_id);
-                            });
-                        }
+                        /*
+                    |------------------------------------------
+                    | CHAPTER ASSESSMENT
+                    |------------------------------------------
+                    */
+
+                        $qq->orWhere(function ($x) use ($request) {
+
+                            $x->where(
+                                'assessmentable_type',
+                                \App\Models\Chapter::class
+                            )
+                                ->where(
+                                    'assessmentable_id',
+                                    $request->chapter_id
+                                );
+                        });
+                    });
+
+                    return;
+                }
+
+                /*
+            |--------------------------------------------------
+            | MODULE
+            |--------------------------------------------------
+            */
+
+                if ($request->filled('module_id')) {
+
+                    $q->where(function ($qq) use ($request) {
+
+                        $chapterIds = \App\Models\Chapter::where(
+                            'module_id',
+                            $request->module_id
+                        )->pluck('id');
+
+                        $topicIds = \App\Models\Topic::whereIn(
+                            'chapter_id',
+                            $chapterIds
+                        )->pluck('id');
+
+                        /*
+                    |------------------------------------------
+                    | TOPIC ASSESSMENTS
+                    |------------------------------------------
+                    */
+
+                        $qq->orWhere(function ($x) use ($topicIds) {
+
+                            $x->where(
+                                'assessmentable_type',
+                                \App\Models\Topic::class
+                            )
+                                ->whereIn(
+                                    'assessmentable_id',
+                                    $topicIds
+                                );
+                        });
+
+                        /*
+                    |------------------------------------------
+                    | CHAPTER ASSESSMENTS
+                    |------------------------------------------
+                    */
+
+                        $qq->orWhere(function ($x) use ($chapterIds) {
+
+                            $x->where(
+                                'assessmentable_type',
+                                \App\Models\Chapter::class
+                            )
+                                ->whereIn(
+                                    'assessmentable_id',
+                                    $chapterIds
+                                );
+                        });
+
+                        /*
+                    |------------------------------------------
+                    | MODULE ASSESSMENT
+                    |------------------------------------------
+                    */
+
+                        $qq->orWhere(function ($x) use ($request) {
+
+                            $x->where(
+                                'assessmentable_type',
+                                \App\Models\Module::class
+                            )
+                                ->where(
+                                    'assessmentable_id',
+                                    $request->module_id
+                                );
+                        });
+                    });
+
+                    return;
+                }
+
+                /*
+            |--------------------------------------------------
+            | LEVEL
+            |--------------------------------------------------
+            */
+
+                if ($request->filled('level_id')) {
+
+                    $moduleIds = \App\Models\Module::where(
+                        'level_id',
+                        $request->level_id
+                    )->pluck('id');
+
+                    $chapterIds = \App\Models\Chapter::whereIn(
+                        'module_id',
+                        $moduleIds
+                    )->pluck('id');
+
+                    $topicIds = \App\Models\Topic::whereIn(
+                        'chapter_id',
+                        $chapterIds
+                    )->pluck('id');
+
+                    $q->where(function ($qq) use (
+                        $request,
+                        $moduleIds,
+                        $chapterIds,
+                        $topicIds
+                    ) {
+
+                        /*
+                    |------------------------------------------
+                    | TOPIC ASSESSMENTS
+                    |------------------------------------------
+                    */
+
+                        $qq->orWhere(function ($x) use ($topicIds) {
+
+                            $x->where(
+                                'assessmentable_type',
+                                \App\Models\Topic::class
+                            )
+                                ->whereIn(
+                                    'assessmentable_id',
+                                    $topicIds
+                                );
+                        });
+
+                        /*
+                    |------------------------------------------
+                    | CHAPTER ASSESSMENTS
+                    |------------------------------------------
+                    */
+
+                        $qq->orWhere(function ($x) use ($chapterIds) {
+
+                            $x->where(
+                                'assessmentable_type',
+                                \App\Models\Chapter::class
+                            )
+                                ->whereIn(
+                                    'assessmentable_id',
+                                    $chapterIds
+                                );
+                        });
+
+                        /*
+                    |------------------------------------------
+                    | MODULE ASSESSMENTS
+                    |------------------------------------------
+                    */
+
+                        $qq->orWhere(function ($x) use ($moduleIds) {
+
+                            $x->where(
+                                'assessmentable_type',
+                                \App\Models\Module::class
+                            )
+                                ->whereIn(
+                                    'assessmentable_id',
+                                    $moduleIds
+                                );
+                        });
+
+                        /*
+                    |------------------------------------------
+                    | LEVEL ASSESSMENT
+                    |------------------------------------------
+                    */
+
+                        $qq->orWhere(function ($x) use ($request) {
+
+                            $x->where(
+                                'assessmentable_type',
+                                \App\Models\Level::class
+                            )
+                                ->where(
+                                    'assessmentable_id',
+                                    $request->level_id
+                                );
+                        });
                     });
                 }
             });
         }
 
         /*
-        |-----------------------------
-        | SEARCH
-        |-----------------------------
-        */
+    |--------------------------------------------------
+    | SEARCH
+    |--------------------------------------------------
+    */
+
         if ($request->filled('search')) {
 
             $search = $request->search;
 
             $query->where(function ($q) use ($search) {
 
-                $q->where('title', 'like', "%{$search}%")
+                $q->where(
+                    'title',
+                    'like',
+                    "%{$search}%"
+                )
                     ->orWhereHas('assessmentable', function ($q2) use ($search) {
-                        $q2->where('title', 'like', "%{$search}%");
+
+                        $q2->where(
+                            'title',
+                            'like',
+                            "%{$search}%"
+                        );
                     })
                     ->orWhereHas('questions', function ($q3) use ($search) {
-                        $q3->where('question_text', 'like', "%{$search}%");
+
+                        $q3->where(
+                            'question_text',
+                            'like',
+                            "%{$search}%"
+                        );
                     });
             });
         }
 
         /*
-        |-----------------------------
-        | STATUS
-        |-----------------------------
-        */
+    |--------------------------------------------------
+    | STATUS
+    |--------------------------------------------------
+    */
+
         if ($request->has('status')) {
+
             if ($request->status !== 'all') {
-                $query->where('status', (bool)$request->status);
+
+                $query->where(
+                    'status',
+                    (bool)$request->status
+                );
             }
         } else {
+
             $query->where('status', true);
         }
 
         /*
-        |-----------------------------
-        | SORTING
-        |-----------------------------
-        */
+    |--------------------------------------------------
+    | SORTING
+    |--------------------------------------------------
+    */
+
         $sortByMap = [
+
             'createdAt' => 'created_at',
-            'title'     => 'title',
-            'duration'  => 'duration',
+
+            'title' => 'title',
+
+            'duration' => 'duration',
         ];
 
-        $sortBy = $request->get('sortBy', 'createdAt');
-        $order  = strtolower($request->get('order', 'desc')) === 'asc' ? 'asc' : 'desc';
+        $sortBy = $request->get(
+            'sortBy',
+            'createdAt'
+        );
 
-        $query->orderBy($sortByMap[$sortBy] ?? 'created_at', $order);
+        $order = strtolower(
+            $request->get('order', 'desc')
+        ) === 'asc'
+            ? 'asc'
+            : 'desc';
+
+        $query->orderBy(
+            $sortByMap[$sortBy] ?? 'created_at',
+            $order
+        );
 
         /*
-        |-----------------------------
-        | PAGINATION
-        |-----------------------------
-        */
+    |--------------------------------------------------
+    | PAGINATION
+    |--------------------------------------------------
+    */
+
         $limit = (int)$request->get('limit', 10);
-        $limit = ($limit > 0 && $limit <= 100) ? $limit : 10;
+
+        $limit = (
+            $limit > 0 &&
+            $limit <= 100
+        )
+            ? $limit
+            : 10;
 
         $assessments = $query->paginate($limit);
 
         /*
-        |-----------------------------
-        | TRANSFORM (WITH HIERARCHY)
-        |-----------------------------
-        */
+    |--------------------------------------------------
+    | TRANSFORM
+    |--------------------------------------------------
+    */
+
         $assessments->getCollection()->transform(function ($assessment) {
 
             $hierarchy = null;
 
-            if ($assessment->assessmentable_type === \App\Models\Topic::class) {
+            /*
+        |--------------------------------------------------
+        | TOPIC
+        |--------------------------------------------------
+        */
+
+            if (
+                $assessment->assessmentable_type ===
+                \App\Models\Topic::class
+            ) {
 
                 $t = $assessment->assessmentable;
 
                 $hierarchy = [
+
                     'type' => 'topic',
-                    'topic' => ['id' => $t->id, 'title' => $t->title],
-                    'chapter' => ['id' => $t->chapter->id ?? null, 'title' => $t->chapter->title ?? null],
-                    'module' => ['id' => $t->chapter->module->id ?? null, 'title' => $t->chapter->module->title ?? null],
-                    'level' => ['id' => $t->chapter->module->level->id ?? null, 'title' => $t->chapter->module->level->title ?? null],
-                    'program' => ['id' => $t->chapter->module->level->program->id ?? null, 'title' => $t->chapter->module->level->program->title ?? null],
+
+                    'topic' => [
+                        'id' => $t->id,
+                        'title' => $t->title
+                    ],
+
+                    'chapter' => [
+                        'id' => $t->chapter->id ?? null,
+                        'title' => $t->chapter->title ?? null
+                    ],
+
+                    'module' => [
+                        'id' => $t->chapter->module->id ?? null,
+                        'title' => $t->chapter->module->title ?? null
+                    ],
+
+                    'level' => [
+                        'id' => $t->chapter->module->level->id ?? null,
+                        'title' => $t->chapter->module->level->title ?? null
+                    ],
+
+                    'program' => [
+                        'id' => $t->chapter->module->level->program->id ?? null,
+                        'title' => $t->chapter->module->level->program->title ?? null
+                    ],
                 ];
             }
 
-            if ($assessment->assessmentable_type === \App\Models\Level::class) {
+            /*
+        |--------------------------------------------------
+        | CHAPTER
+        |--------------------------------------------------
+        */
+
+            if (
+                $assessment->assessmentable_type ===
+                \App\Models\Chapter::class
+            ) {
+
+                $c = $assessment->assessmentable;
+
+                $hierarchy = [
+
+                    'type' => 'chapter',
+
+                    'chapter' => [
+                        'id' => $c->id,
+                        'title' => $c->title
+                    ],
+
+                    'module' => [
+                        'id' => $c->module->id ?? null,
+                        'title' => $c->module->title ?? null
+                    ],
+
+                    'level' => [
+                        'id' => $c->module->level->id ?? null,
+                        'title' => $c->module->level->title ?? null
+                    ],
+
+                    'program' => [
+                        'id' => $c->module->level->program->id ?? null,
+                        'title' => $c->module->level->program->title ?? null
+                    ],
+                ];
+            }
+
+            /*
+        |--------------------------------------------------
+        | MODULE
+        |--------------------------------------------------
+        */
+
+            if (
+                $assessment->assessmentable_type ===
+                \App\Models\Module::class
+            ) {
+
+                $m = $assessment->assessmentable;
+
+                $hierarchy = [
+
+                    'type' => 'module',
+
+                    'module' => [
+                        'id' => $m->id,
+                        'title' => $m->title
+                    ],
+
+                    'level' => [
+                        'id' => $m->level->id ?? null,
+                        'title' => $m->level->title ?? null
+                    ],
+
+                    'program' => [
+                        'id' => $m->level->program->id ?? null,
+                        'title' => $m->level->program->title ?? null
+                    ],
+                ];
+            }
+
+            /*
+        |--------------------------------------------------
+        | LEVEL
+        |--------------------------------------------------
+        */
+
+            if (
+                $assessment->assessmentable_type ===
+                \App\Models\Level::class
+            ) {
 
                 $l = $assessment->assessmentable;
 
                 $hierarchy = [
+
                     'type' => 'level',
-                    'level' => ['id' => $l->id, 'title' => $l->title],
-                    'program' => ['id' => $l->program->id ?? null, 'title' => $l->program->title ?? null],
+
+                    'level' => [
+                        'id' => $l->id,
+                        'title' => $l->title
+                    ],
+
+                    'program' => [
+                        'id' => $l->program->id ?? null,
+                        'title' => $l->program->title ?? null
+                    ],
                 ];
             }
 
             return [
+
                 'id' => $assessment->id,
+
                 'type' => $assessment->type,
+
                 'title' => $assessment->title,
+
                 'description' => $assessment->description,
+
                 'file' => $assessment->file,
+
                 'duration' => $assessment->duration,
+
                 'passing_score' => $assessment->passing_score,
+
                 'total_marks' => $assessment->total_marks,
+
                 'status' => (bool)$assessment->status,
 
                 'creator' => [
+
                     'id' => $assessment->creator->id ?? null,
+
                     'name' => $assessment->creator->name ?? null,
+
                     'email' => $assessment->creator->email ?? null,
                 ],
 
                 'hierarchy' => $hierarchy,
 
                 'questions_count' => $assessment->questions->count(),
+
                 'created_at' => $assessment->created_at,
             ];
         });
@@ -271,7 +657,6 @@ class AssessmentController extends Controller
             'data' => $assessments
         ]);
     }
-
     public function store(Request $request)
     {
         $request->validate([
@@ -364,66 +749,190 @@ class AssessmentController extends Controller
         });
     }
 
+
     public function show($id)
     {
-        $assessment = Assessment::with('questions.options')->findOrFail($id);
+        $assessment = Assessment::with([
+            'questions.options'
+        ])->findOrFail($id);
 
         $parent = null;
 
-        if ($assessment->assessmentable_type === \App\Models\Topic::class) {
+        /*
+    |--------------------------------------------------
+    | TOPIC
+    |--------------------------------------------------
+    */
+
+        if (
+            $assessment->assessmentable_type ===
+            \App\Models\Topic::class
+        ) {
 
             $topic = \App\Models\Topic::with([
                 'chapter.module.level.program'
             ])->find($assessment->assessmentable_id);
 
-            $parent = [
-                'type' => 'topic',
-                'topic' => [
-                    'id' => $topic->id,
-                    'title' => $topic->title,
-                ],
-                'chapter' => [
-                    'id' => $topic->chapter->id,
-                    'title' => $topic->chapter->title,
-                ],
-                'module' => [
-                    'id' => $topic->chapter->module->id,
-                    'title' => $topic->chapter->module->title,
-                ],
-                'level' => [
-                    'id' => $topic->chapter->module->level->id,
-                    'title' => $topic->chapter->module->level->title,
-                ],
-                'program' => [
-                    'id' => $topic->chapter->module->level->program->id,
-                    'title' => $topic->chapter->module->level->program->title,
-                ],
-            ];
+            if ($topic) {
+
+                $parent = [
+
+                    'type' => 'topic',
+
+                    'topic' => [
+                        'id' => $topic->id,
+                        'title' => $topic->title,
+                    ],
+
+                    'chapter' => [
+                        'id' => $topic->chapter->id ?? null,
+                        'title' => $topic->chapter->title ?? null,
+                    ],
+
+                    'module' => [
+                        'id' => $topic->chapter->module->id ?? null,
+                        'title' => $topic->chapter->module->title ?? null,
+                    ],
+
+                    'level' => [
+                        'id' => $topic->chapter->module->level->id ?? null,
+                        'title' => $topic->chapter->module->level->title ?? null,
+                    ],
+
+                    'program' => [
+                        'id' => $topic->chapter->module->level->program->id ?? null,
+                        'title' => $topic->chapter->module->level->program->title ?? null,
+                    ],
+                ];
+            }
         }
 
-        if ($assessment->assessmentable_type === \App\Models\Level::class) {
+        /*
+        |--------------------------------------------------
+        | CHAPTER
+        |--------------------------------------------------
+        */
 
-            $level = \App\Models\Level::with('program')
-                ->find($assessment->assessmentable_id);
+        if (
+            $assessment->assessmentable_type ===
+            \App\Models\Chapter::class
+        ) {
 
-            $parent = [
-                'type' => 'level',
-                'level' => [
-                    'id' => $level->id,
-                    'title' => $level->title,
-                ],
-                'program' => [
-                    'id' => $level->program->id,
-                    'title' => $level->program->title,
-                ],
-            ];
+            $chapter = \App\Models\Chapter::with([
+                'module.level.program'
+            ])->find($assessment->assessmentable_id);
+
+            if ($chapter) {
+
+                $parent = [
+
+                    'type' => 'chapter',
+
+                    'chapter' => [
+                        'id' => $chapter->id,
+                        'title' => $chapter->title,
+                    ],
+
+                    'module' => [
+                        'id' => $chapter->module->id ?? null,
+                        'title' => $chapter->module->title ?? null,
+                    ],
+
+                    'level' => [
+                        'id' => $chapter->module->level->id ?? null,
+                        'title' => $chapter->module->level->title ?? null,
+                    ],
+
+                    'program' => [
+                        'id' => $chapter->module->level->program->id ?? null,
+                        'title' => $chapter->module->level->program->title ?? null,
+                    ],
+                ];
+            }
+        }
+
+        /*
+        |--------------------------------------------------
+        | MODULE
+        |--------------------------------------------------
+        */
+
+        if (
+            $assessment->assessmentable_type ===
+            \App\Models\Module::class
+        ) {
+
+            $module = \App\Models\Module::with([
+                'level.program'
+            ])->find($assessment->assessmentable_id);
+
+            if ($module) {
+
+                $parent = [
+
+                    'type' => 'module',
+
+                    'module' => [
+                        'id' => $module->id,
+                        'title' => $module->title,
+                    ],
+
+                    'level' => [
+                        'id' => $module->level->id ?? null,
+                        'title' => $module->level->title ?? null,
+                    ],
+
+                    'program' => [
+                        'id' => $module->level->program->id ?? null,
+                        'title' => $module->level->program->title ?? null,
+                    ],
+                ];
+            }
+        }
+
+        /*
+        |--------------------------------------------------
+        | LEVEL
+        |--------------------------------------------------
+        */
+
+        if (
+            $assessment->assessmentable_type ===
+            \App\Models\Level::class
+        ) {
+
+            $level = \App\Models\Level::with([
+                'program'
+            ])->find($assessment->assessmentable_id);
+
+            if ($level) {
+
+                $parent = [
+
+                    'type' => 'level',
+
+                    'level' => [
+                        'id' => $level->id,
+                        'title' => $level->title,
+                    ],
+
+                    'program' => [
+                        'id' => $level->program->id ?? null,
+                        'title' => $level->program->title ?? null,
+                    ],
+                ];
+            }
         }
 
         return response()->json([
+
             'assessment' => $assessment,
+
             'hierarchy' => $parent
         ]);
     }
+
+
 
     public function update(Request $request, $id)
     {
@@ -431,14 +940,30 @@ class AssessmentController extends Controller
 
         $request->validate([
 
+            /*
+        |--------------------------------------------------
+        | BASIC
+        |--------------------------------------------------
+        */
             'type' => 'sometimes|in:topic,chapter,module,level',
 
             'title' => 'sometimes|string',
+
+            'description' => 'nullable|string',
+
+            'duration' => 'sometimes|integer|min:1',
 
             'passing_score' => 'sometimes|integer|min:0|max:100',
 
             'total_marks' => 'sometimes|integer|min:1',
 
+            'status' => 'sometimes|boolean',
+
+            /*
+        |--------------------------------------------------
+        | PARENT
+        |--------------------------------------------------
+        */
             'assessmentable_id' => 'sometimes|integer',
 
             'assessmentable_type' => [
@@ -447,16 +972,35 @@ class AssessmentController extends Controller
                 'in:App\Models\Topic,App\Models\Chapter,App\Models\Module,App\Models\Level'
             ],
 
+            /*
+        |--------------------------------------------------
+        | FILE
+        |--------------------------------------------------
+        */
             'file' => 'nullable|file|max:2048'
         ]);
 
-        return DB::transaction(function () use ($request, $assessment) {
+        return DB::transaction(function () use (
+            $request,
+            $assessment
+        ) {
 
-            $type = $request->type ?? $assessment->type;
+            /*
+        |--------------------------------------------------
+        | TYPES
+        |--------------------------------------------------
+        */
+            $type = $request->type
+                ?? $assessment->type;
 
             $assessmentableType = $request->assessmentable_type
                 ?? $assessment->assessmentable_type;
 
+            /*
+        |--------------------------------------------------
+        | TYPE MAP
+        |--------------------------------------------------
+        */
             $mapping = [
 
                 'topic' => \App\Models\Topic::class,
@@ -468,6 +1012,11 @@ class AssessmentController extends Controller
                 'level' => \App\Models\Level::class,
             ];
 
+            /*
+        |--------------------------------------------------
+        | VALIDATE MAPPING
+        |--------------------------------------------------
+        */
             if (
                 !isset($mapping[$type]) ||
                 $mapping[$type] !== $assessmentableType
@@ -479,10 +1028,22 @@ class AssessmentController extends Controller
                 ], 422);
             }
 
+            /*
+        |--------------------------------------------------
+        | PARENT ID
+        |--------------------------------------------------
+        */
             $assessmentableId = $request->assessmentable_id
                 ?? $assessment->assessmentable_id;
 
-            $exists = $assessmentableType::find($assessmentableId);
+            /*
+        |--------------------------------------------------
+        | CHECK PARENT EXISTS
+        |--------------------------------------------------
+        */
+            $exists = $assessmentableType::find(
+                $assessmentableId
+            );
 
             if (!$exists) {
 
@@ -492,22 +1053,76 @@ class AssessmentController extends Controller
                 ], 404);
             }
 
-            $filePath = $assessment->file;
+            /*
+        |--------------------------------------------------
+        | DUPLICATE PREVENTION
+        |--------------------------------------------------
+        */
+            $duplicate = Assessment::where(
+                'assessmentable_type',
+                $assessmentableType
+            )
+                ->where(
+                    'assessmentable_id',
+                    $assessmentableId
+                )
+                ->where(
+                    'id',
+                    '!=',
+                    $assessment->id
+                )
+                ->exists();
+
+            if ($duplicate) {
+
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Assessment already exists for this parent'
+                ], 422);
+            }
+
+            /*
+        |--------------------------------------------------
+        | FILE UPDATE
+        |--------------------------------------------------
+        */
+            $filePath = $assessment->getRawOriginal('file');
 
             if ($request->hasFile('file')) {
 
                 if (
-                    $assessment->file &&
-                    file_exists(public_path($assessment->file))
+                    $assessment->getRawOriginal('file') &&
+                    file_exists(
+                        public_path(
+                            $assessment->getRawOriginal('file')
+                        )
+                    )
                 ) {
-                    @unlink(public_path($assessment->file));
+
+                    @unlink(
+                        public_path(
+                            $assessment->getRawOriginal('file')
+                        )
+                    );
                 }
 
-                $filePath = $this->uploadFile($request->file('file'));
+                $filePath = $this->uploadFile(
+                    $request->file('file')
+                );
             }
 
+            /*
+        |--------------------------------------------------
+        | OLD MARKS
+        |--------------------------------------------------
+        */
             $oldTotalMarks = $assessment->total_marks;
 
+            /*
+        |--------------------------------------------------
+        | UPDATE
+        |--------------------------------------------------
+        */
             $assessment->update([
 
                 'assessmentable_id' => $assessmentableId,
@@ -516,33 +1131,59 @@ class AssessmentController extends Controller
 
                 'type' => $type,
 
-                'title' => $request->title ?? $assessment->title,
+                'title' => $request->title
+                    ?? $assessment->title,
 
-                'description' => $request->description ?? $assessment->description,
+                'description' => $request->description
+                    ?? $assessment->description,
 
                 'file' => $filePath,
 
-                'duration' => $request->duration ?? $assessment->duration,
+                'duration' => $request->duration
+                    ?? $assessment->duration,
 
-                'passing_score' => $request->passing_score ?? $assessment->passing_score,
+                'passing_score' => $request->passing_score
+                    ?? $assessment->passing_score,
 
-                'total_marks' => $request->total_marks ?? $assessment->total_marks,
+                'total_marks' => $request->total_marks
+                    ?? $assessment->total_marks,
+
+                'status' => $request->has('status')
+                    ? $request->status
+                    : $assessment->status,
             ]);
 
+            /*
+        |--------------------------------------------------
+        | RECALCULATE QUESTION MARKS
+        |--------------------------------------------------
+        */
             if (
                 $request->filled('total_marks') &&
                 $oldTotalMarks != $assessment->total_marks
             ) {
+
                 $assessment->recalculateQuestionMarks();
             }
 
+            /*
+        |--------------------------------------------------
+        | RESPONSE
+        |--------------------------------------------------
+        */
             return response()->json([
+
+                'success' => true,
+
                 'message' => 'Assessment updated successfully',
-                'data' => $assessment->fresh()
+
+                'data' => $assessment->fresh([
+                    'questions.options',
+                    'assessmentable'
+                ])
             ]);
         });
     }
-
     public function destroy($id)
     {
         $assessment = Assessment::with('questions')->findOrFail($id);

@@ -77,6 +77,20 @@ class Assessment extends BaseModel
     }
 
 
+        public function getFileAttribute($value)
+    {
+        if (empty($value)) {
+            return url('public/uploads/logo.png');
+        }
+
+        // already full URL
+        if (filter_var($value, FILTER_VALIDATE_URL)) {
+            return $value;
+        }
+
+        return url('public/' . ltrim($value, '/'));
+    }
+
     /*
     |--------------------------------------------------------------------------
     | Cascade Soft Delete

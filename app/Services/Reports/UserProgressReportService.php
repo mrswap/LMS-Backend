@@ -13,22 +13,35 @@ class UserProgressReportService
 
         $query = UserProgress::query()
             ->with([
+
                 'user:id,name,email,employee_id,role_id',
+
                 'user.role:id,name',
-                'program:id,title',
-                'level:id,title',
-                'module:id,title',
-                'chapter:id,title',
-                'topic:id,title',
+
+                'program:id,title,status',
+
+                'level:id,title,status',
+
+                'module:id,title,status',
+
+                'chapter:id,title,status',
+
+                'topic:id,title,status',
             ]);
 
-        // 🔥 FORCE USER FILTER (trainee)
-        if ($userId) {
-            $query->where('user_id', $userId);
-        }
         /*
         |--------------------------------------------------
-        | ❌ SKIP INVALID HIERARCHY (NULL IDs)
+        | 🔥 FORCE USER FILTER (TRAINEE)
+        |--------------------------------------------------
+        */
+        if ($userId) {
+
+            $query->where('user_id', $userId);
+        }
+
+        /*
+        |--------------------------------------------------
+        | ❌ SKIP INVALID HIERARCHY
         |--------------------------------------------------
         */
         $query->whereNotNull('program_id')
@@ -36,100 +49,307 @@ class UserProgressReportService
             ->whereNotNull('module_id')
             ->whereNotNull('chapter_id')
             ->whereNotNull('topic_id');
+
         /*
-        |-----------------------------------------
+        |--------------------------------------------------
+        | ❌ SKIP DELETED / INACTIVE HIERARCHY
+        |--------------------------------------------------
+        */
+        $query->whereHas('program', function ($q) {
+
+            $q->where('status', true);
+        });
+
+        $query->whereHas('level', function ($q) {
+
+            $q->where('status', true);
+        });
+
+        $query->whereHas('module', function ($q) {
+
+            $q->where('status', true);
+        });
+
+        $query->whereHas('chapter', function ($q) {
+
+            $q->where('status', true);
+        });
+
+        $query->whereHas('topic', function ($q) {
+
+            $q->where('status', true);
+        });
+
+        /*
+        |--------------------------------------------------
         | FILTERS
-        |-----------------------------------------
+        |--------------------------------------------------
         */
 
-        // admin only filter
-        if (!$userId && $request->filled('user_id')) {
-            $query->where('user_id', $request->user_id);
+        /*
+        |--------------------------------------------------
+        | ADMIN ONLY FILTER
+        |--------------------------------------------------
+        */
+        if (
+            !$userId &&
+            $request->filled('user_id')
+        ) {
+
+            $query->where(
+                'user_id',
+                $request->user_id
+            );
         }
 
         if ($request->filled('program_id')) {
-            $query->where('program_id', $request->program_id);
+
+            $query->where(
+                'program_id',
+                $request->program_id
+            );
         }
 
         if ($request->filled('level_id')) {
-            $query->where('level_id', $request->level_id);
+
+            $query->where(
+                'level_id',
+                $request->level_id
+            );
         }
 
         if ($request->filled('module_id')) {
-            $query->where('module_id', $request->module_id);
+
+            $query->where(
+                'module_id',
+                $request->module_id
+            );
+        }
+
+        if ($request->filled('chapter_id')) {
+
+            $query->where(
+                'chapter_id',
+                $request->chapter_id
+            );
         }
 
         if ($request->filled('topic_id')) {
-            $query->where('topic_id', $request->topic_id);
+
+            $query->where(
+                'topic_id',
+                $request->topic_id
+            );
         }
 
+        /*
+        |--------------------------------------------------
+        | STATUS FILTER
+        |--------------------------------------------------
+        */
         if ($request->filled('status')) {
+
             if ($request->status === 'completed') {
-                $query->where('is_completed', true);
-            } elseif ($request->status === 'in_progress') {
-                $query->where('is_unlocked', true)
-                    ->where('is_completed', false);
-            } elseif ($request->status === 'not_started') {
-                $query->where('is_unlocked', false);
+
+                $query->where(
+                    'is_completed',
+                    true
+                );
+            } elseif (
+                $request->status === 'in_progress'
+            ) {
+
+                $query->where(
+                    'is_unlocked',
+                    true
+                )->where(
+                    'is_completed',
+                    false
+                );
+            } elseif (
+                $request->status === 'not_started'
+            ) {
+
+                $query->where(
+                    'is_unlocked',
+                    false
+                );
             }
         }
 
-        if ($request->filled('search') && !$userId) {
+        /*
+        |--------------------------------------------------
+        | SEARCH
+        |--------------------------------------------------
+        */
+        if (
+            $request->filled('search') &&
+            !$userId
+        ) {
+
             $search = $request->search;
 
-            $query->whereHas('user', function ($q) use ($search) {
-                $q->where('name', 'LIKE', "%{$search}%")
-                    ->orWhere('email', 'LIKE', "%{$search}%")
-                    ->orWhere('employee_id', 'LIKE', "%{$search}%");
-            });
+            $query->whereHas(
+                'user',
+                function ($q) use ($search) {
+
+                    $q->where(
+                        'name',
+                        'LIKE',
+                        "%{$search}%"
+                    )
+                        ->orWhere(
+                            'email',
+                            'LIKE',
+                            "%{$search}%"
+                        )
+                        ->orWhere(
+                            'employee_id',
+                            'LIKE',
+                            "%{$search}%"
+                        );
+                }
+            );
         }
 
-        if ($request->filled('from_date') && $request->filled('to_date')) {
-            $query->whereBetween('updated_at', [
-                $request->from_date,
-                $request->to_date
-            ]);
+        /*
+        |--------------------------------------------------
+        | DATE FILTER
+        |--------------------------------------------------
+        */
+        if (
+            $request->filled('from_date') &&
+            $request->filled('to_date')
+        ) {
+
+            $query->whereBetween(
+                'updated_at',
+                [
+
+                    $request->from_date,
+                    $request->to_date
+                ]
+            );
         }
 
-        $sortBy = $request->get('sort_by', 'updated_at');
-        $sortOrder = $request->get('sort_order', 'desc');
+        /*
+        |--------------------------------------------------
+        | SORTING
+        |--------------------------------------------------
+        */
+        $sortBy = $request->get(
+            'sort_by',
+            'updated_at'
+        );
 
-        $query->orderBy($sortBy, $sortOrder);
+        $sortOrder = $request->get(
+            'sort_order',
+            'desc'
+        );
 
+        $query->orderBy(
+            $sortBy,
+            $sortOrder
+        );
+
+        /*
+        |--------------------------------------------------
+        | PAGINATION
+        |--------------------------------------------------
+        */
         $results = $query->paginate($perPage);
 
-        $results->getCollection()->transform(function ($item) {
+        /*
+        |--------------------------------------------------
+        | TRANSFORM
+        |--------------------------------------------------
+        */
+        $results->getCollection()->transform(function (
+            $item
+        ) {
 
+            /*
+            |--------------------------------------------------
+            | STATUS
+            |--------------------------------------------------
+            */
             if ($item->is_completed) {
+
                 $status = 'Completed';
+
                 $percentage = 100;
             } elseif ($item->is_unlocked) {
+
                 $status = 'In Progress';
+
                 $percentage = 50;
             } else {
+
                 $status = 'Not Started';
+
                 $percentage = 0;
             }
 
             return [
+
+                /*
+                |--------------------------------------------------
+                | USER
+                |--------------------------------------------------
+                */
+
                 'user_name' => $item->user?->name,
+
                 'email' => $item->user?->email,
+
                 'employee_id' => $item->user?->employee_id,
+
                 'role' => $item->user?->role?->name,
 
+                /*
+                |--------------------------------------------------
+                | HIERARCHY
+                |--------------------------------------------------
+                */
+
                 'program' => $item->program?->title,
+
                 'level' => $item->level?->title,
+
                 'module' => $item->module?->title,
+
                 'chapter' => $item->chapter?->title,
+
                 'topic' => $item->topic?->title,
 
+                /*
+                |--------------------------------------------------
+                | STATUS
+                |--------------------------------------------------
+                */
+
                 'completion_status' => $status,
+
                 'completion_percentage' => $percentage,
 
+                /*
+                |--------------------------------------------------
+                | DATES
+                |--------------------------------------------------
+                */
+
                 'last_activity_date' => $item->updated_at,
+
                 'completed_at' => $item->completed_at,
 
+                /*
+                |--------------------------------------------------
+                | FLAGS
+                |--------------------------------------------------
+                */
+
                 'is_completed' => (bool) $item->is_completed,
+
                 'is_unlocked' => (bool) $item->is_unlocked,
             ];
         });

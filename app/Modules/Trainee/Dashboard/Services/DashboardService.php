@@ -18,9 +18,9 @@ class DashboardService
     {
 
         /*
-        |-----------------------------------------
+        |--------------------------------------------------
         | 🔹 CURRENT + LAST COMPLETED
-        |-----------------------------------------
+        |--------------------------------------------------
         */
         $current = UserProgress::where('user_id', $userId)
             ->where('is_unlocked', true)
@@ -35,7 +35,11 @@ class DashboardService
             ->orderBy('id')
             ->first();
 
-        // fallback if all completed
+        /*
+        |--------------------------------------------------
+        | 🔹 FALLBACK
+        |--------------------------------------------------
+        */
         if (!$current) {
 
             $current = UserProgress::where('user_id', $userId)
@@ -52,43 +56,58 @@ class DashboardService
         }
 
         /*
-        |-----------------------------------------
-        | 🔹 LAST COMPLETED TOPIC QUIZ
-        |-----------------------------------------
+        |--------------------------------------------------
+        | 🔹 LAST PASSED TOPIC QUIZ
+        |--------------------------------------------------
         */
         $lastCompletedAttempt = AssessmentAttempt::where('user_id', $userId)
             ->where('status', 'passed')
             ->whereHas('assessment', function ($q) {
 
-                $q->where('type', 'topic');
+                $q->where('type', 'topic')
+                    ->where('status', true);
             })
             ->with('assessment.assessmentable')
             ->latest('submitted_at')
             ->first();
 
         /*
-        |-----------------------------------------
-        | 🔹 COMPLETED TOPICS (FULL READ)
-        |-----------------------------------------
+        |--------------------------------------------------
+        | 🔹 PASSED TOPICS
+        |--------------------------------------------------
         */
-        $completedTopicIds = DB::table('topic_contents as tc')
-            ->select('tc.topic_id')
-            ->leftJoin('user_content_progress as ucp', function ($join) use ($userId) {
+        $completedTopicIds = AssessmentAttempt::where('user_id', $userId)
+            ->where('status', 'passed')
+            ->whereHas('assessment', function ($q) {
 
-                $join->on('tc.id', '=', 'ucp.topic_content_id')
-                    ->where('ucp.user_id', $userId)
-                    ->where('ucp.is_read', 1);
+                $q->where('type', 'topic')
+                    ->where('status', true);
             })
-            ->groupBy('tc.topic_id')
-            ->havingRaw('COUNT(tc.id) = COUNT(ucp.id)')
-            ->pluck('tc.topic_id');
+            ->with('assessment')
+            ->get()
+            ->map(function ($attempt) {
+
+                return $attempt->assessment?->assessmentable_id;
+            })
+            ->filter()
+            ->unique()
+            ->values();
 
         /*
-        |-----------------------------------------
-        | 🔹 STARTED TOPICS (ANY CONTENT READ)
-        |-----------------------------------------
+        |--------------------------------------------------
+        | 🔹 STARTED TOPICS
+        |--------------------------------------------------
         */
         $startedTopicIds = DB::table('topic_contents as tc')
+            ->join('topics as t', 't.id', '=', 'tc.topic_id')
+
+            ->whereNull('t.deleted_at')
+            ->where('t.status', true)
+
+            ->whereNull('tc.deleted_at')
+            ->where('tc.status', true)
+            ->where('tc.publish_status', 'published')
+
             ->join('user_content_progress as ucp', function ($join) use ($userId) {
 
                 $join->on('tc.id', '=', 'ucp.topic_content_id')
@@ -99,11 +118,12 @@ class DashboardService
             ->pluck('tc.topic_id');
 
         /*
-        |-----------------------------------------
+        |--------------------------------------------------
         | 🔹 TOTAL TOPICS
-        |-----------------------------------------
+        |--------------------------------------------------
         */
-        $totalLessons = Topic::count();
+        $totalLessons = Topic::where('status', true)
+            ->count();
 
         $completedLessons = $completedTopicIds->count();
 
@@ -112,28 +132,71 @@ class DashboardService
             : 0;
 
         /*
-        |-----------------------------------------
+        |--------------------------------------------------
         | 🔹 CURRENT TOPIC CONTENTS
-        |-----------------------------------------
+        |--------------------------------------------------
         */
         $contents = [];
 
         if ($current && $current->topic_id) {
 
             $contents = TopicContent::where('topic_id', $current->topic_id)
+                ->where('status', true)
+                ->where('publish_status', 'published')
                 ->select('id', 'title', 'type')
                 ->orderBy('order')
                 ->get();
         }
 
         /*
-        |-----------------------------------------
-        | 🔹 LOAD FULL STRUCTURE
-        |-----------------------------------------
+        |--------------------------------------------------
+        | 🔹 LOAD STRUCTURE
+        |--------------------------------------------------
         */
         $levels = Level::with([
+
+            'modules' => function ($q) {
+                $q->where('status', true);
+            },
+
+            'modules.chapters' => function ($q) {
+                $q->where('status', true);
+            },
+
+            'modules.chapters.topics' => function ($q) {
+                $q->where('status', true);
+            },
+
             'modules.chapters.topics.program'
-        ])->get();
+
+        ])
+            ->where('status', true)
+            ->get();
+
+        /*
+        |--------------------------------------------------
+        | 🔹 CERTIFICATIONS
+        |--------------------------------------------------
+        */
+        $certifications = Certification::where('user_id', $userId)
+            ->where('status', true)
+            ->get();
+
+        $moduleCertifications = $certifications
+            ->where('type', 'module')
+            ->keyBy('module_id');
+
+        $chapterCertifications = $certifications
+            ->where('type', 'chapter')
+            ->keyBy('chapter_id');
+
+        $topicCertifications = $certifications
+            ->where('type', 'topic')
+            ->keyBy('topic_id');
+
+        $levelCertifications = $certifications
+            ->where('type', 'level')
+            ->keyBy('level_id');
 
         $completedLevelIds = [];
 
@@ -142,9 +205,9 @@ class DashboardService
         $chapterStats = [];
 
         /*
-        |-----------------------------------------
+        |--------------------------------------------------
         | 🔹 LEVEL / MODULE / CHAPTER STATS
-        |-----------------------------------------
+        |--------------------------------------------------
         */
         foreach ($levels as $level) {
 
@@ -160,6 +223,10 @@ class DashboardService
                         $chapterTopicIds,
                         $completedTopicIds->toArray()
                     ));
+
+                    $chapterPassed = isset(
+                        $chapterCertifications[$chapter->id]
+                    );
 
                     $chapterStats[] = [
 
@@ -177,7 +244,9 @@ class DashboardService
 
                         'progress_percent' => count($chapterTopicIds) > 0
                             ? round(($chapterCompletedTopics / count($chapterTopicIds)) * 100, 2)
-                            : 0
+                            : 0,
+
+                        'is_passed' => $chapterPassed
                     ];
                 }
 
@@ -190,6 +259,10 @@ class DashboardService
                     $moduleTopicIds,
                     $completedTopicIds->toArray()
                 ));
+
+                $modulePassed = isset(
+                    $moduleCertifications[$module->id]
+                );
 
                 $moduleStats[] = [
 
@@ -205,170 +278,136 @@ class DashboardService
 
                     'progress_percent' => count($moduleTopicIds) > 0
                         ? round(($moduleCompletedTopics / count($moduleTopicIds)) * 100, 2)
-                        : 0
+                        : 0,
+
+                    'is_passed' => $modulePassed
                 ];
             }
 
-            $levelTopicIds = $level->modules
-                ->flatMap->chapters
-                ->flatMap->topics
-                ->pluck('id')
-                ->toArray();
-
-            $levelCompletedTopics = count(array_intersect(
-                $levelTopicIds,
-                $completedTopicIds->toArray()
-            ));
-
-            if (
-                count($levelTopicIds) > 0 &&
-                $levelCompletedTopics === count($levelTopicIds)
-            ) {
+            if (isset($levelCertifications[$level->id])) {
 
                 $completedLevelIds[] = $level->id;
             }
         }
 
         /*
-        |-----------------------------------------
-        | 🔹 PENDING QUIZZES
-        |-----------------------------------------
+        |--------------------------------------------------
+        | 🔹 PENDING ASSESSMENTS
+        |--------------------------------------------------
         */
-        $pendingTopicQuizCount = Assessment::where('type', 'topic')
-            ->whereIn('assessmentable_id', $completedTopicIds)
+        $pendingAssessment = Assessment::where('status', true)
+
             ->whereDoesntHave('attempts', function ($q) use ($userId) {
 
                 $q->where('user_id', $userId)
                     ->where('status', 'passed');
             })
-            ->count();
+
+            ->where(function ($q) use (
+                $completedTopicIds,
+                $moduleCertifications,
+                $chapterCertifications
+            ) {
+
+                /*
+                |-----------------------------------------
+                | TOPIC
+                |-----------------------------------------
+                */
+                $q->orWhere(function ($qq) use ($completedTopicIds) {
+
+                    $qq->where('type', 'topic')
+                        ->whereIn(
+                            'assessmentable_id',
+                            $completedTopicIds
+                        );
+                });
+
+                /*
+                |-----------------------------------------
+                | CHAPTER
+                |-----------------------------------------
+                */
+                $q->orWhere(function ($qq) use (
+                    $chapterCertifications
+                ) {
+
+                    $qq->where('type', 'chapter')
+                        ->whereNotIn(
+                            'assessmentable_id',
+                            $chapterCertifications->keys()
+                        );
+                });
+
+                /*
+                |-----------------------------------------
+                | MODULE
+                |-----------------------------------------
+                */
+                $q->orWhere(function ($qq) use (
+                    $moduleCertifications
+                ) {
+
+                    $qq->where('type', 'module')
+                        ->whereNotIn(
+                            'assessmentable_id',
+                            $moduleCertifications->keys()
+                        );
+                });
+
+                /*
+                |-----------------------------------------
+                | LEVEL
+                |-----------------------------------------
+                */
+                $q->orWhere('type', 'level');
+            })
+
+            ->with('assessmentable')
+            ->first();
 
         /*
-        |-----------------------------------------
+        |--------------------------------------------------
         | 🔹 NEXT ACTION
-        |-----------------------------------------
+        |--------------------------------------------------
         */
-        $pendingTopicQuiz = Assessment::where('type', 'topic')
-            ->whereIn('assessmentable_id', $completedTopicIds)
-            ->whereDoesntHave('attempts', function ($q) use ($userId) {
-
-                $q->where('user_id', $userId)
-                    ->where('status', 'passed');
-            })
-            ->with('assessmentable')
-            ->first();
-
-        $pendingLevelExam = Assessment::where('type', 'level')
-            ->whereIn('assessmentable_id', $completedLevelIds)
-            ->whereDoesntHave('attempts', function ($q) use ($userId) {
-
-                $q->where('user_id', $userId)
-                    ->where('status', 'passed');
-            })
-            ->with('assessmentable')
-            ->first();
-
         $nextAction = null;
 
-        if ($pendingTopicQuiz) {
+        if ($pendingAssessment) {
 
-            $topic = $pendingTopicQuiz->assessmentable;
-
-            $nextAction = [
-
-                'type' => 'topic_quiz',
-
-                'assessment_id' => $pendingTopicQuiz->id,
-
-                'assessment_title' => $pendingTopicQuiz->title,
-
-                'topic' => [
-                    'id' => $topic->id,
-                    'title' => $topic->title
-                ]
-            ];
-
-        } elseif ($pendingLevelExam) {
-
-            $level = $pendingLevelExam->assessmentable;
+            $entity = $pendingAssessment->assessmentable;
 
             $nextAction = [
 
-                'type' => 'level_exam',
+                'type' => $pendingAssessment->type . '_exam',
 
-                'assessment_id' => $pendingLevelExam->id,
+                'assessment_id' => $pendingAssessment->id,
 
-                'assessment_title' => $pendingLevelExam->title,
+                'assessment_title' => $pendingAssessment->title,
 
-                'level' => [
-                    'id' => $level->id,
-                    'title' => $level->title
+                strtolower($pendingAssessment->type) => [
+
+                    'id' => $entity?->id,
+
+                    'title' => $entity?->title
                 ]
             ];
-
-        } else {
-
-            foreach ($levels as $level) {
-
-                foreach ($level->modules as $module) {
-
-                    foreach ($module->chapters as $chapter) {
-
-                        foreach ($chapter->topics as $topic) {
-
-                            if (!in_array($topic->id, $completedTopicIds->toArray())) {
-
-                                $nextAction = [
-
-                                    'type' => 'next_topic',
-
-                                    'program' => [
-                                        'id' => $topic->program_id,
-                                        'title' => $topic->program?->title
-                                    ],
-
-                                    'level' => [
-                                        'id' => $level->id,
-                                        'title' => $level->title
-                                    ],
-
-                                    'module' => [
-                                        'id' => $module->id,
-                                        'title' => $module->title
-                                    ],
-
-                                    'chapter' => [
-                                        'id' => $chapter->id,
-                                        'title' => $chapter->title
-                                    ],
-
-                                    'topic' => [
-                                        'id' => $topic->id,
-                                        'title' => $topic->title
-                                    ]
-                                ];
-
-                                break 4;
-                            }
-                        }
-                    }
-                }
-            }
         }
 
         /*
-        |-----------------------------------------
+        |--------------------------------------------------
         | 🔹 LAST CERTIFICATE
-        |-----------------------------------------
+        |--------------------------------------------------
         */
         $certificate = Certification::where('user_id', $userId)
+            ->where('status', true)
             ->latest('issued_at')
             ->first();
 
         /*
-        |-----------------------------------------
+        |--------------------------------------------------
         | 🔹 CURRENT TOPIC PROGRESS
-        |-----------------------------------------
+        |--------------------------------------------------
         */
         $currentTopicProgress = null;
 
@@ -376,14 +415,19 @@ class DashboardService
 
             $topicId = $current->topic_id;
 
-            $totalContent = TopicContent::where('topic_id', $topicId)->count();
+            $totalContent = TopicContent::where('topic_id', $topicId)
+                ->where('status', true)
+                ->where('publish_status', 'published')
+                ->count();
 
             $readContent = UserContentProgress::where('user_id', $userId)
                 ->whereIn('topic_content_id', function ($q) use ($topicId) {
 
                     $q->select('id')
                         ->from('topic_contents')
-                        ->where('topic_id', $topicId);
+                        ->where('topic_id', $topicId)
+                        ->where('status', true)
+                        ->where('publish_status', 'published');
                 })
                 ->where('is_read', 1)
                 ->count();
@@ -403,13 +447,16 @@ class DashboardService
         }
 
         /*
-        |-----------------------------------------
+        |--------------------------------------------------
         | 🔹 LEVEL CARDS
-        |-----------------------------------------
+        |--------------------------------------------------
         */
         $levelCards = $levels->map(function ($level) use (
             $completedTopicIds,
-            $startedTopicIds
+            $startedTopicIds,
+            $levelCertifications,
+            $moduleCertifications,
+            $chapterCertifications
         ) {
 
             $levelTopicIds = $level->modules
@@ -436,13 +483,9 @@ class DashboardService
 
             $status = 'locked';
 
-            if (
-                $completedTopics === $totalTopics &&
-                $totalTopics > 0
-            ) {
+            if (isset($levelCertifications[$level->id])) {
 
                 $status = 'completed';
-
             } elseif ($startedTopics > 0) {
 
                 $status = 'unlocked';
@@ -457,6 +500,10 @@ class DashboardService
                 'description' => $level->description,
 
                 'status' => $status,
+
+                'is_passed' => isset(
+                    $levelCertifications[$level->id]
+                ),
 
                 'total_modules' => $level->modules->count(),
 
@@ -483,7 +530,9 @@ class DashboardService
                 */
                 'modules' => $level->modules->map(function ($module) use (
                     $completedTopicIds,
-                    $startedTopicIds
+                    $startedTopicIds,
+                    $moduleCertifications,
+                    $chapterCertifications
                 ) {
 
                     $moduleTopicIds = $module->chapters
@@ -513,6 +562,10 @@ class DashboardService
 
                         'module_title' => $module->title,
 
+                        'is_passed' => isset(
+                            $moduleCertifications[$module->id]
+                        ),
+
                         'total_topics' => $totalTopics,
 
                         'completed_topics' => $completedTopics,
@@ -528,7 +581,8 @@ class DashboardService
                         */
                         'chapters' => $module->chapters->map(function ($chapter) use (
                             $completedTopicIds,
-                            $startedTopicIds
+                            $startedTopicIds,
+                            $chapterCertifications
                         ) {
 
                             $chapterTopicIds = $chapter->topics
@@ -557,6 +611,10 @@ class DashboardService
 
                                 'chapter_title' => $chapter->title,
 
+                                'is_passed' => isset(
+                                    $chapterCertifications[$chapter->id]
+                                ),
+
                                 'total_topics' => $totalTopics,
 
                                 'completed_topics' => $completedTopics,
@@ -572,15 +630,16 @@ class DashboardService
         });
 
         /*
-        |-----------------------------------------
+        |--------------------------------------------------
         | 🔹 AVG SCORES
-        |-----------------------------------------
+        |--------------------------------------------------
         */
         $avgTopicScore = AssessmentAttempt::where('user_id', $userId)
             ->where('status', 'passed')
             ->whereHas('assessment', function ($q) {
 
-                $q->where('type', 'topic');
+                $q->where('type', 'topic')
+                    ->where('status', true);
             })
             ->avg('percentage');
 
@@ -588,7 +647,12 @@ class DashboardService
             ->where('status', 'passed')
             ->whereHas('assessment', function ($q) {
 
-                $q->where('type', 'level');
+                $q->whereIn('type', [
+                    'chapter',
+                    'module',
+                    'level'
+                ])
+                    ->where('status', true);
             })
             ->avg('percentage');
 
@@ -597,9 +661,9 @@ class DashboardService
             ->avg('percentage');
 
         /*
-        |-----------------------------------------
+        |--------------------------------------------------
         | 🔹 FINAL RESPONSE
-        |-----------------------------------------
+        |--------------------------------------------------
         */
         return [
 
@@ -641,7 +705,13 @@ class DashboardService
 
                 'total_lessons' => $totalLessons,
 
-                'pending_quizzes' => $pendingTopicQuizCount,
+                'pending_quizzes' => Assessment::where('status', true)
+                    ->whereDoesntHave('attempts', function ($q) use ($userId) {
+
+                        $q->where('user_id', $userId)
+                            ->where('status', 'passed');
+                    })
+                    ->count(),
 
                 'last_activity_date' => $current?->updated_at,
 
@@ -679,7 +749,9 @@ class DashboardService
 
                 'current_topic_progress' => $currentTopicProgress,
 
-                'certificates_earned' => Certification::where('user_id', $userId)->count()
+                'certificates_earned' => Certification::where('user_id', $userId)
+                    ->where('status', true)
+                    ->count()
             ],
 
             'last_certificate' => $certificate,

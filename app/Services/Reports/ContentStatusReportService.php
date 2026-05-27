@@ -12,96 +12,203 @@ class ContentStatusReportService
         $perPage = $request->get('per_page', 10);
 
         $query = TopicContent::query()
+            ->where('status', true)
             ->with([
-                'topic:id,title,module_id,level_id,program_id,chapter_id',
-                'topic.module:id,title',
-                'topic.level:id,title',
-                'topic.program:id,title',
-                'topic.chapter:id,title',
+
+                'topic:id,title,module_id,level_id,program_id,chapter_id,created_by,status',
+
+                'topic.module:id,title,status',
+
+                'topic.level:id,title,status',
+
+                'topic.program:id,title,status',
+
+                'topic.chapter:id,title,status',
+
                 'translations:id,topic_content_id,language_code',
+
                 'topic.creator:id,name'
             ]);
 
         /*
-        |-----------------------------------------
+        |--------------------------------------------------
         | 🔍 FILTERS
-        |-----------------------------------------
+        |--------------------------------------------------
         */
 
         if ($request->filled('program_id')) {
-            $query->whereHas('topic', function ($q) use ($request) {
-                $q->where('program_id', $request->program_id);
+
+            $query->whereHas('topic.program', function ($q) use ($request) {
+
+                $q->where('id', $request->program_id)
+                    ->where('status', true);
             });
         }
 
         if ($request->filled('level_id')) {
-            $query->whereHas('topic', function ($q) use ($request) {
-                $q->where('level_id', $request->level_id);
+
+            $query->whereHas('topic.level', function ($q) use ($request) {
+
+                $q->where('id', $request->level_id)
+                    ->where('status', true);
             });
         }
 
         if ($request->filled('module_id')) {
-            $query->whereHas('topic', function ($q) use ($request) {
-                $q->where('module_id', $request->module_id);
+
+            $query->whereHas('topic.module', function ($q) use ($request) {
+
+                $q->where('id', $request->module_id)
+                    ->where('status', true);
+            });
+        }
+
+        if ($request->filled('chapter_id')) {
+
+            $query->whereHas('topic.chapter', function ($q) use ($request) {
+
+                $q->where('id', $request->chapter_id)
+                    ->where('status', true);
             });
         }
 
         if ($request->filled('topic_id')) {
-            $query->where('topic_id', $request->topic_id);
+
+            $query->whereHas('topic', function ($q) use ($request) {
+
+                $q->where('id', $request->topic_id)
+                    ->where('status', true);
+            });
         }
 
         if ($request->filled('status')) {
-            $query->where('status', $request->status);
+
+            $query->where(
+                'publish_status',
+                $request->status
+            );
         }
 
         /*
-        |-----------------------------------------
+        |--------------------------------------------------
         | 🔽 SORTING
-        |-----------------------------------------
+        |--------------------------------------------------
         */
 
-        $sortBy = $request->get('sort_by', 'updated_at');
-        $sortOrder = $request->get('sort_order', 'desc');
+        $sortBy = $request->get(
+            'sort_by',
+            'updated_at'
+        );
 
-        $query->orderBy($sortBy, $sortOrder);
+        $sortOrder = $request->get(
+            'sort_order',
+            'desc'
+        );
+
+        $query->orderBy(
+            $sortBy,
+            $sortOrder
+        );
 
         /*
-        |-----------------------------------------
+        |--------------------------------------------------
         | 📄 PAGINATION
-        |-----------------------------------------
+        |--------------------------------------------------
         */
 
         $results = $query->paginate($perPage);
 
         /*
-        |-----------------------------------------
+        |--------------------------------------------------
         | 🎯 TRANSFORM
-        |-----------------------------------------
+        |--------------------------------------------------
         */
 
-        $results->getCollection()->transform(function ($item) {
+        $results->getCollection()->transform(function (
+            $item
+        ) {
 
-            // language list
-            $languages = $item->translations->pluck('language_code')->toArray();
+            /*
+            |--------------------------------------------------
+            | 🌐 LANGUAGES
+            |--------------------------------------------------
+            */
+
+            $languages = $item->translations
+                ->pluck('language_code')
+                ->unique()
+                ->values()
+                ->toArray();
 
             return [
+
+                /*
+                |--------------------------------------------------
+                | HIERARCHY
+                |--------------------------------------------------
+                */
+
                 'program' => $item->topic?->program?->title,
+
                 'level' => $item->topic?->level?->title,
+
                 'module' => $item->topic?->module?->title,
+
                 'chapter' => $item->topic?->chapter?->title,
+
                 'topic' => $item->topic?->title,
+
+                /*
+                |--------------------------------------------------
+                | CONTENT
+                |--------------------------------------------------
+                */
 
                 'lesson_name' => $item->title,
 
                 'languages' => $languages,
 
-                'content_status' => $item->status ? 'Published' : 'Draft',
+                /*
+                |--------------------------------------------------
+                | STATUS
+                |--------------------------------------------------
+                */
+
+                'content_status' => match ($item->publish_status) {
+
+                    'published' => 'Published',
+
+                    'draft' => 'Draft',
+
+                    'unpublished' => 'Unpublished',
+
+                    default => 'Draft'
+                },
+
+                /*
+                |--------------------------------------------------
+                | USERS
+                |--------------------------------------------------
+                */
 
                 'uploaded_by' => $item->topic?->creator?->name,
 
-                // placeholders (future upgrade)
+                /*
+                |--------------------------------------------------
+                | FUTURE PLACEHOLDERS
+                |--------------------------------------------------
+                */
+
                 'approved_by' => null,
+
+                /*
+                |--------------------------------------------------
+                | DATES
+                |--------------------------------------------------
+                */
+
                 'publish_date' => $item->created_at,
+
                 'last_updated' => $item->updated_at,
             ];
         });
