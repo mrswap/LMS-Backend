@@ -3,6 +3,7 @@
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\DB;
 
 return new class extends Migration
 {
@@ -42,37 +43,91 @@ return new class extends Migration
 
             /*
             |--------------------------------------------------
-            | MAKE EXISTING NULLABLE
+            | MAKE EXISTING IDS NULLABLE
             |--------------------------------------------------
             */
 
-            $table->foreignId('program_id')
+            $table->unsignedBigInteger('program_id')
                 ->nullable()
                 ->change();
 
-            $table->foreignId('level_id')
+            $table->unsignedBigInteger('level_id')
                 ->nullable()
                 ->change();
 
-            $table->foreignId('topic_id')
+            $table->unsignedBigInteger('topic_id')
                 ->nullable()
+                ->change();
+
+            /*
+            |--------------------------------------------------
+            | STATUS DEFAULT
+            |--------------------------------------------------
+            */
+
+            $table->boolean('status')
+                ->default(true)
                 ->change();
         });
+
+        /*
+        |--------------------------------------------------
+        | UPDATE ENUM TYPE
+        |--------------------------------------------------
+        */
+
+        DB::statement("
+            ALTER TABLE certifications
+            MODIFY COLUMN type ENUM(
+                'topic',
+                'chapter',
+                'module',
+                'level'
+            ) NOT NULL DEFAULT 'topic'
+        ");
     }
 
     public function down(): void
     {
+        /*
+        |--------------------------------------------------
+        | REVERT ENUM
+        |--------------------------------------------------
+        */
+
+        DB::statement("
+            ALTER TABLE certifications
+            MODIFY COLUMN type ENUM(
+                'topic',
+                'level'
+            ) NOT NULL DEFAULT 'topic'
+        ");
+
         Schema::table('certifications', function (Blueprint $table) {
+
+            /*
+            |--------------------------------------------------
+            | DROP CHAPTER
+            |--------------------------------------------------
+            */
 
             if (Schema::hasColumn('certifications', 'chapter_id')) {
 
                 $table->dropForeign(['chapter_id']);
+
                 $table->dropColumn('chapter_id');
             }
+
+            /*
+            |--------------------------------------------------
+            | DROP MODULE
+            |--------------------------------------------------
+            */
 
             if (Schema::hasColumn('certifications', 'module_id')) {
 
                 $table->dropForeign(['module_id']);
+
                 $table->dropColumn('module_id');
             }
         });
