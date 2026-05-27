@@ -37,12 +37,37 @@ class QuestionController extends Controller
 
     public function store(Request $request, $assessment_id)
     {
+        $assessment = Assessment::findOrFail($assessment_id);
+
         $request->validate([
+
             'question_text' => 'required|string',
+
             'marks' => 'nullable|integer|min:0',
+
             'order' => 'required|integer|min:1',
+
             'file' => 'nullable|file|max:2048',
+
+            // NEW
+            'is_case' => 'nullable|boolean',
+
+            'case_title' => 'nullable|string',
+
+            'case_text' => 'nullable|string',
+
+            'case_order' => 'nullable|integer|min:1',
         ]);
+
+        if (
+            $request->boolean('is_case') &&
+            !in_array($assessment->type, ['chapter', 'module'])
+        ) {
+
+            return response()->json([
+                'message' => 'Case questions allowed only in chapter/module assessments'
+            ], 422);
+        }
 
         $filePath = null;
 
@@ -51,11 +76,25 @@ class QuestionController extends Controller
         }
 
         $question = AssessmentQuestion::create([
+
             'assessment_id' => $assessment_id,
+
             'question_text' => $request->question_text,
+
             'file' => $filePath,
-            'marks' => 0, // temporary
-            'order' => $request->order
+
+            'marks' => 0,
+
+            'order' => $request->order,
+
+            // NEW
+            'is_case' => $request->boolean('is_case'),
+
+            'case_title' => $request->case_title,
+
+            'case_text' => $request->case_text,
+
+            'case_order' => $request->case_order,
         ]);
 
         $question->assessment->recalculateQuestionMarks();
@@ -67,23 +106,67 @@ class QuestionController extends Controller
     {
         $question = AssessmentQuestion::findOrFail($id);
 
+        $assessment = $question->assessment;
+
         $request->validate([
+
             'question_text' => 'sometimes|string',
+
             'marks' => 'nullable|integer|min:0',
+
             'order' => 'sometimes|integer|min:1',
+
             'file' => 'nullable|file|max:2048',
+
+            // NEW
+            'is_case' => 'nullable|boolean',
+
+            'case_title' => 'nullable|string',
+
+            'case_text' => 'nullable|string',
+
+            'case_order' => 'nullable|integer|min:1',
         ]);
 
-        $data = $request->only(['question_text', 'marks', 'order']);
+        if (
+            $request->boolean('is_case') &&
+            !in_array($assessment->type, ['chapter', 'module'])
+        ) {
+
+            return response()->json([
+                'message' => 'Case questions allowed only in chapter/module assessments'
+            ], 422);
+        }
+
+        $data = $request->only([
+
+            'question_text',
+
+            'marks',
+
+            'order',
+
+            'is_case',
+
+            'case_title',
+
+            'case_text',
+
+            'case_order'
+        ]);
 
         if ($request->hasFile('file')) {
+
             $data['file'] = $this->uploadFile($request->file('file'));
         }
 
         $question->update($data);
+
         $question->assessment->recalculateQuestionMarks();
 
-        return response()->json(['message' => 'Updated']);
+        return response()->json([
+            'message' => 'Updated'
+        ]);
     }
 
     public function destroy($id)

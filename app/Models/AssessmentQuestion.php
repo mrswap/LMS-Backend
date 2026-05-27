@@ -10,11 +10,17 @@ class AssessmentQuestion extends BaseModel
         'question_type',
         'file',
         'marks',
-        'order'
+        'order',
+        // NEW
+        'is_case',
+        'case_title',
+        'case_text',
+        'case_order',
     ];
 
     protected $casts = [
         'marks' => 'float',
+        'is_case' => 'boolean',
     ];
 
     /*

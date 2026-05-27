@@ -157,4 +157,9 @@ class Assessment extends BaseModel
             ]);
         }
     }
+
+    public function isCaseBased()
+    {
+        return in_array($this->type, ['chapter', 'module']);
+    }
 }

@@ -40,10 +40,10 @@ class AssessmentController extends Controller
         ]);
 
         /*
-    |-----------------------------
-    | FILTER: TYPE
-    |-----------------------------
-    */
+        |-----------------------------
+        | FILTER: TYPE
+        |-----------------------------
+        */
         if ($request->filled('type')) {
 
             if (!in_array($request->type, ['topic', 'level'])) {
@@ -57,11 +57,11 @@ class AssessmentController extends Controller
         }
 
         /*
-    |-----------------------------
-    | HIERARCHY FILTER (FINAL)
-    | topic > chapter > module > level
-    |-----------------------------
-    */
+        |-----------------------------
+        | HIERARCHY FILTER (FINAL)
+        | topic > chapter > module > level
+        |-----------------------------
+        */
         if (
             $request->filled('topic_id') ||
             $request->filled('chapter_id') ||
@@ -149,10 +149,10 @@ class AssessmentController extends Controller
         }
 
         /*
-    |-----------------------------
-    | SEARCH
-    |-----------------------------
-    */
+        |-----------------------------
+        | SEARCH
+        |-----------------------------
+        */
         if ($request->filled('search')) {
 
             $search = $request->search;
@@ -170,10 +170,10 @@ class AssessmentController extends Controller
         }
 
         /*
-    |-----------------------------
-    | STATUS
-    |-----------------------------
-    */
+        |-----------------------------
+        | STATUS
+        |-----------------------------
+        */
         if ($request->has('status')) {
             if ($request->status !== 'all') {
                 $query->where('status', (bool)$request->status);
@@ -183,10 +183,10 @@ class AssessmentController extends Controller
         }
 
         /*
-    |-----------------------------
-    | SORTING
-    |-----------------------------
-    */
+        |-----------------------------
+        | SORTING
+        |-----------------------------
+        */
         $sortByMap = [
             'createdAt' => 'created_at',
             'title'     => 'title',
@@ -199,20 +199,20 @@ class AssessmentController extends Controller
         $query->orderBy($sortByMap[$sortBy] ?? 'created_at', $order);
 
         /*
-    |-----------------------------
-    | PAGINATION
-    |-----------------------------
-    */
+        |-----------------------------
+        | PAGINATION
+        |-----------------------------
+        */
         $limit = (int)$request->get('limit', 10);
         $limit = ($limit > 0 && $limit <= 100) ? $limit : 10;
 
         $assessments = $query->paginate($limit);
 
         /*
-    |-----------------------------
-    | TRANSFORM (WITH HIERARCHY)
-    |-----------------------------
-    */
+        |-----------------------------
+        | TRANSFORM (WITH HIERARCHY)
+        |-----------------------------
+        */
         $assessments->getCollection()->transform(function ($assessment) {
 
             $hierarchy = null;
@@ -252,7 +252,7 @@ class AssessmentController extends Controller
                 'passing_score' => $assessment->passing_score,
                 'total_marks' => $assessment->total_marks,
                 'status' => (bool)$assessment->status,
-                
+
                 'creator' => [
                     'id' => $assessment->creator->id ?? null,
                     'name' => $assessment->creator->name ?? null,
@@ -272,22 +272,62 @@ class AssessmentController extends Controller
         ]);
     }
 
-
-
-
-
-
     public function store(Request $request)
     {
         $request->validate([
-            'type' => 'required|in:topic,level',
+
+            'type' => 'required|in:topic,chapter,module,level',
+
             'title' => 'required|string',
+
             'passing_score' => 'required|integer|min:0|max:100',
+
             'total_marks' => 'required|integer|min:1',
+
             'assessmentable_id' => 'required|integer',
-            'assessmentable_type' => 'required|string',
+
+            'assessmentable_type' => [
+                'required',
+                'string',
+                'in:App\Models\Topic,App\Models\Chapter,App\Models\Module,App\Models\Level'
+            ],
+
             'file' => 'nullable|file|max:2048'
         ]);
+
+        $mapping = [
+
+            'topic' => \App\Models\Topic::class,
+
+            'chapter' => \App\Models\Chapter::class,
+
+            'module' => \App\Models\Module::class,
+
+            'level' => \App\Models\Level::class,
+        ];
+
+        if (
+            !isset($mapping[$request->type]) ||
+            $mapping[$request->type] !== $request->assessmentable_type
+        ) {
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Invalid assessment mapping'
+            ], 422);
+        }
+
+        $modelClass = $request->assessmentable_type;
+
+        $exists = $modelClass::find($request->assessmentable_id);
+
+        if (!$exists) {
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Parent not found'
+            ], 404);
+        }
 
         return DB::transaction(function () use ($request) {
 
@@ -298,15 +338,25 @@ class AssessmentController extends Controller
             }
 
             $assessment = Assessment::create([
+
                 'assessmentable_id' => $request->assessmentable_id,
+
                 'assessmentable_type' => $request->assessmentable_type,
+
                 'type' => $request->type,
+
                 'title' => $request->title,
+
                 'description' => $request->description,
+
                 'file' => $filePath,
+
                 'duration' => $request->duration,
+
                 'passing_score' => $request->passing_score,
+
                 'total_marks' => $request->total_marks,
+
                 'created_by' => auth()->id(),
             ]);
 
@@ -380,24 +430,76 @@ class AssessmentController extends Controller
         $assessment = Assessment::findOrFail($id);
 
         $request->validate([
-            'type' => 'sometimes|in:topic,level',
+
+            'type' => 'sometimes|in:topic,chapter,module,level',
+
             'title' => 'sometimes|string',
+
             'passing_score' => 'sometimes|integer|min:0|max:100',
+
             'total_marks' => 'sometimes|integer|min:1',
+
             'assessmentable_id' => 'sometimes|integer',
-            'assessmentable_type' => 'sometimes|string',
+
+            'assessmentable_type' => [
+                'sometimes',
+                'string',
+                'in:App\Models\Topic,App\Models\Chapter,App\Models\Module,App\Models\Level'
+            ],
+
             'file' => 'nullable|file|max:2048'
         ]);
 
         return DB::transaction(function () use ($request, $assessment) {
 
-            $filePath = $assessment->file; // keep old by default
+            $type = $request->type ?? $assessment->type;
 
-            // ✅ If new file uploaded → replace old
+            $assessmentableType = $request->assessmentable_type
+                ?? $assessment->assessmentable_type;
+
+            $mapping = [
+
+                'topic' => \App\Models\Topic::class,
+
+                'chapter' => \App\Models\Chapter::class,
+
+                'module' => \App\Models\Module::class,
+
+                'level' => \App\Models\Level::class,
+            ];
+
+            if (
+                !isset($mapping[$type]) ||
+                $mapping[$type] !== $assessmentableType
+            ) {
+
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Invalid assessment mapping'
+                ], 422);
+            }
+
+            $assessmentableId = $request->assessmentable_id
+                ?? $assessment->assessmentable_id;
+
+            $exists = $assessmentableType::find($assessmentableId);
+
+            if (!$exists) {
+
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Parent not found'
+                ], 404);
+            }
+
+            $filePath = $assessment->file;
+
             if ($request->hasFile('file')) {
 
-                // delete old file (if exists)
-                if ($assessment->file && file_exists(public_path($assessment->file))) {
+                if (
+                    $assessment->file &&
+                    file_exists(public_path($assessment->file))
+                ) {
                     @unlink(public_path($assessment->file));
                 }
 
@@ -407,24 +509,33 @@ class AssessmentController extends Controller
             $oldTotalMarks = $assessment->total_marks;
 
             $assessment->update([
-                'assessmentable_id' => $request->assessmentable_id ?? $assessment->assessmentable_id,
-                'assessmentable_type' => $request->assessmentable_type ?? $assessment->assessmentable_type,
-                'type' => $request->type ?? $assessment->type,
+
+                'assessmentable_id' => $assessmentableId,
+
+                'assessmentable_type' => $assessmentableType,
+
+                'type' => $type,
+
                 'title' => $request->title ?? $assessment->title,
+
                 'description' => $request->description ?? $assessment->description,
+
                 'file' => $filePath,
+
                 'duration' => $request->duration ?? $assessment->duration,
+
                 'passing_score' => $request->passing_score ?? $assessment->passing_score,
+
                 'total_marks' => $request->total_marks ?? $assessment->total_marks,
             ]);
 
-            // 🔥 Recalculate only if total marks changed
             if (
                 $request->filled('total_marks') &&
                 $oldTotalMarks != $assessment->total_marks
             ) {
                 $assessment->recalculateQuestionMarks();
             }
+
             return response()->json([
                 'message' => 'Assessment updated successfully',
                 'data' => $assessment->fresh()
@@ -462,5 +573,18 @@ class AssessmentController extends Controller
         $assessment->save();
 
         return response()->json(['status' => $assessment->status]);
+    }
+
+    private function resolveAssessmentable(string $type)
+    {
+        return match ($type) {
+
+            'topic' => \App\Models\Topic::class,
+            'chapter' => \App\Models\Chapter::class,
+            'module' => \App\Models\Module::class,
+            'level' => \App\Models\Level::class,
+
+            default => null
+        };
     }
 }
