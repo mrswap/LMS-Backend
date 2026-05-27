@@ -2,15 +2,16 @@
 
 namespace App\Modules\Trainee\Progress\Services;
 
-use App\Models\User;
-use App\Models\Topic;
 use App\Models\Chapter;
-use App\Models\Module;
 use App\Models\Level;
+use App\Models\Module;
+use App\Models\Topic;
+use App\Models\User;
 use App\Models\UserProgress;
-use Illuminate\Support\Facades\DB;
 use App\Services\AuditService;
+use App\Services\CertificationService;
 use App\Services\NotificationService;
+use Illuminate\Support\Facades\DB;
 
 class ProgressionService
 {
@@ -68,7 +69,7 @@ class ProgressionService
                 'lesson_completed',
                 'User completed topic',
                 [
-                    'topic_id' => $topic->id
+                    'topic_id' => $topic->id,
                 ]
             );
 
@@ -95,7 +96,7 @@ class ProgressionService
                         'meta' => [
                             'topic_id' => $topic->id,
                             'topic_title' => $topic->title,
-                        ]
+                        ],
                     ],
                     ['db', 'push']
                 );
@@ -107,14 +108,10 @@ class ProgressionService
             |--------------------------------------------------------------------------
             */
 
-            $nextTopic = Topic::where(
-                'chapter_id',
-                $topic->chapter_id
-            )
-                ->where('id', '>', $topic->id)
-                ->orderBy('id')
+            $nextTopic = Topic::where('chapter_id', $topic->chapter_id)
+                ->where('order', '>', $topic->order)
+                ->orderBy('order')
                 ->first();
-
             /*
             |--------------------------------------------------------------------------
             | UNLOCK NEXT TOPIC
@@ -145,7 +142,7 @@ class ProgressionService
                     'lesson_unlocked',
                     'Next topic unlocked',
                     [
-                        'topic_id' => $nextTopic->id
+                        'topic_id' => $nextTopic->id,
                     ]
                 );
 
@@ -172,7 +169,7 @@ class ProgressionService
                             'meta' => [
                                 'topic_id' => $nextTopic->id,
                                 'topic_title' => $nextTopic->title,
-                            ]
+                            ],
                         ],
                         ['db', 'push']
                     );
@@ -207,7 +204,7 @@ class ProgressionService
 
         $chapter = Chapter::find($chapterId);
 
-        if (!$chapter) {
+        if (! $chapter) {
             return;
         }
 
@@ -262,7 +259,7 @@ class ProgressionService
             'chapter_completed',
             'User completed chapter',
             [
-                'chapter_id' => $chapter->id
+                'chapter_id' => $chapter->id,
             ]
         );
 
@@ -289,7 +286,7 @@ class ProgressionService
                     'meta' => [
                         'chapter_id' => $chapter->id,
                         'chapter_title' => $chapter->title,
-                    ]
+                    ],
                 ],
                 ['db', 'push']
             );
@@ -301,14 +298,10 @@ class ProgressionService
         |--------------------------------------------------------------------------
         */
 
-        $nextChapter = Chapter::where(
-            'module_id',
-            $chapter->module_id
-        )
-            ->where('id', '>', $chapter->id)
-            ->orderBy('id')
+        $nextChapter = Chapter::where('module_id', $chapter->module_id)
+            ->where('order', '>', $chapter->order)
+            ->orderBy('order')
             ->first();
-
         /*
         |--------------------------------------------------------------------------
         | UNLOCK NEXT CHAPTER
@@ -348,7 +341,7 @@ class ProgressionService
                     'chapter_unlocked',
                     'Next chapter unlocked',
                     [
-                        'chapter_id' => $nextChapter->id
+                        'chapter_id' => $nextChapter->id,
                     ]
                 );
 
@@ -375,7 +368,7 @@ class ProgressionService
                             'meta' => [
                                 'chapter_id' => $nextChapter->id,
                                 'chapter_title' => $nextChapter->title,
-                            ]
+                            ],
                         ],
                         ['db', 'push']
                     );
@@ -434,10 +427,9 @@ class ProgressionService
         $userId,
         $moduleId
     ) {
-
         $module = Module::find($moduleId);
 
-        if (!$module) {
+        if (! $module) {
             return;
         }
 
@@ -484,13 +476,14 @@ class ProgressionService
 
             [
                 'user_id' => $userId,
+                'level_id' => $module->level_id,
                 'module_id' => $moduleId,
+                'chapter_id' => null,
                 'topic_id' => null,
             ],
 
             [
                 'program_id' => $module->program_id,
-                'level_id' => $module->level_id,
 
                 'is_unlocked' => true,
                 'is_completed' => false,
@@ -501,16 +494,10 @@ class ProgressionService
             'module_exam_unlocked',
             'Module exam unlocked',
             [
-                'module_id' => $module->id
+                'module_id' => $module->id,
             ]
         );
     }
-
-    /*
-    |--------------------------------------------------------------------------
-    | COMPLETE MODULE WITHOUT EXAM
-    |--------------------------------------------------------------------------
-    */
 
     private function completeModuleWithoutAssessment(
         $userId,
@@ -519,7 +506,7 @@ class ProgressionService
 
         $module = Module::find($moduleId);
 
-        if (!$module) {
+        if (! $module) {
             return;
         }
 
@@ -571,7 +558,7 @@ class ProgressionService
         */
 
         if (
-            !in_array(
+            ! in_array(
                 $assessment->type,
                 $examTypes,
                 true
@@ -582,17 +569,105 @@ class ProgressionService
 
         /*
         |--------------------------------------------------------------------------
-        | MODULE EXAM
+        | CHAPTER EXAM
         |--------------------------------------------------------------------------
         */
 
-        if ($assessment->type === 'module') {
+        if ($assessment->type === 'chapter') {
+
+            $chapter = Chapter::find(
+                $assessment->assessmentable_id
+            );
+
+            if (! $chapter) {
+                return null;
+            }
+
+            DB::transaction(function () use (
+                $userId,
+                $chapter,
+                $attempt,
+                &$certificate
+            ) {
+
+                /*
+                |--------------------------------------------------------------------------
+                | COMPLETE CHAPTER
+                |--------------------------------------------------------------------------
+                */
+
+                UserProgress::updateOrCreate(
+
+                    [
+                        'user_id' => $userId,
+                        'chapter_id' => $chapter->id,
+                        'topic_id' => null,
+                    ],
+
+                    [
+                        'program_id' => $chapter->program_id,
+                        'level_id' => $chapter->level_id,
+                        'module_id' => $chapter->module_id,
+
+                        'is_unlocked' => true,
+                        'is_completed' => true,
+
+                        'completed_at' => now(),
+                    ]
+                );
+
+                /*
+                |--------------------------------------------------------------------------
+                | CERTIFICATE
+                |--------------------------------------------------------------------------
+                */
+
+                if (
+                    in_array(
+                        'chapter',
+                        config(
+                            'assessment.certification.enabled_for_assessment_types',
+                            []
+                        ),
+                        true
+                    )
+                ) {
+
+                    $certificate = app(
+                        CertificationService::class
+                    )->generate(
+
+                        auth()->user(),
+
+                        $chapter,
+
+                        $attempt,
+
+                        'chapter'
+                    );
+                }
+
+                AuditService::log(
+                    'chapter_exam_completed',
+                    'User completed chapter exam',
+                    [
+                        'chapter_id' => $chapter->id,
+                    ]
+                );
+            });
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | MODULE EXAM
+        |--------------------------------------------------------------------------
+        */ elseif ($assessment->type === 'module') {
 
             $module = Module::find(
                 $assessment->assessmentable_id
             );
 
-            if (!$module) {
+            if (! $module) {
                 return null;
             }
 
@@ -604,10 +679,10 @@ class ProgressionService
             ) {
 
                 /*
-                |--------------------------------------------------------------------------
-                | COMPLETE MODULE
-                |--------------------------------------------------------------------------
-                */
+            |--------------------------------------------------------------------------
+            | COMPLETE MODULE
+            |--------------------------------------------------------------------------
+            */
 
                 $this->completeModule(
                     $userId,
@@ -624,7 +699,7 @@ class ProgressionService
                     in_array(
                         'module',
                         config(
-                            'assessment.certification.enabled_for',
+                            'assessment.certification.enabled_for_assessment_types',
                             []
                         ),
                         true
@@ -632,7 +707,7 @@ class ProgressionService
                 ) {
 
                     $certificate = app(
-                        \App\Services\CertificationService::class
+                        CertificationService::class
                     )->generate(
 
                         auth()->user(),
@@ -669,9 +744,106 @@ class ProgressionService
             });
         }
 
+        /*
+        |--------------------------------------------------------------------------
+        | LEVEL EXAM
+        |--------------------------------------------------------------------------
+        */ elseif ($assessment->type === 'level') {
+
+            $level = Level::find(
+                $assessment->assessmentable_id
+            );
+
+            if (! $level) {
+                return null;
+            }
+
+            DB::transaction(function () use (
+                $userId,
+                $level,
+                $attempt,
+                &$certificate
+            ) {
+
+                /*
+                |--------------------------------------------------------------------------
+                | COMPLETE LEVEL
+                |--------------------------------------------------------------------------
+                */
+
+                UserProgress::updateOrCreate(
+
+                    [
+                        'user_id' => $userId,
+                        'level_id' => $level->id,
+                        'module_id' => null,
+                        'topic_id' => null,
+                    ],
+
+                    [
+                        'program_id' => $level->program_id,
+
+                        'is_unlocked' => true,
+                        'is_completed' => true,
+
+                        'completed_at' => now(),
+                    ]
+                );
+
+                /*
+                |--------------------------------------------------------------------------
+                | CERTIFICATE
+                |--------------------------------------------------------------------------
+                */
+
+                if (
+                    in_array(
+                        'level',
+                        config(
+                            'assessment.certification.enabled_for_assessment_types',
+                            []
+                        ),
+                        true
+                    )
+                ) {
+
+                    $certificate = app(
+                        CertificationService::class
+                    )->generate(
+
+                        auth()->user(),
+
+                        $level,
+
+                        $attempt,
+
+                        'level'
+                    );
+                }
+
+                AuditService::log(
+                    'level_exam_completed',
+                    'User completed level exam',
+                    [
+                        'level_id' => $level->id,
+                    ]
+                );
+
+                /*
+                |--------------------------------------------------------------------------
+                | NEXT LEVEL
+                |--------------------------------------------------------------------------
+                */
+
+                $this->unlockNextLevel(
+                    $userId,
+                    $level->id
+                );
+            });
+        }
+
         return $certificate;
     }
-
     /*
     |--------------------------------------------------------------------------
     | COMPLETE MODULE
@@ -682,7 +854,6 @@ class ProgressionService
         $userId,
         Module $module
     ) {
-
         $user = User::find($userId);
 
         /*
@@ -695,13 +866,14 @@ class ProgressionService
 
             [
                 'user_id' => $userId,
+                'level_id' => $module->level_id,
                 'module_id' => $module->id,
+                'chapter_id' => null,
                 'topic_id' => null,
             ],
 
             [
                 'program_id' => $module->program_id,
-                'level_id' => $module->level_id,
 
                 'is_unlocked' => true,
                 'is_completed' => true,
@@ -720,7 +892,7 @@ class ProgressionService
             'module_completed',
             'User completed module exam',
             [
-                'module_id' => $module->id
+                'module_id' => $module->id,
             ]
         );
 
@@ -747,33 +919,29 @@ class ProgressionService
                     'meta' => [
                         'module_id' => $module->id,
                         'module_title' => $module->title,
-                    ]
+                    ],
                 ],
                 ['db', 'push']
             );
         }
     }
-
     /*
-    |--------------------------------------------------------------------------
-    | NEXT MODULE
-    |--------------------------------------------------------------------------
-    */
+        |--------------------------------------------------------------------------
+        | NEXT MODULE
+        |--------------------------------------------------------------------------
+        */
 
     private function unlockNextModule(
         $userId,
         Module $currentModule
     ) {
 
-        $nextModule = Module::where(
-            'level_id',
-            $currentModule->level_id
-        )
-            ->where('id', '>', $currentModule->id)
-            ->orderBy('id')
+        $nextModule = Module::where('level_id', $currentModule->level_id)
+            ->where('order', '>', $currentModule->order)
+            ->orderBy('order')
             ->first();
 
-        if (!$nextModule) {
+        if (! $nextModule) {
             return;
         }
 
@@ -784,7 +952,7 @@ class ProgressionService
             ->orderBy('id')
             ->first();
 
-        if (!$firstTopic) {
+        if (! $firstTopic) {
             return;
         }
 
@@ -810,7 +978,7 @@ class ProgressionService
             'module_unlocked',
             'User unlocked next module',
             [
-                'module_id' => $nextModule->id
+                'module_id' => $nextModule->id,
             ]
         );
 
@@ -839,7 +1007,7 @@ class ProgressionService
                     'meta' => [
                         'module_id' => $nextModule->id,
                         'module_title' => $nextModule->title,
-                    ]
+                    ],
                 ],
                 ['db', 'push']
             );
@@ -862,11 +1030,9 @@ class ProgressionService
             $levelId
         )->count();
 
-        $completedModules = UserProgress::where(
-            'user_id',
-            $userId
-        )
+        $completedModules = UserProgress::where('user_id',  $userId)
             ->where('level_id', $levelId)
+            ->whereNull('chapter_id')
             ->whereNull('topic_id')
             ->whereNotNull('module_id')
             ->where('is_completed', true)
@@ -910,7 +1076,7 @@ class ProgressionService
             'level_completed',
             'User completed level',
             [
-                'level_id' => $levelId
+                'level_id' => $levelId,
             ]
         );
 
@@ -941,7 +1107,7 @@ class ProgressionService
                     'meta' => [
                         'level_id' => $level->id,
                         'level_title' => $level->title,
-                    ]
+                    ],
                 ],
                 ['db', 'push']
             );
@@ -974,19 +1140,15 @@ class ProgressionService
             $currentLevelId
         );
 
-        if (!$currentLevel) {
+        if (! $currentLevel) {
             return;
         }
 
-        $nextLevel = Level::where(
-            'program_id',
-            $currentLevel->program_id
-        )
-            ->where('id', '>', $currentLevel->id)
-            ->orderBy('id')
+        $nextLevel = Level::where('program_id',  $currentLevel->program_id)
+            ->where('order', '>', $currentLevel->order)
+            ->orderBy('order')
             ->first();
-
-        if (!$nextLevel) {
+        if (! $nextLevel) {
             return;
         }
 
@@ -997,7 +1159,7 @@ class ProgressionService
             ->orderBy('id')
             ->first();
 
-        if (!$firstModule) {
+        if (! $firstModule) {
             return;
         }
 
@@ -1008,7 +1170,7 @@ class ProgressionService
             ->orderBy('id')
             ->first();
 
-        if (!$firstTopic) {
+        if (! $firstTopic) {
             return;
         }
 
@@ -1034,7 +1196,7 @@ class ProgressionService
             'level_unlocked',
             'User unlocked next level',
             [
-                'level_id' => $nextLevel->id
+                'level_id' => $nextLevel->id,
             ]
         );
 
@@ -1063,7 +1225,7 @@ class ProgressionService
                     'meta' => [
                         'level_id' => $nextLevel->id,
                         'level_title' => $nextLevel->title,
-                    ]
+                    ],
                 ],
                 ['db', 'push']
             );

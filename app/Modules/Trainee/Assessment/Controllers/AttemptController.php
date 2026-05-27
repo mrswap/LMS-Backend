@@ -228,130 +228,306 @@ class AttemptController extends Controller
     {
         $attemptId = $request->attempt_id;
 
-        $attempt = AssessmentAttempt::with('assessment')->findOrFail($attemptId);
-        $assessment = Assessment::with('questions.options')->findOrFail($id);
+        $attempt = AssessmentAttempt::with('assessment')
+            ->findOrFail($attemptId);
 
-        // 🔹 Answers (for selection + progress)
-        $answers = AssessmentAnswer::where('attempt_id', $attemptId)
+        $assessment = Assessment::with([
+            'questions.options'
+        ])->findOrFail($id);
+
+        /*
+        |--------------------------------------------------------------------------
+        | 🔹 ANSWERS
+        |--------------------------------------------------------------------------
+        */
+        $answers = AssessmentAnswer::where(
+            'attempt_id',
+            $attemptId
+        )
             ->get()
             ->keyBy('question_id');
 
         /*
-        |-----------------------------
-        | QUESTIONS TRANSFORM
-        |-----------------------------
+        |--------------------------------------------------------------------------
+        | 🔹 QUESTIONS TRANSFORM
+        |--------------------------------------------------------------------------
         */
         $questions = $assessment->questions->map(function ($q) use ($answers) {
 
             return [
+
                 'id' => $q->id,
+
                 'question_text' => $q->question_text,
+
                 'file' => $q->file,
 
+                /*
+            |--------------------------------------------------------------------------
+            | 🆕 CASE STUDY
+            |--------------------------------------------------------------------------
+            */
+                'is_case' => (bool) $q->is_case,
+
+                'case_title' => $q->case_title,
+
+                'case_text' => $q->case_text,
+
+                'case_order' => $q->case_order,
+
+                /*
+            |--------------------------------------------------------------------------
+            | OPTIONS
+            |--------------------------------------------------------------------------
+            */
                 'options' => $q->options->map(fn($opt) => [
+
                     'id' => $opt->id,
+
                     'text' => $opt->option_text
                 ]),
 
-                'selected_option_id' => $answers[$q->id]->selected_option_id ?? null
+                /*
+            |--------------------------------------------------------------------------
+            | SELECTED OPTION
+            |--------------------------------------------------------------------------
+            */
+                'selected_option_id' => $answers[$q->id]
+                    ->selected_option_id ?? null
             ];
         });
 
         /*
-        |-----------------------------
-        | ATTEMPT PROGRESS STATS
-        |-----------------------------
+        |--------------------------------------------------------------------------
+        | 🔹 ATTEMPT PROGRESS STATS
+        |--------------------------------------------------------------------------
         */
         $totalQuestions = $assessment->questions->count();
 
         $answeredCount = $answers->filter(function ($a) {
+
             return !is_null($a->selected_option_id);
         })->count();
 
         $remainingCount = $totalQuestions - $answeredCount;
 
         /*
-        |-----------------------------
-        | HIERARCHY (Topic / Level)
-        |-----------------------------
+        |--------------------------------------------------------------------------
+        | 🔹 HIERARCHY CONTEXT
+        |--------------------------------------------------------------------------
         */
         $context = null;
 
-        if ($assessment->assessmentable_type === \App\Models\Topic::class) {
+        /*
+        |--------------------------------------------------------------------------
+        | TOPIC
+        |--------------------------------------------------------------------------
+        */
+        if (
+            $assessment->assessmentable_type ===
+            \App\Models\Topic::class
+        ) {
 
-            $topic = \App\Models\Topic::with('chapter.module.level.program')
-                ->find($assessment->assessmentable_id);
+            $topic = \App\Models\Topic::with([
+                'chapter.module.level.program'
+            ])->find($assessment->assessmentable_id);
 
-            $context = [
-                'type' => 'topic',
-                'topic' => [
-                    'id' => $topic->id,
-                    'title' => $topic->title,
-                ],
-                'chapter' => [
-                    'id' => $topic->chapter->id ?? null,
-                    'title' => $topic->chapter->title ?? null,
-                ],
-                'module' => [
-                    'id' => $topic->chapter->module->id ?? null,
-                    'title' => $topic->chapter->module->title ?? null,
-                ],
-                'level' => [
-                    'id' => $topic->chapter->module->level->id ?? null,
-                    'title' => $topic->chapter->module->level->title ?? null,
-                ],
-                'program' => [
-                    'id' => $topic->chapter->module->level->program->id ?? null,
-                    'title' => $topic->chapter->module->level->program->title ?? null,
-                ],
-            ];
-        }
+            if ($topic) {
 
-        if ($assessment->assessmentable_type === \App\Models\Level::class) {
+                $context = [
 
-            $level = \App\Models\Level::with('program')
-                ->find($assessment->assessmentable_id);
+                    'type' => 'topic',
 
-            $context = [
-                'type' => 'level',
-                'level' => [
-                    'id' => $level->id,
-                    'title' => $level->title,
-                ],
-                'program' => [
-                    'id' => $level->program->id ?? null,
-                    'title' => $level->program->title ?? null,
-                ],
-            ];
+                    'topic' => [
+                        'id' => $topic->id,
+                        'title' => $topic->title,
+                    ],
+
+                    'chapter' => [
+                        'id' => $topic->chapter->id ?? null,
+                        'title' => $topic->chapter->title ?? null,
+                    ],
+
+                    'module' => [
+                        'id' => $topic->chapter->module->id ?? null,
+                        'title' => $topic->chapter->module->title ?? null,
+                    ],
+
+                    'level' => [
+                        'id' => $topic->chapter->module->level->id ?? null,
+                        'title' => $topic->chapter->module->level->title ?? null,
+                    ],
+
+                    'program' => [
+                        'id' => $topic->chapter->module->level->program->id ?? null,
+                        'title' => $topic->chapter->module->level->program->title ?? null,
+                    ],
+                ];
+            }
         }
 
         /*
-        |-----------------------------
+        |--------------------------------------------------------------------------
+        | CHAPTER
+        |--------------------------------------------------------------------------
+        */
+        if (
+            $assessment->assessmentable_type ===
+            \App\Models\Chapter::class
+        ) {
+
+            $chapter = \App\Models\Chapter::with([
+                'module.level.program'
+            ])->find($assessment->assessmentable_id);
+
+            if ($chapter) {
+
+                $context = [
+
+                    'type' => 'chapter',
+
+                    'chapter' => [
+                        'id' => $chapter->id,
+                        'title' => $chapter->title,
+                    ],
+
+                    'module' => [
+                        'id' => $chapter->module->id ?? null,
+                        'title' => $chapter->module->title ?? null,
+                    ],
+
+                    'level' => [
+                        'id' => $chapter->module->level->id ?? null,
+                        'title' => $chapter->module->level->title ?? null,
+                    ],
+
+                    'program' => [
+                        'id' => $chapter->module->level->program->id ?? null,
+                        'title' => $chapter->module->level->program->title ?? null,
+                    ],
+                ];
+            }
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | MODULE
+        |--------------------------------------------------------------------------
+        */
+        if (
+            $assessment->assessmentable_type ===
+            \App\Models\Module::class
+        ) {
+
+            $module = \App\Models\Module::with([
+                'level.program'
+            ])->find($assessment->assessmentable_id);
+
+            if ($module) {
+
+                $context = [
+
+                    'type' => 'module',
+
+                    'module' => [
+                        'id' => $module->id,
+                        'title' => $module->title,
+                    ],
+
+                    'level' => [
+                        'id' => $module->level->id ?? null,
+                        'title' => $module->level->title ?? null,
+                    ],
+
+                    'program' => [
+                        'id' => $module->level->program->id ?? null,
+                        'title' => $module->level->program->title ?? null,
+                    ],
+                ];
+            }
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | LEVEL
+        |--------------------------------------------------------------------------
+        */
+        if (
+            $assessment->assessmentable_type ===
+            \App\Models\Level::class
+        ) {
+
+            $level = \App\Models\Level::with([
+                'program'
+            ])->find($assessment->assessmentable_id);
+
+            if ($level) {
+
+                $context = [
+
+                    'type' => 'level',
+
+                    'level' => [
+                        'id' => $level->id,
+                        'title' => $level->title,
+                    ],
+
+                    'program' => [
+                        'id' => $level->program->id ?? null,
+                        'title' => $level->program->title ?? null,
+                    ],
+                ];
+            }
+        }
+
+        /*
+        |--------------------------------------------------------------------------
         | RESPONSE
-        |-----------------------------
+        |--------------------------------------------------------------------------
         */
         return response()->json([
+
             'attempt_id' => $attemptId,
 
             'type' => $assessment->type,
 
             'duration' => $assessment->duration,
+
             'started_at' => $attempt->started_at,
+
             'expires_at' => $assessment->duration
-                ? $attempt->started_at->copy()->addMinutes($assessment->duration)
+                ? $attempt->started_at
+                ->copy()
+                ->addMinutes($assessment->duration)
                 : null,
 
-            // 🆕 attempt progress
+            /*
+            |--------------------------------------------------------------------------
+            | 🆕 ATTEMPT PROGRESS
+            |--------------------------------------------------------------------------
+            */
             'total_questions' => $totalQuestions,
+
             'answered_questions' => $answeredCount,
+
             'remaining_questions' => $remainingCount,
 
-            // 🆕 context
+            /*
+            |--------------------------------------------------------------------------
+            | 🆕 CONTEXT
+            |--------------------------------------------------------------------------
+            */
             'context' => $context,
 
+            /*
+            |--------------------------------------------------------------------------
+            | QUESTIONS
+            |--------------------------------------------------------------------------
+            */
             'questions' => $questions
         ]);
     }
+
 
     // 🔹 ANSWER
     public function answer(Request $request)
@@ -597,7 +773,8 @@ class AttemptController extends Controller
         */
         $attempt = AssessmentAttempt::with([
             'answers',
-            'assessment.questions'
+            'assessment.questions',
+            'assessment.assessmentable'
         ])
             ->where('id', $request->attempt_id)
             ->where('user_id', $userId)
@@ -732,7 +909,7 @@ class AttemptController extends Controller
 
         /*
         |--------------------------------------------------
-        | TOPIC QUIZ
+        | TOPIC
         |--------------------------------------------------
         */
         if ($assessment->assessmentable_type === Topic::class) {
@@ -777,7 +954,46 @@ class AttemptController extends Controller
 
         /*
         |--------------------------------------------------
-        | MODULE EXAM
+        | CHAPTER
+        |--------------------------------------------------
+        */ elseif ($assessment->assessmentable_type === Chapter::class) {
+
+            $chapter = Chapter::with(
+                'module.level.program'
+            )->find($assessment->assessmentable_id);
+
+            if ($chapter) {
+
+                $context = [
+
+                    'type' => 'chapter',
+
+                    'chapter' => [
+                        'id' => $chapter->id,
+                        'title' => $chapter->title,
+                    ],
+
+                    'module' => [
+                        'id' => $chapter->module->id ?? null,
+                        'title' => $chapter->module->title ?? null,
+                    ],
+
+                    'level' => [
+                        'id' => $chapter->module->level->id ?? null,
+                        'title' => $chapter->module->level->title ?? null,
+                    ],
+
+                    'program' => [
+                        'id' => $chapter->module->level->program->id ?? null,
+                        'title' => $chapter->module->level->program->title ?? null,
+                    ],
+                ];
+            }
+        }
+
+        /*
+        |--------------------------------------------------
+        | MODULE
         |--------------------------------------------------
         */ elseif ($assessment->assessmentable_type === Module::class) {
 
@@ -811,7 +1027,7 @@ class AttemptController extends Controller
 
         /*
         |--------------------------------------------------
-        | RESERVED LEVEL EXAM SUPPORT
+        | LEVEL
         |--------------------------------------------------
         */ elseif ($assessment->assessmentable_type === Level::class) {
 
@@ -947,11 +1163,6 @@ class AttemptController extends Controller
                         ['db', 'push']
                     );
 
-                /*
-                |--------------------------------------------------
-                | 🛡 ADMIN PAYLOAD
-                |--------------------------------------------------
-                */
                 $adminPayload = [
 
                     'title' => $isPassed
@@ -986,11 +1197,6 @@ class AttemptController extends Controller
                     ]
                 ];
 
-                /*
-                |--------------------------------------------------
-                | 🛡 ADMINS
-                |--------------------------------------------------
-                */
                 app(\App\Services\NotificationService::class)
                     ->sendToRole(
                         'admin',
@@ -999,11 +1205,6 @@ class AttemptController extends Controller
                         ['db', 'push']
                     );
 
-                /*
-                |--------------------------------------------------
-                | 👑 SUPER ADMINS
-                |--------------------------------------------------
-                */
                 app(\App\Services\NotificationService::class)
                     ->sendToRole(
                         'superadmin',
@@ -1031,56 +1232,63 @@ class AttemptController extends Controller
                     ProgressionService::class
                 );
 
+                $assessmentType = $assessment->type;
+
+                $assessmentable = $assessment->assessmentable;
+
                 /*
                 |--------------------------------------------------
-                | TOPIC QUIZ FLOW
+                | TOPIC COMPLETION FLOW
                 |--------------------------------------------------
                 */
-                if ($assessment->type === 'topic') {
+                if (
+                    $assessmentType === 'topic' &&
+                    $assessmentable instanceof Topic
+                ) {
 
-                    $topic = Topic::find(
-                        $assessment->assessmentable_id
-                    );
-
-                    if ($topic) {
-
-                        $progressionService
-                            ->handleTopicCompletion(
-                                $userId,
-                                $topic
-                            );
-
-                        /*
-                    |--------------------------------------------------
-                    | TOPIC CERTIFICATE
-                    |--------------------------------------------------
-                    */
-                        if (
-                            in_array(
-                                'topic',
-                                config(
-                                    'assessment.certification.enabled_for_assessment_types',
-                                    []
-                                ),
-                                true
-                            )
-                        ) {
-
-                            $certificate = app(
-                                \App\Services\CertificationService::class
-                            )->generate(
-                                auth()->user(),
-                                $topic,
-                                $attempt,
-                                'topic'
-                            );
-                        }
-                    }
+                    $progressionService
+                        ->handleTopicCompletion(
+                            $userId,
+                            $assessmentable
+                        );
                 }
 
                 /*
                 |--------------------------------------------------
-                | MODULE / FUTURE EXAM FLOW
+                | 🎓 DYNAMIC CERTIFICATE FLOW
+                |--------------------------------------------------
+                */
+                $enabledCertificateTypes = config(
+                    'assessment.certification.enabled_for_assessment_types',
+                    []
+                );
+
+                if (
+                    $assessmentable &&
+                    in_array(
+                        $assessmentType,
+                        $enabledCertificateTypes,
+                        true
+                    )
+                ) {
+
+                    $certificate = app(
+                        \App\Services\CertificationService::class
+                    )->generate(
+
+                        auth()->user(),
+
+                        $assessmentable,
+
+                        $attempt,
+
+                        $assessmentType
+                    );
+                }
+
+                /*
+                |--------------------------------------------------
+                | 🔓 DYNAMIC ASSESSMENT PASS FLOW
                 |--------------------------------------------------
                 */
                 $assessmentCertificate = $progressionService
@@ -1091,8 +1299,8 @@ class AttemptController extends Controller
                     );
 
                 if (
-                    $assessmentCertificate
-                    && !$certificate
+                    $assessmentCertificate &&
+                    !$certificate
                 ) {
 
                     $certificate = $assessmentCertificate;
@@ -1106,11 +1314,6 @@ class AttemptController extends Controller
             */
             return response()->json([
 
-                /*
-                |--------------------------------------------------
-                | 🎯 RESULT
-                |--------------------------------------------------
-                */
                 'score' => $result['marks'],
 
                 'obtained_marks' => $result['marks'],
@@ -1131,11 +1334,6 @@ class AttemptController extends Controller
 
                 'status' => $attempt->status,
 
-                /*
-                |--------------------------------------------------
-                | 📊 ATTEMPT
-                |--------------------------------------------------
-                */
                 'attempt_id' => $attempt->id,
 
                 'type' => $assessment->type,
@@ -1149,20 +1347,10 @@ class AttemptController extends Controller
                     $maxAttempts - ($completedAttempts + 1)
                 ),
 
-                /*
-                |--------------------------------------------------
-                | 📊 QUESTIONS
-                |--------------------------------------------------
-                */
                 'answered_questions' => $answeredCount,
 
                 'remaining_questions' => $remainingCount,
 
-                /*
-                |--------------------------------------------------
-                | ⏱ TIME
-                |--------------------------------------------------
-                */
                 'submit_type' => $submitType,
 
                 'time_taken_seconds' => $timeTaken,
@@ -1172,18 +1360,8 @@ class AttemptController extends Controller
                     2
                 ),
 
-                /*
-                |--------------------------------------------------
-                | 🧠 HIERARCHY
-                |--------------------------------------------------
-                */
                 'context' => $context,
 
-                /*
-                |--------------------------------------------------
-                | 🎓 CERTIFICATE
-                |--------------------------------------------------
-                */
                 'certificate_generated' => $certificate
                     ? true
                     : false,
