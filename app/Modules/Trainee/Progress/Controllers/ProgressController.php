@@ -228,7 +228,10 @@ class ProgressController extends Controller
 
     public function mapModule($module, $progress, $lang)
     {
+        $userId = auth()->id();
+
         $t = $this->getTranslated($module, $lang);
+
         $status = $this->getModuleStatus($module, $progress);
 
         /*
@@ -249,21 +252,116 @@ class ProgressController extends Controller
             ? round(($completedTopics / $totalTopics) * 100, 2)
             : 0;
 
+        /*
+        |------------------------------------------------------------------
+        | 🎯 MODULE EXAM
+        |------------------------------------------------------------------
+        */
+        $assessment = \App\Models\Assessment::where(
+            'assessmentable_id',
+            $module->id
+        )
+            ->where(
+                'assessmentable_type',
+                \App\Models\Module::class
+            )
+            ->where('status', true)
+            ->first();
+
+        /*
+        |------------------------------------------------------------------
+        | 🎓 MODULE CERTIFICATE
+        |------------------------------------------------------------------
+        */
+        $cert = \App\Models\Certification::where(
+            'user_id',
+            $userId
+        )
+            ->where('type', 'module')
+            ->where('module_id', $module->id)
+            ->first();
+
+        $isPassed = $cert ? true : false;
+
         return [
+
             'id' => $module->id,
+
             'type' => 'module',
+
             'title' => $t['title'],
+
             'description' => $t['description'],
+
             'thumbnail' => $module->thumbnail,
 
+            /*
+            |------------------------------------------------------------------
+            | 🔹 STATES
+            |------------------------------------------------------------------
+            */
             'is_unlocked' => $status['is_unlocked'],
+
             'is_completed' => $status['is_completed'],
 
-            // ✅ NEW
+            'is_content_completed' => $status['is_completed'],
+
+            'can_take_exam' => $status['is_completed'] && !$isPassed,
+
+            'is_passed' => $isPassed,
+
+            /*
+            |------------------------------------------------------------------
+            | 🔹 MODULE PROGRESS
+            |------------------------------------------------------------------
+            */
             'total_topics' => $totalTopics,
+
             'completed_topics' => $completedTopics,
+
             'progress_percent' => $progressPercent,
 
+            /*
+            |------------------------------------------------------------------
+            | 🎯 ASSESSMENT
+            |------------------------------------------------------------------
+            */
+            'assessment' => $assessment ? [
+
+                'id' => $assessment->id,
+
+                'type' => $assessment->type,
+
+                'duration' => $assessment->duration,
+
+                'passing_score' => $assessment->passing_score,
+
+            ] : null,
+
+            /*
+            |------------------------------------------------------------------
+            | 🎓 EXAM DETAILS
+            |------------------------------------------------------------------
+            */
+            'exam_details' => $cert ? [
+
+                'certificate_id' => $cert->certificate_id,
+
+                'score' => $cert->score,
+
+                'percentage' => $cert->percentage,
+
+                'issued_at' => $cert->issued_at,
+
+                'passed_attempt_id' => $cert->assessment_attempt_id,
+
+            ] : null,
+
+            /*
+            |------------------------------------------------------------------
+            | 🔹 CHAPTERS
+            |------------------------------------------------------------------
+            */
             'chapters' => $module->chapters->map(
                 fn($chapter) =>
                 $this->mapChapter($chapter, $progress, $lang)
@@ -792,6 +890,7 @@ class ProgressController extends Controller
     public function hierarchy(Request $request)
     {
         $userId = auth()->id();
+
         $lang = $this->resolveLanguage($request);
 
         /*
@@ -828,16 +927,6 @@ class ProgressController extends Controller
 
         /*
         |--------------------------------------------------
-        | 🔹 LEVEL CERTIFICATIONS
-        |--------------------------------------------------
-        */
-        $certifications = \App\Models\Certification::where('user_id', $userId)
-            ->where('type', 'level')
-            ->get()
-            ->keyBy('level_id');
-
-        /*
-        |--------------------------------------------------
         | 🔹 LOAD FULL STRUCTURE
         |--------------------------------------------------
         */
@@ -868,7 +957,6 @@ class ProgressController extends Controller
         $data = $programs->map(function ($program) use (
             $progress,
             $lang,
-            $certifications,
             $completedTopicIds,
             $userId
         ) {
@@ -876,10 +964,10 @@ class ProgressController extends Controller
             $t = $this->getTranslated($program, $lang);
 
             /*
-            |--------------------------------------------------
-            | 🔹 PROGRAM PROGRESS
-            |--------------------------------------------------
-            */
+        |--------------------------------------------------
+        | 🔹 PROGRAM PROGRESS
+        |--------------------------------------------------
+        */
             $programTopics = $program->levels
                 ->flatMap->modules
                 ->flatMap->chapters
@@ -909,10 +997,10 @@ class ProgressController extends Controller
                 'thumbnail' => $program->thumbnail,
 
                 /*
-                |--------------------------------------------------
-                | 🔹 PROGRAM PROGRESS
-                |--------------------------------------------------
-                */
+            |--------------------------------------------------
+            | 🔹 PROGRAM PROGRESS
+            |--------------------------------------------------
+            */
                 'progress' => [
                     'total_topics' => count($programTopicIds),
                     'completed_topics' => $programCompletedTopics,
@@ -920,16 +1008,15 @@ class ProgressController extends Controller
                 ],
 
                 /*
-                |--------------------------------------------------
-                | 🔹 LEVELS
-                |--------------------------------------------------
-                */
+            |--------------------------------------------------
+            | 🔹 LEVELS
+            |--------------------------------------------------
+            */
                 'levels' => $program->levels->map(function (
                     $level
                 ) use (
                     $progress,
                     $lang,
-                    $certifications,
                     $completedTopicIds,
                     $userId
                 ) {
@@ -943,10 +1030,10 @@ class ProgressController extends Controller
                     );
 
                     /*
-                    |--------------------------------------------------
-                    | 🔹 LEVEL TOPICS
-                    |--------------------------------------------------
-                    */
+                |--------------------------------------------------
+                | 🔹 LEVEL TOPICS
+                |--------------------------------------------------
+                */
                     $allTopics = $level->modules
                         ->flatMap->chapters
                         ->flatMap->topics;
@@ -956,10 +1043,10 @@ class ProgressController extends Controller
                         ->toArray();
 
                     /*
-                    |--------------------------------------------------
-                    | 🔹 LEVEL PROGRESS
-                    |--------------------------------------------------
-                    */
+                |--------------------------------------------------
+                | 🔹 LEVEL PROGRESS
+                |--------------------------------------------------
+                */
                     $completedLevelTopics = count(array_intersect(
                         $levelTopicIds,
                         $completedTopicIds
@@ -972,10 +1059,10 @@ class ProgressController extends Controller
                         : 0;
 
                     /*
-                    |--------------------------------------------------
-                    | 🔹 LEVEL STATES
-                    |--------------------------------------------------
-                    */
+                |--------------------------------------------------
+                | 🔹 LEVEL STATES
+                |--------------------------------------------------
+                */
                     $levelUnlocked = $allTopics->contains(
                         fn($topic) =>
                         $progress[$topic->id]->is_unlocked ?? false
@@ -986,19 +1073,35 @@ class ProgressController extends Controller
                         $completedLevelTopics === $totalLevelTopics;
 
                     /*
-                    |--------------------------------------------------
-                    | 🔹 CERTIFICATION
-                    |--------------------------------------------------
-                    */
-                    $cert = $certifications[$level->id] ?? null;
+                |--------------------------------------------------
+                | 🔹 LEVEL PASSED
+                |--------------------------------------------------
+                |
+                | Level passed only when all modules passed
+                |
+                */
+                    $totalModules = $level->modules->count();
 
-                    $isPassed = $cert ? true : false;
+                    $passedModules = \App\Models\Certification::where(
+                        'user_id',
+                        $userId
+                    )
+                        ->where('type', 'module')
+                        ->whereIn(
+                            'module_id',
+                            $level->modules->pluck('id')
+                        )
+                        ->count();
+
+                    $isPassed =
+                        $totalModules > 0 &&
+                        $passedModules === $totalModules;
 
                     /*
-                    |--------------------------------------------------
-                    | 🔹 LEVEL EXAM
-                    |--------------------------------------------------
-                    */
+                |--------------------------------------------------
+                | 🔹 LEVEL EXAM
+                |--------------------------------------------------
+                */
                     $assessment = \App\Models\Assessment::where(
                         'assessmentable_id',
                         $level->id
@@ -1009,6 +1112,7 @@ class ProgressController extends Controller
                         )
                         ->where('status', true)
                         ->first();
+
                     return [
 
                         'type' => 'level',
@@ -1022,10 +1126,10 @@ class ProgressController extends Controller
                         'thumbnail' => $level->thumbnail,
 
                         /*
-                        |--------------------------------------------------
-                        | 🔹 STATES
-                        |--------------------------------------------------
-                        */
+                    |--------------------------------------------------
+                    | 🔹 STATES
+                    |--------------------------------------------------
+                    */
                         'is_unlocked' => $levelUnlocked,
 
                         'is_content_completed' => $levelCompleted,
@@ -1035,10 +1139,10 @@ class ProgressController extends Controller
                         'is_passed' => $isPassed,
 
                         /*
-                        |--------------------------------------------------
-                        | 🔹 LEVEL PROGRESS
-                        |--------------------------------------------------
-                        */
+                    |--------------------------------------------------
+                    | 🔹 LEVEL PROGRESS
+                    |--------------------------------------------------
+                    */
                         'progress' => [
                             'total_topics' => $totalLevelTopics,
                             'completed_topics' => $completedLevelTopics,
@@ -1046,10 +1150,10 @@ class ProgressController extends Controller
                         ],
 
                         /*
-                        |--------------------------------------------------
-                        | 🔹 ASSESSMENT
-                        |--------------------------------------------------
-                        */
+                    |--------------------------------------------------
+                    | 🔹 ASSESSMENT
+                    |--------------------------------------------------
+                    */
                         'assessment' => $assessment ? [
 
                             'id' => $assessment->id,
@@ -1063,29 +1167,24 @@ class ProgressController extends Controller
                         ] : null,
 
                         /*
-                        |--------------------------------------------------
-                        | 🔹 EXAM DETAILS
-                        |--------------------------------------------------
-                        */
-                        'exam_details' => $cert ? [
+                    |--------------------------------------------------
+                    | 🔹 EXAM DETAILS
+                    |--------------------------------------------------
+                    */
+                        'exam_details' => [
 
-                            'certificate_id' => $cert->certificate_id,
+                            'total_modules' => $totalModules,
 
-                            'score' => $cert->score,
+                            'passed_modules' => $passedModules,
 
-                            'percentage' => $cert->percentage,
-
-                            'issued_at' => $cert->issued_at,
-
-                            'passed_attempt_id' => $cert->assessment_attempt_id,
-
-                        ] : null,
+                            'is_level_completed' => $isPassed,
+                        ],
 
                         /*
-                        |--------------------------------------------------
-                        | 🔹 MODULES
-                        |--------------------------------------------------
-                        */
+                    |--------------------------------------------------
+                    | 🔹 MODULES
+                    |--------------------------------------------------
+                    */
                         'modules' => $level->modules->map(function (
                             $module
                         ) use (
@@ -1111,10 +1210,10 @@ class ProgressController extends Controller
                                 ->toArray();
 
                             /*
-                            |--------------------------------------------------
-                            | 🔹 MODULE PROGRESS
-                            |--------------------------------------------------
-                            */
+                        |--------------------------------------------------
+                        | 🔹 MODULE PROGRESS
+                        |--------------------------------------------------
+                        */
                             $completedTopics = count(array_intersect(
                                 $moduleTopicIds,
                                 $completedTopicIds
@@ -1127,10 +1226,10 @@ class ProgressController extends Controller
                                 : 0;
 
                             /*
-                            |--------------------------------------------------
-                            | 🔹 MODULE STATES
-                            |--------------------------------------------------
-                            */
+                        |--------------------------------------------------
+                        | 🔹 MODULE STATES
+                        |--------------------------------------------------
+                        */
                             $isUnlocked = $topics->contains(
                                 fn($topic) =>
                                 $progress[$topic->id]->is_unlocked ?? false
@@ -1139,6 +1238,37 @@ class ProgressController extends Controller
                             $isCompleted =
                                 $totalTopics > 0 &&
                                 $completedTopics === $totalTopics;
+
+                            /*
+                        |--------------------------------------------------
+                        | 🎯 MODULE EXAM
+                        |--------------------------------------------------
+                        */
+                            $assessment = \App\Models\Assessment::where(
+                                'assessmentable_id',
+                                $module->id
+                            )
+                                ->where(
+                                    'assessmentable_type',
+                                    \App\Models\Module::class
+                                )
+                                ->where('status', true)
+                                ->first();
+
+                            /*
+                        |--------------------------------------------------
+                        | 🎓 MODULE CERTIFICATE
+                        |--------------------------------------------------
+                        */
+                            $cert = \App\Models\Certification::where(
+                                'user_id',
+                                $userId
+                            )
+                                ->where('type', 'module')
+                                ->where('module_id', $module->id)
+                                ->first();
+
+                            $isPassed = $cert ? true : false;
 
                             return [
 
@@ -1152,15 +1282,26 @@ class ProgressController extends Controller
 
                                 'thumbnail' => $module->thumbnail,
 
+                                /*
+                            |--------------------------------------------------
+                            | 🔹 STATES
+                            |--------------------------------------------------
+                            */
                                 'is_unlocked' => $isUnlocked,
 
                                 'is_completed' => $isCompleted,
 
+                                'is_content_completed' => $isCompleted,
+
+                                'can_take_exam' => $isCompleted && !$isPassed,
+
+                                'is_passed' => $isPassed,
+
                                 /*
-                                |--------------------------------------------------
-                                | 🔹 MODULE PROGRESS
-                                |--------------------------------------------------
-                                */
+                            |--------------------------------------------------
+                            | 🔹 MODULE PROGRESS
+                            |--------------------------------------------------
+                            */
                                 'progress' => [
                                     'total_topics' => $totalTopics,
                                     'completed_topics' => $completedTopics,
@@ -1168,10 +1309,46 @@ class ProgressController extends Controller
                                 ],
 
                                 /*
-                                |--------------------------------------------------
-                                | 🔹 CHAPTERS
-                                |--------------------------------------------------
-                                */
+                            |--------------------------------------------------
+                            | 🔹 ASSESSMENT
+                            |--------------------------------------------------
+                            */
+                                'assessment' => $assessment ? [
+
+                                    'id' => $assessment->id,
+
+                                    'type' => $assessment->type,
+
+                                    'duration' => $assessment->duration,
+
+                                    'passing_score' => $assessment->passing_score,
+
+                                ] : null,
+
+                                /*
+                            |--------------------------------------------------
+                            | 🔹 EXAM DETAILS
+                            |--------------------------------------------------
+                            */
+                                'exam_details' => $cert ? [
+
+                                    'certificate_id' => $cert->certificate_id,
+
+                                    'score' => $cert->score,
+
+                                    'percentage' => $cert->percentage,
+
+                                    'issued_at' => $cert->issued_at,
+
+                                    'passed_attempt_id' => $cert->assessment_attempt_id,
+
+                                ] : null,
+
+                                /*
+                            |--------------------------------------------------
+                            | 🔹 CHAPTERS
+                            |--------------------------------------------------
+                            */
                                 'chapters' => $module->chapters->map(function (
                                     $chapter
                                 ) use (
@@ -1194,10 +1371,10 @@ class ProgressController extends Controller
                                         ->toArray();
 
                                     /*
-                                    |--------------------------------------------------
-                                    | 🔹 CHAPTER PROGRESS
-                                    |--------------------------------------------------
-                                    */
+                                |--------------------------------------------------
+                                | 🔹 CHAPTER PROGRESS
+                                |--------------------------------------------------
+                                */
                                     $completedTopics = count(array_intersect(
                                         $chapterTopicIds,
                                         $completedTopicIds
@@ -1210,10 +1387,10 @@ class ProgressController extends Controller
                                         : 0;
 
                                     /*
-                                    |--------------------------------------------------
-                                    | 🔹 CHAPTER STATES
-                                    |--------------------------------------------------
-                                    */
+                                |--------------------------------------------------
+                                | 🔹 CHAPTER STATES
+                                |--------------------------------------------------
+                                */
                                     $isUnlocked = $chapter->topics->contains(
                                         fn($topic) =>
                                         $progress[$topic->id]->is_unlocked ?? false
@@ -1240,10 +1417,10 @@ class ProgressController extends Controller
                                         'is_completed' => $isCompleted,
 
                                         /*
-                                        |--------------------------------------------------
-                                        | 🔹 CHAPTER PROGRESS
-                                        |--------------------------------------------------
-                                        */
+                                    |--------------------------------------------------
+                                    | 🔹 CHAPTER PROGRESS
+                                    |--------------------------------------------------
+                                    */
                                         'progress' => [
                                             'total_topics' => $totalTopics,
                                             'completed_topics' => $completedTopics,
@@ -1251,10 +1428,10 @@ class ProgressController extends Controller
                                         ],
 
                                         /*
-                                        |--------------------------------------------------
-                                        | 🔹 TOPICS
-                                        |--------------------------------------------------
-                                        */
+                                    |--------------------------------------------------
+                                    | 🔹 TOPICS
+                                    |--------------------------------------------------
+                                    */
                                         'topics' => $chapter->topics->map(function (
                                             $topic
                                         ) use (
@@ -1269,10 +1446,10 @@ class ProgressController extends Controller
                                             $t = $this->getTranslated($topic, $lang);
 
                                             /*
-                                            |--------------------------------------------------
-                                            | 🔹 CONTENT PROGRESS
-                                            |--------------------------------------------------
-                                            */
+                                        |--------------------------------------------------
+                                        | 🔹 CONTENT PROGRESS
+                                        |--------------------------------------------------
+                                        */
                                             $totalContents = TopicContent::where(
                                                 'topic_id',
                                                 $topic->id
@@ -1314,20 +1491,20 @@ class ProgressController extends Controller
                                                 'is_unlocked' => $p?->is_unlocked ?? false,
 
                                                 /*
-                                                |--------------------------------------------------
-                                                | 🔹 PASS BASED COMPLETION
-                                                |--------------------------------------------------
-                                                */
+                                            |--------------------------------------------------
+                                            | 🔹 PASS BASED COMPLETION
+                                            |--------------------------------------------------
+                                            */
                                                 'is_completed' => in_array(
                                                     $topic->id,
                                                     $completedTopicIds
                                                 ),
 
                                                 /*
-                                                |--------------------------------------------------
-                                                | 🔹 TOPIC PROGRESS
-                                                |--------------------------------------------------
-                                                */
+                                            |--------------------------------------------------
+                                            | 🔹 TOPIC PROGRESS
+                                            |--------------------------------------------------
+                                            */
                                                 'progress' => [
                                                     'total_contents' => $totalContents,
                                                     'read_contents' => $readContents,

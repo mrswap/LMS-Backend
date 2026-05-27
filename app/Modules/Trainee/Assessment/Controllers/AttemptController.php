@@ -12,6 +12,8 @@ use DB;
 use App\Modules\Trainee\Progress\Services\ProgressionService;
 use App\Models\Topic;
 use App\Models\Level;
+use App\Models\Module;
+use App\Models\Chapter;
 use App\Services\AuditService;
 use Carbon\Carbon;
 use App\Services\CertificationService;

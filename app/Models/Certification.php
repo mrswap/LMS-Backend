@@ -2,6 +2,10 @@
 
 namespace App\Models;
 
+use App\Models\Module;
+use App\Models\Chapter;
+
+
 class Certification extends BaseModel
 {
     protected $fillable = [
@@ -9,6 +13,8 @@ class Certification extends BaseModel
         'program_id',
         'level_id',
         'topic_id',
+        'module_id',
+        'chapter_id',
         'type',
         'assessment_attempt_id',
         'certificate_id',
@@ -21,7 +27,7 @@ class Certification extends BaseModel
     ];
 
     protected $casts = [
-        'issued_at'  => 'datetime',
+        'issued_at' => 'datetime:Y-m-d H:i:s',
         'status'     => 'boolean',
         'meta'       => 'array',
         'score'      => 'float',
@@ -47,6 +53,22 @@ class Certification extends BaseModel
     public function level()
     {
         return $this->belongsTo(Level::class)->withTrashed();
+    }
+
+    public function module()
+    {
+        return $this->belongsTo(
+            Module::class,
+            'module_id'
+        )->withTrashed();
+    }
+
+    public function chapter()
+    {
+        return $this->belongsTo(
+            Chapter::class,
+            'chapter_id'
+        )->withTrashed();
     }
 
     public function topic()
@@ -83,7 +105,7 @@ class Certification extends BaseModel
 
     protected static function booted()
     {
-            parent::booted();
+        parent::booted();
 
         static::updating(function ($cert) {
 
