@@ -5,6 +5,7 @@ namespace App\Modules\Admin\Import\Services;
 use App\Models\Assessment;
 use App\Models\AssessmentOption;
 use App\Models\AssessmentQuestion;
+use App\Models\Module;
 use App\Models\Topic;
 
 class AssessmentImporterService
@@ -16,12 +17,45 @@ class AssessmentImporterService
     */
 
     public function import(
-        array $questions
+        array $parsedData
     ): void {
 
         /*
         |--------------------------------------------------------------------------
-        | GROUP QUESTIONS BY TOPIC
+        | EXTRACT
+        |--------------------------------------------------------------------------
+        */
+
+        $questions =
+            $parsedData['questions']
+            ?? [];
+
+        $checklists =
+            $parsedData['checklists']
+            ?? [];
+
+        /*
+        |--------------------------------------------------------------------------
+        | EMPTY
+        |--------------------------------------------------------------------------
+        */
+
+        if (empty($questions)) {
+
+            logger()->warning(
+                'NO QUESTIONS FOUND'
+            );
+
+            return;
+        }
+
+        logger()->info('IMPORT QUESTIONS', [
+            'count' => count($questions),
+        ]);
+
+        /*
+        |--------------------------------------------------------------------------
+        | GROUP QUESTIONS
         |--------------------------------------------------------------------------
         */
 
@@ -29,69 +63,227 @@ class AssessmentImporterService
 
         foreach ($questions as $question) {
 
-            $grouped[$question['topic_code']][] = $question;
-        }
-
-        /*
-        |--------------------------------------------------------------------------
-        | LOOP TOPICS
-        |--------------------------------------------------------------------------
-        */
-
-        foreach ($grouped as $topicCode => $items) {
+            $assessmentType =
+                $question['assessment_type']
+                ?? 'topic';
 
             /*
             |--------------------------------------------------------------------------
-            | FIND TOPIC
-            |--------------------------------------------------------------------------
-            |
-            | OLD ISSUE:
-            | Topic::where('title', 'LIKE', '%Topic 1.1.2:%')
-            |
-            | Your imported title:
-            | Topic 1.1.2: Blood Flow Pathways
-            |
-            | Sometimes spacing/colon/html mismatch happens.
-            | So now smarter matching added.
-            */
-
-            $topic = Topic::query()
-
-                ->where(function ($query) use ($topicCode) {
-
-                    $query
-
-                        // exact topic code
-                        ->where(
-                            'title',
-                            'LIKE',
-                            'Topic ' . $topicCode . ':%'
-                        )
-
-                        // fallback
-                        ->orWhere(
-                            'title',
-                            'LIKE',
-                            '%' . $topicCode . '%'
-                        );
-                })
-
-                ->first();
-
-            /*
-            |--------------------------------------------------------------------------
-            | SKIP IF TOPIC NOT FOUND
+            | TOPIC
             |--------------------------------------------------------------------------
             */
 
-            if (!$topic) {
+            if ($assessmentType === 'topic') {
+
+                $topicCode =
+                    $question['topic_code']
+                    ?? null;
+
+                if (!$topicCode) {
+                    continue;
+                }
+
+                $key =
+                    'topic_' . $topicCode;
+
+                $grouped[$key][] =
+                    $question;
 
                 continue;
             }
 
             /*
             |--------------------------------------------------------------------------
-            | PREVENT DUPLICATE ASSESSMENT
+            | MODULE
+            |--------------------------------------------------------------------------
+            */
+
+            if ($assessmentType === 'module') {
+
+                $moduleCode =
+                    $question['module_code']
+                    ?? null;
+
+                if (!$moduleCode) {
+                    continue;
+                }
+
+                $key =
+                    'module_' . $moduleCode;
+
+                $grouped[$key][] =
+                    $question;
+
+                continue;
+            }
+        }
+
+        logger()->info('GROUPED ASSESSMENTS', [
+            'groups' => array_keys($grouped),
+        ]);
+
+        /*
+        |--------------------------------------------------------------------------
+        | LOOP GROUPS
+        |--------------------------------------------------------------------------
+        */
+
+        foreach ($grouped as $groupKey => $items) {
+
+            if (empty($items)) {
+                continue;
+            }
+
+            $firstItem =
+                $items[0];
+
+            $assessmentableId = null;
+
+            $assessmentableType = null;
+
+            $assessmentType = null;
+
+            $assessmentTitle = null;
+
+            $createdBy = null;
+
+            /*
+            |--------------------------------------------------------------------------
+            | TOPIC ASSESSMENT
+            |--------------------------------------------------------------------------
+            */
+
+            if (
+                ($firstItem['assessment_type'] ?? 'topic')
+                === 'topic'
+            ) {
+
+                $topicCode =
+                    $firstItem['topic_code']
+                    ?? null;
+
+                logger()->info('TOPIC LOOKUP', [
+                    'topic_code' => $topicCode
+                ]);
+
+                $topic = Topic::query()
+
+                    ->whereRaw(
+                        "REPLACE(title, ' ', '') LIKE ?",
+                        [
+                            '%Topic' .
+                                str_replace(' ', '', $topicCode) .
+                                ':%'
+                        ]
+                    )
+
+                    ->first();
+
+                logger()->info('TOPIC FOUND', [
+                    'topic_id' =>
+                    $topic?->id,
+
+                    'title' =>
+                    $topic?->title,
+                ]);
+
+                if (!$topic) {
+
+                    continue;
+                }
+
+                $assessmentableId =
+                    $topic->id;
+
+                $assessmentableType =
+                    Topic::class;
+
+                $assessmentType =
+                    'topic';
+
+                $assessmentTitle =
+                    'Topic Assessment';
+
+                $createdBy =
+                    $topic->created_by;
+            }
+
+            /*
+            |--------------------------------------------------------------------------
+            | MODULE ASSESSMENT
+            |--------------------------------------------------------------------------
+            */ elseif (
+                ($firstItem['assessment_type'] ?? null)
+                === 'module'
+            ) {
+
+                $moduleCode =
+                    $firstItem['module_code']
+                    ?? null;
+
+                logger()->info('MODULE LOOKUP', [
+                    'module_code' => $moduleCode
+                ]);
+
+                $module = Module::query()
+
+                    ->whereRaw(
+                        "REPLACE(title, ' ', '') LIKE ?",
+                        [
+                            '%Module' .
+                                str_replace(' ', '', $moduleCode) .
+                                ':%'
+                        ]
+                    )
+
+                    ->first();
+
+                logger()->info('MODULE FOUND', [
+                    'module_id' =>
+                    $module?->id,
+
+                    'title' =>
+                    $module?->title,
+                ]);
+
+                if (!$module) {
+
+                    continue;
+                }
+
+                $assessmentableId =
+                    $module->id;
+
+                $assessmentableType =
+                    Module::class;
+
+                $assessmentType =
+                    'module';
+
+                $assessmentTitle =
+                    'Module Final Assessment';
+
+                $createdBy =
+                    $module->created_by;
+            }
+
+            /*
+            |--------------------------------------------------------------------------
+            | INVALID
+            |--------------------------------------------------------------------------
+            */
+
+            if (
+                !$assessmentableId
+                || !$assessmentableType
+            ) {
+
+                continue;
+            }
+
+            /*
+            |--------------------------------------------------------------------------
+            | PREVENT DUPLICATE
             |--------------------------------------------------------------------------
             */
 
@@ -99,17 +291,26 @@ class AssessmentImporterService
 
                 ->where(
                     'assessmentable_id',
-                    $topic->id
+                    $assessmentableId
                 )
 
                 ->where(
                     'assessmentable_type',
-                    Topic::class
+                    $assessmentableType
+                )
+
+                ->where(
+                    'type',
+                    $assessmentType
                 )
 
                 ->exists();
 
             if ($exists) {
+
+                logger()->warning('ASSESSMENT EXISTS', [
+                    'group' => $groupKey
+                ]);
 
                 continue;
             }
@@ -120,14 +321,13 @@ class AssessmentImporterService
             |--------------------------------------------------------------------------
             */
 
-            $totalMarks = count($items);
+            $totalMarks =
+                count($items);
 
             /*
             |--------------------------------------------------------------------------
             | PASSING SCORE
             |--------------------------------------------------------------------------
-            |
-            | 2/3 of total marks
             */
 
             $passingScore = (int) ceil(
@@ -143,40 +343,42 @@ class AssessmentImporterService
             $assessment = Assessment::create([
 
                 'assessmentable_id' =>
-                    $topic->id,
+                $assessmentableId,
 
                 'assessmentable_type' =>
-                    Topic::class,
+                $assessmentableType,
 
                 'type' =>
-                    'topic',
+                $assessmentType,
 
                 'title' =>
-                    'Topic Assessment',
+                $assessmentTitle,
 
                 'description' =>
-                    'Imported Assessment',
-
-                /*
-                |--------------------------------------------------------------------------
-                | DEFAULT DURATION = 10
-                |--------------------------------------------------------------------------
-                */
+                'Imported Assessment',
 
                 'duration' =>
-                    10,
+                10,
 
                 'passing_score' =>
-                    $passingScore,
+                $passingScore,
 
                 'total_marks' =>
-                    $totalMarks,
+                $totalMarks,
 
                 'status' =>
-                    true,
+                true,
 
                 'created_by' =>
-                    $topic->created_by,
+                $createdBy,
+            ]);
+
+            logger()->info('ASSESSMENT CREATED', [
+                'assessment_id' =>
+                $assessment->id,
+
+                'type' =>
+                $assessmentType,
             ]);
 
             /*
@@ -187,23 +389,42 @@ class AssessmentImporterService
 
             foreach ($items as $index => $item) {
 
-                $question = AssessmentQuestion::create([
+                $question =
+                    AssessmentQuestion::create([
 
-                    'assessment_id' =>
+                        'assessment_id' =>
                         $assessment->id,
 
-                    'question_text' =>
-                        trim($item['question']),
+                        'question_text' =>
+                        trim(
+                            $item['question']
+                                ?? ''
+                        ),
 
-                    'question_type' =>
+                        'question_type' =>
                         'mcq',
 
-                    'marks' =>
+                        'marks' =>
                         1,
 
-                    'order' =>
+                        'order' =>
                         $index + 1,
-                ]);
+
+                        'is_case' => ($item['question_type'] ?? 'normal')
+                            === 'case',
+
+                        'case_title' =>
+                        $item['case_title']
+                            ?? null,
+
+                        'case_text' =>
+                        $item['case_text']
+                            ?? null,
+
+                        'case_order' =>
+                        $item['case_order']
+                            ?? null,
+                    ]);
 
                 /*
                 |--------------------------------------------------------------------------
@@ -211,23 +432,16 @@ class AssessmentImporterService
                 |--------------------------------------------------------------------------
                 */
 
-                foreach ($item['options'] as $option) {
+                foreach (
+                    ($item['options'] ?? [])
+                    as $option
+                ) {
 
                     $optionText =
-                        trim($option['text']);
-
-                    /*
-                    |--------------------------------------------------------------------------
-                    | SMART OPTION LETTER DETECTION
-                    |--------------------------------------------------------------------------
-                    |
-                    | SUPPORTS:
-                    |
-                    | A. Option
-                    | B) Option
-                    | C Option
-                    | D- Option
-                    */
+                        trim(
+                            $option['text']
+                                ?? ''
+                        );
 
                     $letter = '';
 
@@ -244,45 +458,34 @@ class AssessmentImporterService
                         );
                     }
 
-                    /*
-                    |--------------------------------------------------------------------------
-                    | CLEAN ANSWER
-                    |--------------------------------------------------------------------------
-                    */
-
                     $correctAnswer = strtoupper(
                         trim(
                             preg_replace(
                                 '/[^A-Z]/i',
                                 '',
-                                $item['answer'] ?? ''
+                                $item['answer']
+                                    ?? ''
                             )
                         )
                     );
 
-                    /*
-                    |--------------------------------------------------------------------------
-                    | STORE OPTION
-                    |--------------------------------------------------------------------------
-                    */
-
                     AssessmentOption::create([
 
                         'question_id' =>
-                            $question->id,
+                        $question->id,
 
                         'option_text' =>
-                            $optionText,
+                        $optionText,
 
                         'is_correct' =>
-                            $letter === $correctAnswer,
+                        $letter === $correctAnswer,
                     ]);
                 }
             }
 
             /*
             |--------------------------------------------------------------------------
-            | RECALCULATE MARKS
+            | RECALCULATE
             |--------------------------------------------------------------------------
             */
 

@@ -93,7 +93,17 @@ class AssessmentParserService
 
         $questions = [];
 
+        $checklists = [];
+
         $currentQuestion = null;
+
+        $currentCaseTitle = null;
+
+        $currentCaseText = null;
+
+        $currentCaseOrder = 0;
+
+        $isCollectingCaseDescription = false;
 
         /*
         |--------------------------------------------------------------------------
@@ -105,10 +115,67 @@ class AssessmentParserService
 
             /*
             |--------------------------------------------------------------------------
-            | QUESTION
+            | CASE TITLE
             |--------------------------------------------------------------------------
             |
-            | 1.1.2.Q1 Q1 Which vessel carries blood?
+            | 1.CT1 Bradycardia Case
+            |
+            */
+
+            if (
+                preg_match(
+                    '/^(\d+)\.(CT\d+)\s+(.*)$/i',
+                    $line,
+                    $matches
+                )
+            ) {
+
+                $currentCaseOrder++;
+
+                $currentCaseTitle = trim(
+                    $matches[3]
+                );
+
+                $currentCaseText = '';
+
+                $isCollectingCaseDescription = false;
+
+                continue;
+            }
+
+            /*
+            |--------------------------------------------------------------------------
+            | CASE DESCRIPTION
+            |--------------------------------------------------------------------------
+            |
+            | 1.CD1
+            | Patient presents with dizziness...
+            |
+            */
+
+            if (
+                preg_match(
+                    '/^(\d+)\.(CD\d+)\s*(.*)$/i',
+                    $line,
+                    $matches
+                )
+            ) {
+
+                $currentCaseText = trim(
+                    $matches[3]
+                );
+
+                $isCollectingCaseDescription = true;
+
+                continue;
+            }
+
+            /*
+            |--------------------------------------------------------------------------
+            | TOPIC QUESTION
+            |--------------------------------------------------------------------------
+            |
+            | 1.1.2.Q1 Question
             |
             */
 
@@ -136,6 +203,8 @@ class AssessmentParserService
                         $currentQuestion;
                 }
 
+                $isCollectingCaseDescription = false;
+
                 $questionText =
                     trim($matches[3]);
 
@@ -153,11 +222,24 @@ class AssessmentParserService
 
                 $currentQuestion = [
 
+                    'assessment_type' => 'topic',
+
+                    'module_code' => null,
+
                     'topic_code' =>
                     trim($matches[1]),
 
                     'question_code' =>
                     trim($matches[2]),
+
+                    'question_type' =>
+                    'normal',
+
+                    'case_title' => null,
+
+                    'case_text' => null,
+
+                    'case_order' => null,
 
                     'question' =>
                     trim($questionText),
@@ -172,10 +254,127 @@ class AssessmentParserService
 
             /*
             |--------------------------------------------------------------------------
-            | OPTION
+            | MODULE MCQ
             |--------------------------------------------------------------------------
             |
-            | 1.1.2.Q1.O1 A. Aorta
+            | 1.MMQ1 What is preload?
+            |
+            */
+
+            if (
+                preg_match(
+                    '/^(\d+)\.(MMQ\d+)\s+(.*)$/i',
+                    $line,
+                    $matches
+                )
+            ) {
+
+                if ($currentQuestion) {
+
+                    $questions[] =
+                        $currentQuestion;
+                }
+
+                $isCollectingCaseDescription = false;
+
+                $currentQuestion = [
+
+                    'assessment_type' => 'module',
+
+                    'module_code' =>
+                    trim($matches[1]),
+
+                    'topic_code' => null,
+
+                    'question_code' =>
+                    trim($matches[2]),
+
+                    'question_type' =>
+                    'normal',
+
+                    'case_title' => null,
+
+                    'case_text' => null,
+
+                    'case_order' => null,
+
+                    'question' =>
+                    trim($matches[3]),
+
+                    'options' => [],
+
+                    'answer' => null,
+                ];
+
+                continue;
+            }
+
+            /*
+            |--------------------------------------------------------------------------
+            | CASE QUESTION
+            |--------------------------------------------------------------------------
+            |
+            | 1.CMQ1 Which structure failed?
+            |
+            */
+
+            if (
+                preg_match(
+                    '/^(\d+)\.(CMQ\d+)\s+(.*)$/i',
+                    $line,
+                    $matches
+                )
+            ) {
+
+                if ($currentQuestion) {
+
+                    $questions[] =
+                        $currentQuestion;
+                }
+
+                $isCollectingCaseDescription = false;
+
+                $currentQuestion = [
+
+                    'assessment_type' => 'module',
+
+                    'module_code' =>
+                    trim($matches[1]),
+
+                    'topic_code' => null,
+
+                    'question_code' =>
+                    trim($matches[2]),
+
+                    'question_type' =>
+                    'case',
+
+                    'case_title' =>
+                    $currentCaseTitle,
+
+                    'case_text' =>
+                    trim($currentCaseText),
+
+                    'case_order' =>
+                    $currentCaseOrder,
+
+                    'question' =>
+                    trim($matches[3]),
+
+                    'options' => [],
+
+                    'answer' => null,
+                ];
+
+                continue;
+            }
+
+            /*
+            |--------------------------------------------------------------------------
+            | TOPIC OPTIONS
+            |--------------------------------------------------------------------------
+            |
+            | 1.1.1.Q1.O1 A. Option
             |
             */
 
@@ -205,15 +404,46 @@ class AssessmentParserService
 
             /*
             |--------------------------------------------------------------------------
-            | ANSWER
+            | MODULE / CASE OPTIONS
             |--------------------------------------------------------------------------
             |
-            | Supported:
+            | 1.MMQ1.O1 A. Option
+            | 1.CMQ1.O1 A. Option
             |
-            | 1.1.2.Q1.A Correct Answer: B
-            | 1.1.2.Q1.A Answer: C
-            | Correct Answer: D
-            | Answer: A
+            */
+
+            if (
+                preg_match(
+                    '/^(\d+)\.(MMQ\d+|CMQ\d+)\.(O\d+)\s+(.*)$/i',
+                    $line,
+                    $matches
+                )
+            ) {
+
+                if (!$currentQuestion) {
+                    continue;
+                }
+
+                $currentQuestion['options'][] = [
+
+                    'code' =>
+                    trim($matches[3]),
+
+                    'text' =>
+                    trim($matches[4]),
+                ];
+
+                continue;
+            }
+
+            /*
+            |--------------------------------------------------------------------------
+            | ANSWERS
+            |--------------------------------------------------------------------------
+            |
+            | 1.Q1.A Correct Answer: A
+            | 1.MMQ1.A Correct Answer: B
+            | 1.CMQ1.A Correct Answer: C
             |
             */
 
@@ -246,6 +476,84 @@ class AssessmentParserService
 
                 continue;
             }
+
+            /*
+            |--------------------------------------------------------------------------
+            | COMPETENCY CHECKLIST
+            |--------------------------------------------------------------------------
+            |
+            | 1.CCL1 Identify all chambers
+            |
+            */
+
+            if (
+                preg_match(
+                    '/^(\d+)\.(CCL\d+)\s+(.*)$/i',
+                    $line,
+                    $matches
+                )
+            ) {
+
+                $checklists[] = [
+
+                    'module_code' =>
+                    trim($matches[1]),
+
+                    'code' =>
+                    trim($matches[2]),
+
+                    'text' =>
+                    trim($matches[3]),
+                ];
+
+                continue;
+            }
+
+            /*
+            |--------------------------------------------------------------------------
+            | MULTILINE CASE DESCRIPTION
+            |--------------------------------------------------------------------------
+            */
+
+            if (
+                $isCollectingCaseDescription
+                &&
+                !empty($line)
+
+                &&
+
+                !preg_match(
+                    '/^(\d+)\.(CMQ\d+)/i',
+                    $line
+                )
+
+                &&
+
+                !preg_match(
+                    '/^(\d+)\.(MMQ\d+)/i',
+                    $line
+                )
+
+                &&
+
+                !preg_match(
+                    '/^(\d+)\.(CT\d+)/i',
+                    $line
+                )
+
+                &&
+
+                !preg_match(
+                    '/^(\d+)\.(CCL\d+)/i',
+                    $line
+                )
+            ) {
+
+                $currentCaseText .=
+                    ' ' . trim($line);
+
+                continue;
+            }
         }
 
         /*
@@ -260,6 +568,11 @@ class AssessmentParserService
                 $currentQuestion;
         }
 
-        return $questions;
+        return [
+
+            'questions' => $questions,
+
+            'checklists' => $checklists,
+        ];
     }
 }

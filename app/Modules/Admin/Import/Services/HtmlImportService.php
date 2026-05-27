@@ -69,10 +69,21 @@ class HtmlImportService
         | PARSE ASSESSMENTS
         */
 
-        $questions =
+        $assessmentData =
             $this->assessmentParserService->parse(
                 $cleanHtml
             );
+
+        logger()->info('ASSESSMENT PARSED', [
+            'questions_count' =>
+                count($assessmentData['questions'] ?? []),
+
+            'checklists_count' =>
+                count($assessmentData['checklists'] ?? []),
+
+            'sample' =>
+                $assessmentData['questions'][0] ?? null,
+        ]);
 
         /*
         |--------------------------------------------------------------------------
@@ -82,7 +93,7 @@ class HtmlImportService
         */
 
         $this->assessmentImporterService->import(
-            $questions
+            $assessmentData
         );
     }
 }
