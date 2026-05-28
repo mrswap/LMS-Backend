@@ -3,19 +3,16 @@
 namespace App\Modules\Admin\ContentManagement\Controllers;
 
 use App\Http\Controllers\Controller;
-use App\Models\TopicContent;
 use App\Models\Media;
+use App\Models\Topic;
+use App\Models\TopicContent;
+use App\Models\UserContentProgress;
+use App\Modules\Admin\ContentManagement\Requests\SectionContentRequest;
+use App\Services\AuditService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Validation\Rule;
-use App\Modules\Admin\ContentManagement\Requests\SectionContentRequest;
-use App\Models\UserProgress;
-use App\Services\AuditService;
-use App\Models\Assessment;
-use App\Models\AssessmentAttempt;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
-
 
 class SectionContentController extends Controller
 {
@@ -37,7 +34,6 @@ class SectionContentController extends Controller
         return auth()->user()?->isSystemUser() ?? false;
     }
 
-
     /*
     |--------------------------------------------------------------------------
     | DEFAULT GOVERNANCE VALUES
@@ -56,7 +52,6 @@ class SectionContentController extends Controller
                 : TopicContent::PUBLISH_DRAFT,
         ];
     }
-
 
     public function store(SectionContentRequest $request, $topicId)
     {
@@ -105,10 +100,9 @@ class SectionContentController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Created',
-            'data' => $content
+            'data' => $content,
         ]);
     }
-
 
     /*
     |--------------------------------------------------------------------------
@@ -175,7 +169,7 @@ class SectionContentController extends Controller
                 |
                 */
                 if (
-                    !$requestedOrder ||
+                    ! $requestedOrder ||
                     in_array($requestedOrder, $usedOrders)
                 ) {
 
@@ -207,7 +201,7 @@ class SectionContentController extends Controller
 
                     $section['meta'] = [
                         'shortcode' => $section['media_shortcode']
-                            ?? ($section['meta']['shortcode'] ?? null)
+                            ?? ($section['meta']['shortcode'] ?? null),
                     ];
                 }
 
@@ -267,7 +261,7 @@ class SectionContentController extends Controller
                 'success' => true,
                 'message' => 'Bulk content created successfully',
                 'count' => count($created),
-                'data' => $created
+                'data' => $created,
             ]);
         } catch (ValidationException $e) {
 
@@ -286,7 +280,7 @@ class SectionContentController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ], 500);
         }
     }
@@ -317,7 +311,7 @@ class SectionContentController extends Controller
         |--------------------------------------------------------------------------
         */
 
-        $topic = \App\Models\Topic::with([
+        $topic = Topic::with([
             'program:id,title',
             'level:id,title',
             'module:id,title',
@@ -337,7 +331,7 @@ class SectionContentController extends Controller
                 'content' => $translation->content ?? $item->content,
                 'meta' => $item->meta,
                 'order' => $item->order,
-                'status' => (bool)$item->status,
+                'status' => (bool) $item->status,
                 'publish_status' => $item->publish_status,
 
                 'audio_url' => $item->audio_url,
@@ -349,7 +343,7 @@ class SectionContentController extends Controller
 
         return response()->json([
             'success' => true,
-            'topic_id' => (int)$topicId,
+            'topic_id' => (int) $topicId,
             'count' => $data->count(),
 
             // 🔥 FULL HIERARCHY
@@ -375,7 +369,7 @@ class SectionContentController extends Controller
                 ],
             ] : null,
 
-            'data' => $data
+            'data' => $data,
         ]);
     }
 
@@ -448,7 +442,7 @@ class SectionContentController extends Controller
 
                 return response()->json([
                     'success' => false,
-                    'message' => 'Duplicate order values not allowed'
+                    'message' => 'Duplicate order values not allowed',
                 ], 422);
             }
 
@@ -509,9 +503,8 @@ class SectionContentController extends Controller
                     if ($section['type'] === 'media') {
 
                         $section['meta'] = [
-                            'shortcode'
-                            => $section['media_shortcode']
-                                ?? ($section['meta']['shortcode'] ?? null)
+                            'shortcode' => $section['media_shortcode']
+                                ?? ($section['meta']['shortcode'] ?? null),
                         ];
 
                         Log::info('Media Meta Prepared', [
@@ -546,7 +539,7 @@ class SectionContentController extends Controller
 
                     if (
                         empty($section['id'])
-                        || !empty($section['is_new'])
+                        || ! empty($section['is_new'])
                     ) {
 
                         Log::info('Creating New Content');
@@ -603,10 +596,10 @@ class SectionContentController extends Controller
 
                     $content = $contents[$section['id']] ?? null;
 
-                    if (!$content) {
+                    if (! $content) {
 
                         Log::warning('Content Not Found', [
-                            'id' => $section['id']
+                            'id' => $section['id'],
                         ]);
 
                         continue;
@@ -623,13 +616,13 @@ class SectionContentController extends Controller
                     |--------------------------------------------------------------------------
                     */
 
-                    if (!empty($section['is_deleted'])) {
+                    if (! empty($section['is_deleted'])) {
 
                         Log::info('Deleting Content', [
-                            'content_id' => $content->id
+                            'content_id' => $content->id,
                         ]);
 
-                        if (!$content->trashed()) {
+                        if (! $content->trashed()) {
                             $content->delete();
                         }
 
@@ -645,7 +638,7 @@ class SectionContentController extends Controller
                     if ($content->trashed()) {
 
                         Log::info('Restoring Content', [
-                            'content_id' => $content->id
+                            'content_id' => $content->id,
                         ]);
 
                         $content->restore();
@@ -667,7 +660,7 @@ class SectionContentController extends Controller
                                 = (bool) $section['status'];
                         }
 
-                        if (!empty($section['publish_status'])) {
+                        if (! empty($section['publish_status'])) {
 
                             $allowedStatuses = [
                                 TopicContent::PUBLISH_DRAFT,
@@ -776,7 +769,7 @@ class SectionContentController extends Controller
                 'success' => true,
                 'message' => 'Bulk operation successful',
                 'count' => count($result),
-                'data' => $result
+                'data' => $result,
             ]);
         } catch (ValidationException $e) {
 
@@ -834,32 +827,28 @@ class SectionContentController extends Controller
         if ($request->filled('program_id')) {
             $query->whereHas(
                 'topic',
-                fn($q) =>
-                $q->where('program_id', $request->program_id)
+                fn ($q) => $q->where('program_id', $request->program_id)
             );
         }
 
         if ($request->filled('level_id')) {
             $query->whereHas(
                 'topic',
-                fn($q) =>
-                $q->where('level_id', $request->level_id)
+                fn ($q) => $q->where('level_id', $request->level_id)
             );
         }
 
         if ($request->filled('module_id')) {
             $query->whereHas(
                 'topic',
-                fn($q) =>
-                $q->where('module_id', $request->module_id)
+                fn ($q) => $q->where('module_id', $request->module_id)
             );
         }
 
         if ($request->filled('chapter_id')) {
             $query->whereHas(
                 'topic',
-                fn($q) =>
-                $q->where('chapter_id', $request->chapter_id)
+                fn ($q) => $q->where('chapter_id', $request->chapter_id)
             );
         }
 
@@ -873,7 +862,7 @@ class SectionContentController extends Controller
 
         if ($request->has('status')) {
             if ($request->status !== 'all') {
-                $query->where('status', (bool)$request->status);
+                $query->where('status', (bool) $request->status);
             }
         } else {
             $query->where('status', true);
@@ -900,18 +889,15 @@ class SectionContentController extends Controller
 
             if ($lang === 'en') {
                 $query->where(
-                    fn($q) =>
-                    $q->where('title', 'like', "%$search%")
+                    fn ($q) => $q->where('title', 'like', "%$search%")
                         ->orWhere('content', 'like', "%$search%")
                 );
             } else {
                 $query->whereHas(
                     'translations',
-                    fn($q) =>
-                    $q->where('language_code', $lang)
+                    fn ($q) => $q->where('language_code', $lang)
                         ->where(
-                            fn($q2) =>
-                            $q2->where('title', 'like', "%$search%")
+                            fn ($q2) => $q2->where('title', 'like', "%$search%")
                                 ->orWhere('content', 'like', "%$search%")
                         )
                 );
@@ -920,7 +906,7 @@ class SectionContentController extends Controller
 
         $query->orderBy('topic_id')->orderBy('order');
 
-        $limit = (int)$request->get('limit', 10);
+        $limit = (int) $request->get('limit', 10);
         $limit = ($limit > 0 && $limit <= 100) ? $limit : 10;
 
         $contents = $query->paginate($limit);
@@ -934,7 +920,9 @@ class SectionContentController extends Controller
             $title = $translation->title ?? $item->title;
             $content = $translation->content ?? $item->content;
 
-            if ($title === 'BASE_RECORD') return null;
+            if ($title === 'BASE_RECORD') {
+                return null;
+            }
 
             return [
                 'id' => $item->id,
@@ -944,15 +932,16 @@ class SectionContentController extends Controller
                 'content' => $item->type === 'text' ? $content : null,
                 'meta' => $item->meta,
                 'order' => $item->order,
-                'status' => (bool)$item->status,
+                'status' => (bool) $item->status,
                 'publish_status' => $item->publish_status,
                 'audio_url' => $item->audio_url,
                 'audio_generated_at' => $item->audio_generated_at,
+                'audio_provider' => $item->audio_provider,
+                'audio_path' => $item->audio_path,
                 'creator' => [
                     'id' => $item->creator->id ?? null,
                     'name' => $item->creator->name ?? null,
                 ],
-
 
                 'topic' => [
                     'id' => $item->topic->id ?? null,
@@ -983,7 +972,7 @@ class SectionContentController extends Controller
 
         return response()->json([
             'success' => true,
-            'data' => $contents
+            'data' => $contents,
         ]);
     }
 
@@ -1016,7 +1005,7 @@ class SectionContentController extends Controller
         if ($title === 'BASE_RECORD') {
             return response()->json([
                 'success' => false,
-                'message' => 'Content not available'
+                'message' => 'Content not available',
             ], 404);
         }
 
@@ -1027,9 +1016,9 @@ class SectionContentController extends Controller
         */
         $resolvedMedia = null;
 
-        if ($item->type === 'media' && !empty($item->meta['shortcode'])) {
+        if ($item->type === 'media' && ! empty($item->meta['shortcode'])) {
 
-            $resolvedMedia = \App\Models\Media::where('shortcode', $item->meta['shortcode'])->first();
+            $resolvedMedia = Media::where('shortcode', $item->meta['shortcode'])->first();
         }
 
         return response()->json([
@@ -1071,7 +1060,7 @@ class SectionContentController extends Controller
                 ),
 
                 'order' => $item->order,
-                'status' => (bool)$item->status,
+                'status' => (bool) $item->status,
                 'publish_status' => $item->publish_status,
                 'audio_url' => $item->audio_url,
                 'audio_generated_at' => $item->audio_generated_at,
@@ -1099,7 +1088,7 @@ class SectionContentController extends Controller
                         'title' => $item->topic->chapter->title ?? null,
                     ],
                 ],
-            ]
+            ],
         ]);
     }
 
@@ -1134,23 +1123,29 @@ class SectionContentController extends Controller
             $title = $translation->title ?? $item->title;
             $content = $translation->content ?? $item->content;
 
-            if ($title === 'BASE_RECORD') return null;
+            if ($title === 'BASE_RECORD') {
+                return null;
+            }
 
             if ($item->type === 'media') {
                 $shortcode = $item->meta['shortcode'] ?? null;
                 $media = $mediaMap[$shortcode] ?? null;
 
-                if (!$media) return null;
+                if (! $media) {
+                    return null;
+                }
 
                 return [
                     'type' => 'media',
                     'title' => $title,
-                    'data' => $media
+                    'data' => $media,
                 ];
             }
 
             if ($item->type === 'text') {
-                if (!$content || trim(strip_tags($content)) === '') return null;
+                if (! $content || trim(strip_tags($content)) === '') {
+                    return null;
+                }
 
                 return [
                     'type' => 'text',
@@ -1231,8 +1226,8 @@ class SectionContentController extends Controller
             'success' => true,
             'message' => 'Updated',
             'data' => $content->fresh([
-                'translations'
-            ])
+                'translations',
+            ]),
         ]);
     }
 
@@ -1275,7 +1270,7 @@ class SectionContentController extends Controller
                 TopicContent::where('topic_id', $topicId)
                     ->where('id', $item['id'])
                     ->update([
-                        'order' => 100000 + $item['order']
+                        'order' => 100000 + $item['order'],
                     ]);
             }
 
@@ -1290,14 +1285,14 @@ class SectionContentController extends Controller
                 TopicContent::where('topic_id', $topicId)
                     ->where('id', $item['id'])
                     ->update([
-                        'order' => $item['order']
+                        'order' => $item['order'],
                     ]);
             }
         });
 
         return response()->json([
             'success' => true,
-            'message' => 'Order updated'
+            'message' => 'Order updated',
         ]);
     }
 
@@ -1314,14 +1309,13 @@ class SectionContentController extends Controller
         |--------------------------------------------------------------------------
         */
 
-        if (!$this->isSystemUser()) {
+        if (! $this->isSystemUser()) {
 
             return response()->json([
 
                 'success' => false,
 
-                'message'
-                => 'Only system users can change status'
+                'message' => 'Only system users can change status',
 
             ], 403);
         }
@@ -1337,7 +1331,7 @@ class SectionContentController extends Controller
         |--------------------------------------------------------------------------
         */
 
-        $newStatus = !$content->status;
+        $newStatus = ! $content->status;
 
         /*
         |--------------------------------------------------------------------------
@@ -1351,31 +1345,25 @@ class SectionContentController extends Controller
 
         $content->update([
 
-            'status'
-            => $newStatus,
+            'status' => $newStatus,
 
-            'publish_status'
-            => $publishStatus,
+            'publish_status' => $publishStatus,
         ]);
 
         return response()->json([
 
             'success' => true,
 
-            'message'
-            => 'Status updated',
+            'message' => 'Status updated',
 
             'data' => [
 
-                'id'
-                => $content->id,
+                'id' => $content->id,
 
-                'status'
-                => (bool) $content->status,
+                'status' => (bool) $content->status,
 
-                'publish_status'
-                => $content->publish_status,
-            ]
+                'publish_status' => $content->publish_status,
+            ],
         ]);
     }
 
@@ -1390,7 +1378,7 @@ class SectionContentController extends Controller
         $userId = auth()->id();
         $lang = $this->resolveLanguage($request);
 
-        $topic = \App\Models\Topic::with('chapter.module.level.program')
+        $topic = Topic::with('chapter.module.level.program')
             ->findOrFail($topic_id);
 
         $contents = TopicContent::with('translations')
@@ -1402,18 +1390,18 @@ class SectionContentController extends Controller
         if ($contents->isEmpty()) {
             return response()->json([
                 'success' => false,
-                'message' => 'No content found'
+                'message' => 'No content found',
             ], 404);
         }
 
         $currentIndex = $contents->search(
-            fn($c) => $c->id == $content_id
+            fn ($c) => $c->id == $content_id
         );
 
         if ($currentIndex === false) {
             return response()->json([
                 'success' => false,
-                'message' => 'Content not found in this topic'
+                'message' => 'Content not found in this topic',
             ], 404);
         }
 
@@ -1422,7 +1410,7 @@ class SectionContentController extends Controller
         $previous = $contents[$currentIndex - 1] ?? null;
         $next = $contents[$currentIndex + 1] ?? null;
 
-        $userProgress = \App\Models\UserContentProgress::where(
+        $userProgress = UserContentProgress::where(
             'user_id',
             $userId
         )
@@ -1436,10 +1424,10 @@ class SectionContentController extends Controller
 
         if (
             $current->type === 'media'
-            && !empty($current->meta['shortcode'])
+            && ! empty($current->meta['shortcode'])
         ) {
 
-            $resolvedMedia = \App\Models\Media::where(
+            $resolvedMedia = Media::where(
                 'shortcode',
                 $current->meta['shortcode']
             )->first();
@@ -1450,7 +1438,7 @@ class SectionContentController extends Controller
             if ($current->title === 'BASE_RECORD') {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Content not available'
+                    'message' => 'Content not available',
                 ], 404);
             }
 
@@ -1486,6 +1474,8 @@ class SectionContentController extends Controller
                 'order' => $current->order,
                 'audio_url' => $current->audio_url,
                 'audio_generated_at' => $current->audio_generated_at,
+                'audio_provider' => $current->audio_provider,
+                'audio_path' => $current->audio_path,
                 'is_read' => $isRead,
                 'read_at' => $readAt,
             ];
@@ -1495,10 +1485,10 @@ class SectionContentController extends Controller
                 ->where('language_code', $lang)
                 ->first();
 
-            if (!$translation) {
+            if (! $translation) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Translation not available'
+                    'message' => 'Translation not available',
                 ], 404);
             }
 
@@ -1536,6 +1526,8 @@ class SectionContentController extends Controller
                 'order' => $current->order,
                 'audio_url' => $current->audio_url,
                 'audio_generated_at' => $current->audio_generated_at,
+                'audio_provider' => $current->audio_provider,
+                'audio_path' => $current->audio_path,
                 'is_read' => $isRead,
                 'read_at' => $readAt,
             ];
@@ -1590,11 +1582,10 @@ class SectionContentController extends Controller
                     'next_content_id' => $next?->id,
                     'has_previous' => $previous !== null,
                     'has_next' => $next !== null,
-                ]
-            ]
+                ],
+            ],
         ]);
     }
-
 
     /*
     |--------------------------------------------------------------------------
@@ -1625,7 +1616,7 @@ class SectionContentController extends Controller
         */
 
         if (
-            !$requestedOrder
+            ! $requestedOrder
             || in_array($requestedOrder, $usedOrders)
         ) {
 
@@ -1650,12 +1641,12 @@ class SectionContentController extends Controller
         $shortcode = $section['media_shortcode']
             ?? ($section['meta']['shortcode'] ?? null);
 
-        if (!$shortcode) {
+        if (! $shortcode) {
 
             throw ValidationException::withMessages([
                 'media_shortcode' => [
-                    'Media shortcode is required'
-                ]
+                    'Media shortcode is required',
+                ],
             ]);
         }
 
@@ -1664,12 +1655,12 @@ class SectionContentController extends Controller
             $shortcode
         )->exists();
 
-        if (!$exists) {
+        if (! $exists) {
 
             throw ValidationException::withMessages([
                 'media_shortcode' => [
-                    "Media not found for shortcode: {$shortcode}"
-                ]
+                    "Media not found for shortcode: {$shortcode}",
+                ],
             ]);
         }
     }
