@@ -2,15 +2,15 @@
 
 namespace App\Modules\Trainee\Dashboard\Services;
 
-use App\Models\UserProgress;
-use App\Models\UserContentProgress;
 use App\Models\Assessment;
 use App\Models\AssessmentAttempt;
-use App\Models\TopicContent;
 use App\Models\Certification;
 use App\Models\Level;
-use Illuminate\Support\Facades\DB;
+use App\Models\TopicContent;
+use App\Models\UserContentProgress;
+use App\Models\UserProgress;
 use App\Services\HierarchyVisibilityService;
+use Illuminate\Support\Facades\DB;
 
 class DashboardService
 {
@@ -65,7 +65,7 @@ class DashboardService
                 'topic.program',
                 'topic.level',
                 'topic.module',
-                'topic.chapter'
+                'topic.chapter',
             ])
             ->orderBy('id')
             ->first();
@@ -76,7 +76,7 @@ class DashboardService
         |--------------------------------------------------------------------------
         */
 
-        if (!$current) {
+        if (! $current) {
 
             $current = UserProgress::where('user_id', $userId)
                 ->where('is_completed', true)
@@ -93,7 +93,7 @@ class DashboardService
                     'topic.program',
                     'topic.level',
                     'topic.module',
-                    'topic.chapter'
+                    'topic.chapter',
                 ])
                 ->latest('completed_at')
                 ->first();
@@ -266,7 +266,7 @@ class DashboardService
                     ->whereNull('deleted_at');
             },
 
-            'modules.chapters.topics.program'
+            'modules.chapters.topics.program',
 
         ])
             ->where('status', true)
@@ -350,11 +350,9 @@ class DashboardService
                             $chapterTopicIds
                         ),
 
-                        'completed_topics' =>
-                        $chapterCompletedTopics,
+                        'completed_topics' => $chapterCompletedTopics,
 
-                        'progress_percent' =>
-                        count($chapterTopicIds) > 0
+                        'progress_percent' => count($chapterTopicIds) > 0
                             ? round(
                                 (
                                     $chapterCompletedTopics
@@ -364,7 +362,7 @@ class DashboardService
                             )
                             : 0,
 
-                        'is_passed' => $chapterPassed
+                        'is_passed' => $chapterPassed,
                     ];
                 }
 
@@ -396,11 +394,9 @@ class DashboardService
                         $moduleTopicIds
                     ),
 
-                    'completed_topics' =>
-                    $moduleCompletedTopics,
+                    'completed_topics' => $moduleCompletedTopics,
 
-                    'progress_percent' =>
-                    count($moduleTopicIds) > 0
+                    'progress_percent' => count($moduleTopicIds) > 0
                         ? round(
                             (
                                 $moduleCompletedTopics
@@ -410,7 +406,7 @@ class DashboardService
                         )
                         : 0,
 
-                    'is_passed' => $modulePassed
+                    'is_passed' => $modulePassed,
                 ];
             }
 
@@ -534,14 +530,11 @@ class DashboardService
 
             $nextAction = [
 
-                'type' =>
-                $pendingAssessment->type . '_exam',
+                'type' => $pendingAssessment->type.'_exam',
 
-                'assessment_id' =>
-                $pendingAssessment->id,
+                'assessment_id' => $pendingAssessment->id,
 
-                'assessment_title' =>
-                $pendingAssessment->title,
+                'assessment_title' => $pendingAssessment->title,
 
                 strtolower(
                     $pendingAssessment->type
@@ -549,8 +542,8 @@ class DashboardService
 
                     'id' => $entity?->id,
 
-                    'title' => $entity?->title
-                ]
+                    'title' => $entity?->title,
+                ],
             ];
         }
 
@@ -631,8 +624,7 @@ class DashboardService
 
                 'read_contents' => $readContent,
 
-                'progress_percent' =>
-                $totalContent > 0
+                'progress_percent' => $totalContent > 0
                     ? round(
                         (
                             $readContent
@@ -640,7 +632,7 @@ class DashboardService
                         ) * 100,
                         2
                     )
-                    : 0
+                    : 0,
             ];
         }
 
@@ -713,8 +705,7 @@ class DashboardService
 
                     'title' => $level->title,
 
-                    'description' =>
-                    $level->description,
+                    'description' => $level->description,
 
                     'status' => $status,
 
@@ -722,21 +713,17 @@ class DashboardService
                         $levelCertifications[$level->id]
                     ),
 
-                    'total_modules' =>
-                    $level->modules->count(),
+                    'total_modules' => $level->modules->count(),
 
                     'total_topics' => $totalTopics,
 
                     'total_lessons' => $totalTopics,
 
-                    'completed_topics' =>
-                    $completedTopics,
+                    'completed_topics' => $completedTopics,
 
-                    'started_topics' =>
-                    $startedTopics,
+                    'started_topics' => $startedTopics,
 
-                    'completion_percent' =>
-                    $progressPercent,
+                    'completion_percent' => $progressPercent,
 
                     'cta' => $status === 'completed'
                         ? 'view_certificate'
@@ -793,30 +780,23 @@ class DashboardService
 
                             return [
 
-                                'module_id' =>
-                                $module->id,
+                                'module_id' => $module->id,
 
-                                'module_title' =>
-                                $module->title,
+                                'module_title' => $module->title,
 
                                 'is_passed' => isset(
                                     $moduleCertifications[$module->id]
                                 ),
 
-                                'total_topics' =>
-                                $totalTopics,
+                                'total_topics' => $totalTopics,
 
-                                'completed_topics' =>
-                                $completedTopics,
+                                'completed_topics' => $completedTopics,
 
-                                'started_topics' =>
-                                $startedTopics,
+                                'started_topics' => $startedTopics,
 
-                                'progress_percent' =>
-                                $progressPercent,
+                                'progress_percent' => $progressPercent,
 
-                                'chapters' =>
-                                $module->chapters->map(
+                                'chapters' => $module->chapters->map(
                                     function (
                                         $chapter
                                     ) use (
@@ -827,8 +807,8 @@ class DashboardService
 
                                         $chapterTopicIds =
                                             $chapter->topics
-                                            ->pluck('id')
-                                            ->toArray();
+                                                ->pluck('id')
+                                                ->toArray();
 
                                         $completedTopics =
                                             count(
@@ -866,34 +846,27 @@ class DashboardService
 
                                         return [
 
-                                            'chapter_id' =>
-                                            $chapter->id,
+                                            'chapter_id' => $chapter->id,
 
-                                            'chapter_title' =>
-                                            $chapter->title,
+                                            'chapter_title' => $chapter->title,
 
-                                            'is_passed' =>
-                                            isset(
+                                            'is_passed' => isset(
                                                 $chapterCertifications[$chapter->id]
                                             ),
 
-                                            'total_topics' =>
-                                            $totalTopics,
+                                            'total_topics' => $totalTopics,
 
-                                            'completed_topics' =>
-                                            $completedTopics,
+                                            'completed_topics' => $completedTopics,
 
-                                            'started_topics' =>
-                                            $startedTopics,
+                                            'started_topics' => $startedTopics,
 
-                                            'progress_percent' =>
-                                            $progressPercent
+                                            'progress_percent' => $progressPercent,
                                         ];
                                     }
-                                )
+                                ),
                             ];
                         }
-                    )
+                    ),
                 ];
             }
         );
@@ -930,7 +903,7 @@ class DashboardService
                 $q->whereIn('type', [
                     'chapter',
                     'module',
-                    'level'
+                    'level',
                 ])
                     ->where('status', true)
                     ->whereNull('deleted_at');
@@ -956,66 +929,50 @@ class DashboardService
             'current_learning' => [
 
                 'program' => [
-                    'id' =>
-                    $current?->topic?->program?->id,
+                    'id' => $current?->topic?->program?->id,
 
-                    'title' =>
-                    $current?->topic?->program?->title
+                    'title' => $current?->topic?->program?->title,
                 ],
 
                 'level' => [
-                    'id' =>
-                    $current?->topic?->level?->id,
+                    'id' => $current?->topic?->level?->id,
 
-                    'title' =>
-                    $current?->topic?->level?->title
+                    'title' => $current?->topic?->level?->title,
                 ],
 
                 'module' => [
-                    'id' =>
-                    $current?->topic?->module?->id,
+                    'id' => $current?->topic?->module?->id,
 
-                    'title' =>
-                    $current?->topic?->module?->title
+                    'title' => $current?->topic?->module?->title,
                 ],
 
                 'chapter' => [
-                    'id' =>
-                    $current?->topic?->chapter?->id,
+                    'id' => $current?->topic?->chapter?->id,
 
-                    'title' =>
-                    $current?->topic?->chapter?->title
+                    'title' => $current?->topic?->chapter?->title,
                 ],
 
                 'topic' => [
-                    'id' =>
-                    $current?->topic?->id,
+                    'id' => $current?->topic?->id,
 
-                    'title' =>
-                    $current?->topic?->title
+                    'title' => $current?->topic?->title,
                 ],
 
                 'last_completed_topic' => [
-                    'id' =>
-                    $lastCompletedAttempt?->assessment
+                    'id' => $lastCompletedAttempt?->assessment
                         ?->assessmentable?->id,
 
-                    'title' =>
-                    $lastCompletedAttempt?->assessment
-                        ?->assessmentable?->title
+                    'title' => $lastCompletedAttempt?->assessment
+                        ?->assessmentable?->title,
                 ],
 
-                'progress_percent' =>
-                $progressPercent,
+                'progress_percent' => $progressPercent,
 
-                'completed_lessons' =>
-                $completedLessons,
+                'completed_lessons' => $completedLessons,
 
-                'total_lessons' =>
-                $totalLessons,
+                'total_lessons' => $totalLessons,
 
-                'pending_quizzes' =>
-                Assessment::where(
+                'pending_quizzes' => Assessment::where(
                     'status',
                     true
                 )
@@ -1110,14 +1067,12 @@ class DashboardService
 
                     ->count(),
 
-                'last_activity_date' =>
-                $current?->updated_at,
+                'last_activity_date' => $current?->updated_at,
 
                 'cta' => [
                     'type' => 'resume',
-                    'topic_id' =>
-                    $current?->topic_id
-                ]
+                    'topic_id' => $current?->topic_id,
+                ],
             ],
 
             'levels' => $levelCards,
@@ -1126,64 +1081,50 @@ class DashboardService
 
             'stats' => [
 
-                'total_levels' =>
-                $levels->count(),
+                'total_levels' => $levels->count(),
 
-                'completed_levels' =>
-                count($completedLevelIds),
+                'completed_levels' => count($completedLevelIds),
 
-                'remaining_levels' =>
-                $levels->count()
+                'remaining_levels' => $levels->count()
                     - count($completedLevelIds),
 
-                'total_topics' =>
-                $totalLessons,
+                'total_topics' => $totalLessons,
 
-                'completed_topics' =>
-                $completedLessons,
+                'completed_topics' => $completedLessons,
 
-                'avg_topic_score' =>
-                round(
+                'avg_topic_score' => round(
                     $avgTopicScore ?? 0,
                     2
                 ),
 
-                'avg_exam_score' =>
-                round(
+                'avg_exam_score' => round(
                     $avgExamScore ?? 0,
                     2
                 ),
 
-                'overall_avg_score' =>
-                round(
+                'overall_avg_score' => round(
                     $overallAvgScore ?? 0,
                     2
                 ),
 
-                'modules_progress' =>
-                $moduleStats,
+                'modules_progress' => $moduleStats,
 
-                'chapters_progress' =>
-                $chapterStats,
+                'chapters_progress' => $chapterStats,
 
-                'current_topic_progress' =>
-                $currentTopicProgress,
+                'current_topic_progress' => $currentTopicProgress,
 
-                'certificates_earned' =>
-                Certification::where(
+                'certificates_earned' => Certification::where(
                     'user_id',
                     $userId
                 )
                     ->where('status', true)
                     ->whereNull('deleted_at')
-                    ->count()
+                    ->count(),
             ],
 
-            'last_certificate' =>
-            $certificate,
+            'last_certificate' => $certificate,
 
-            'next_action' =>
-            $nextAction
+            'next_action' => $nextAction,
         ];
     }
 }

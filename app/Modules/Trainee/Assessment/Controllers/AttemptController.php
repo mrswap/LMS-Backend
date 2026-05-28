@@ -3,28 +3,32 @@
 namespace App\Modules\Trainee\Assessment\Controllers;
 
 use App\Http\Controllers\Controller;
-use Illuminate\Http\Request;
 use App\Models\Assessment;
-use App\Models\AssessmentAttempt;
 use App\Models\AssessmentAnswer;
-use App\Modules\Trainee\Assessment\Services\AssessmentService;
-use DB;
-use App\Modules\Trainee\Progress\Services\ProgressionService;
-use App\Models\Topic;
+use App\Models\AssessmentAttempt;
+use App\Models\AssessmentAttemptQuestion;
+use App\Models\AssessmentQuestion;
+use App\Models\Chapter;
 use App\Models\Level;
 use App\Models\Module;
-use App\Models\Chapter;
-use App\Services\AuditService;
-use Carbon\Carbon;
-use App\Models\AssessmentAttemptQuestion;
-use App\Services\CertificationService;
+use App\Models\Topic;
 use App\Models\User;
+use App\Models\UserProgress;
+use App\Modules\Trainee\Assessment\Services\AssessmentService;
+use App\Modules\Trainee\Assessment\Services\QuestionSelectionService;
+use App\Modules\Trainee\Progress\Controllers\ProgressController;
+use App\Modules\Trainee\Progress\Services\ProgressionService;
+use App\Services\AuditService;
+use App\Services\CertificationService;
 use App\Services\NotificationService;
-
+use Carbon\Carbon;
+use DB;
+use Illuminate\Http\Request;
 
 class AttemptController extends Controller
 {
     protected $service;
+
     protected $certificationService;
 
     public function __construct(AssessmentService $service)
@@ -40,7 +44,7 @@ class AttemptController extends Controller
             'assessment_started',
             'User started an assessment',
             [
-                'assessment_id' => $id
+                'assessment_id' => $id,
             ]
         );
 
@@ -50,24 +54,24 @@ class AttemptController extends Controller
             ->findOrFail($id);
 
         /*
-    |--------------------------------------------------------------------------
-    | 🔐 ACCESS VALIDATION
-    |--------------------------------------------------------------------------
-    */
+        |--------------------------------------------------------------------------
+        | 🔐 ACCESS VALIDATION
+        |--------------------------------------------------------------------------
+        */
 
         $assessmentType = $assessment->type;
 
         $assessmentableId = $assessment->assessmentable_id;
 
         /*
-    |--------------------------------------------------------------------------
-    | TOPIC ASSESSMENT
-    |--------------------------------------------------------------------------
-    */
+        |--------------------------------------------------------------------------
+        | TOPIC ASSESSMENT
+        |--------------------------------------------------------------------------
+        */
 
         if ($assessmentType === 'topic') {
 
-            $topic = \App\Models\Topic::where(
+            $topic = Topic::where(
                 'status',
                 1
             )->find($assessmentableId);
@@ -75,7 +79,7 @@ class AttemptController extends Controller
             if ($topic) {
 
                 $isReady = app(
-                    \App\Modules\Trainee\Progress\Controllers\ProgressController::class
+                    ProgressController::class
                 )->isTopicContentCompleted(
                     $topic,
                     $userId
@@ -84,25 +88,25 @@ class AttemptController extends Controller
                 if (! $isReady) {
 
                     return response()->json([
-                        'message' => 'Complete all topic content first'
+                        'message' => 'Complete all topic content first',
                     ], 422);
                 }
             }
         }
 
         /*
-    |--------------------------------------------------------------------------
-    | DYNAMIC HIGHER LEVEL VALIDATION
-    |--------------------------------------------------------------------------
-    */ else {
+        |--------------------------------------------------------------------------
+        | DYNAMIC HIGHER LEVEL VALIDATION
+        |--------------------------------------------------------------------------
+        */ else {
 
             $validationMap = [
 
                 'chapter' => [
 
-                    'model' => \App\Models\Chapter::class,
+                    'model' => Chapter::class,
 
-                    'content_model' => \App\Models\Topic::class,
+                    'content_model' => Topic::class,
 
                     'content_fk' => 'chapter_id',
 
@@ -113,9 +117,9 @@ class AttemptController extends Controller
 
                 'module' => [
 
-                    'model' => \App\Models\Module::class,
+                    'model' => Module::class,
 
-                    'content_model' => \App\Models\Topic::class,
+                    'content_model' => Topic::class,
 
                     'content_fk' => 'module_id',
 
@@ -126,9 +130,9 @@ class AttemptController extends Controller
 
                 'level' => [
 
-                    'model' => \App\Models\Level::class,
+                    'model' => Level::class,
 
-                    'content_model' => \App\Models\Module::class,
+                    'content_model' => Module::class,
 
                     'content_fk' => 'level_id',
 
@@ -142,7 +146,7 @@ class AttemptController extends Controller
                             ->whereNull('chapter_id')
                             ->whereNull('topic_id')
                             ->whereNotNull('module_id');
-                    }
+                    },
                 ],
             ];
 
@@ -162,23 +166,23 @@ class AttemptController extends Controller
                 if ($entity) {
 
                     /*
-|--------------------------------------------------------------------------
-| ACTIVE CONTENT IDS
-|--------------------------------------------------------------------------
-|
-| Ignore disabled hierarchy
-|
-*/
+                    |--------------------------------------------------------------------------
+                    | ACTIVE CONTENT IDS
+                    |--------------------------------------------------------------------------
+                    |
+                    | Ignore disabled hierarchy
+                    |
+                    */
 
                     if ($assessmentType === 'chapter') {
 
                         /*
-                                        |--------------------------------------------------------------------------
-                                        | ONLY ACTIVE TOPICS OF ACTIVE CHAPTER
-                                        |--------------------------------------------------------------------------
-                                        */
+                        |--------------------------------------------------------------------------
+                        | ONLY ACTIVE TOPICS OF ACTIVE CHAPTER
+                        |--------------------------------------------------------------------------
+                        */
 
-                        $activeContentIds = \App\Models\Topic::where(
+                        $activeContentIds = Topic::where(
                             'chapter_id',
                             $entity->id
                         )
@@ -193,12 +197,12 @@ class AttemptController extends Controller
                         */ elseif ($assessmentType === 'module') {
 
                         /*
-                                                    |--------------------------------------------------------------------------
-                                                    | ACTIVE CHAPTERS
-                                                    |--------------------------------------------------------------------------
-                                                    */
+                        |--------------------------------------------------------------------------
+                        | ACTIVE CHAPTERS
+                        |--------------------------------------------------------------------------
+                        */
 
-                        $activeChapterIds = \App\Models\Chapter::where(
+                        $activeChapterIds = Chapter::where(
                             'module_id',
                             $entity->id
                         )
@@ -211,7 +215,7 @@ class AttemptController extends Controller
                                             |--------------------------------------------------------------------------
                                             */
 
-                        $activeContentIds = \App\Models\Topic::whereIn(
+                        $activeContentIds = Topic::whereIn(
                             'chapter_id',
                             $activeChapterIds
                         )
@@ -231,7 +235,7 @@ class AttemptController extends Controller
                     |--------------------------------------------------------------------------
                     */
 
-                        $activeModuleIds = \App\Models\Module::where(
+                        $activeModuleIds = Module::where(
                             'level_id',
                             $entity->id
                         )
@@ -244,7 +248,7 @@ class AttemptController extends Controller
                         |--------------------------------------------------------------------------
                         */
 
-                        $activeChapterIds = \App\Models\Chapter::whereIn(
+                        $activeChapterIds = Chapter::whereIn(
                             'module_id',
                             $activeModuleIds
                         )
@@ -257,7 +261,7 @@ class AttemptController extends Controller
                         |--------------------------------------------------------------------------
                         */
 
-                        $activeContentIds = \App\Models\Topic::whereIn(
+                        $activeContentIds = Topic::whereIn(
                             'chapter_id',
                             $activeChapterIds
                         )
@@ -280,7 +284,7 @@ class AttemptController extends Controller
                 |--------------------------------------------------------------------------
                 */
 
-                    $progressQuery = \App\Models\UserProgress::where(
+                    $progressQuery = UserProgress::where(
                         'user_id',
                         $userId
                     )
@@ -333,7 +337,7 @@ class AttemptController extends Controller
                     ) {
 
                         return response()->json([
-                            'message' => $config['message']
+                            'message' => $config['message'],
                         ], 422);
                     }
                 }
@@ -374,7 +378,7 @@ class AttemptController extends Controller
             ->where('assessment_id', $id)
             ->whereIn('status', [
                 'passed',
-                'failed'
+                'failed',
             ])
             ->count();
 
@@ -414,8 +418,8 @@ class AttemptController extends Controller
 
                 'expires_at' => $assessment->duration
                     ? $activeAttempt->started_at
-                    ->copy()
-                    ->addMinutes($assessment->duration)
+                        ->copy()
+                        ->addMinutes($assessment->duration)
                     : null,
 
                 'total_attempts_allowed' => $maxAttempts,
@@ -474,7 +478,7 @@ class AttemptController extends Controller
 
                 'started_at' => now(),
 
-                'status' => 'in_progress'
+                'status' => 'in_progress',
             ]);
 
             /*
@@ -484,7 +488,7 @@ class AttemptController extends Controller
         */
 
             $selectedQuestionIds = app(
-                \App\Modules\Trainee\Assessment\Services\QuestionSelectionService::class
+                QuestionSelectionService::class
             )->generate(
                 $assessment,
                 $userId
@@ -511,11 +515,11 @@ class AttemptController extends Controller
 
             foreach ($selectedQuestionIds as $questionId) {
 
-                \App\Models\AssessmentAttemptQuestion::create([
+                AssessmentAttemptQuestion::create([
 
                     'attempt_id' => $attempt->id,
 
-                    'question_id' => $questionId
+                    'question_id' => $questionId,
                 ]);
             }
 
@@ -547,7 +551,7 @@ class AttemptController extends Controller
 
         if ($user) {
 
-            app(\App\Services\NotificationService::class)->send(
+            app(NotificationService::class)->send(
 
                 $user,
 
@@ -570,7 +574,7 @@ class AttemptController extends Controller
                         'assessment_type' => $assessment->type,
 
                         'attempt_id' => $attempt->id,
-                    ]
+                    ],
                 ],
 
                 ['db', 'push']
@@ -603,7 +607,7 @@ class AttemptController extends Controller
                     'assessment_type' => $assessment->type,
 
                     'attempt_id' => $attempt->id,
-                ]
+                ],
             ];
 
             /*
@@ -612,7 +616,7 @@ class AttemptController extends Controller
         |--------------------------------------------------------------------------
         */
 
-            app(\App\Services\NotificationService::class)
+            app(NotificationService::class)
                 ->sendToRole(
                     'admin',
                     'ASSESSMENT_STARTED',
@@ -626,7 +630,7 @@ class AttemptController extends Controller
         |--------------------------------------------------------------------------
         */
 
-            app(\App\Services\NotificationService::class)
+            app(NotificationService::class)
                 ->sendToRole(
                     'superadmin',
                     'ASSESSMENT_STARTED',
@@ -655,8 +659,8 @@ class AttemptController extends Controller
 
             'expires_at' => $assessment->duration
                 ? $attempt->started_at
-                ->copy()
-                ->addMinutes($assessment->duration)
+                    ->copy()
+                    ->addMinutes($assessment->duration)
                 : null,
 
             'question_count' => count(
@@ -686,7 +690,7 @@ class AttemptController extends Controller
 
             'assessment',
 
-            'attemptQuestions.question.options'
+            'attemptQuestions.question.options',
 
         ])->findOrFail($attemptId);
 
@@ -744,11 +748,11 @@ class AttemptController extends Controller
                     |--------------------------------------------------------------------------
                     */
 
-                    'options' => $q->options->map(fn($opt) => [
+                    'options' => $q->options->map(fn ($opt) => [
 
                         'id' => $opt->id,
 
-                        'text' => $opt->option_text
+                        'text' => $opt->option_text,
                     ]),
 
                     /*
@@ -757,9 +761,8 @@ class AttemptController extends Controller
                     |--------------------------------------------------------------------------
                     */
 
-                    'selected_option_id' =>
-                    $answers[$q->id]
-                        ->selected_option_id ?? null
+                    'selected_option_id' => $answers[$q->id]
+                        ->selected_option_id ?? null,
                 ];
             })
             ->values();
@@ -774,7 +777,7 @@ class AttemptController extends Controller
 
         $answeredCount = $answers->filter(function ($a) {
 
-            return !is_null($a->selected_option_id);
+            return ! is_null($a->selected_option_id);
         })->count();
 
         $remainingCount = $totalQuestions - $answeredCount;
@@ -795,11 +798,11 @@ class AttemptController extends Controller
 
         if (
             $assessment->assessmentable_type ===
-            \App\Models\Topic::class
+            Topic::class
         ) {
 
-            $topic = \App\Models\Topic::with([
-                'chapter.module.level.program'
+            $topic = Topic::with([
+                'chapter.module.level.program',
             ])->find($assessment->assessmentable_id);
 
             if ($topic) {
@@ -844,11 +847,11 @@ class AttemptController extends Controller
 
         if (
             $assessment->assessmentable_type ===
-            \App\Models\Chapter::class
+            Chapter::class
         ) {
 
-            $chapter = \App\Models\Chapter::with([
-                'module.level.program'
+            $chapter = Chapter::with([
+                'module.level.program',
             ])->find($assessment->assessmentable_id);
 
             if ($chapter) {
@@ -888,11 +891,11 @@ class AttemptController extends Controller
 
         if (
             $assessment->assessmentable_type ===
-            \App\Models\Module::class
+            Module::class
         ) {
 
-            $module = \App\Models\Module::with([
-                'level.program'
+            $module = Module::with([
+                'level.program',
             ])->find($assessment->assessmentable_id);
 
             if ($module) {
@@ -927,11 +930,11 @@ class AttemptController extends Controller
 
         if (
             $assessment->assessmentable_type ===
-            \App\Models\Level::class
+            Level::class
         ) {
 
-            $level = \App\Models\Level::with([
-                'program'
+            $level = Level::with([
+                'program',
             ])->find($assessment->assessmentable_id);
 
             if ($level) {
@@ -971,8 +974,8 @@ class AttemptController extends Controller
 
             'expires_at' => $assessment->duration
                 ? $attempt->started_at
-                ->copy()
-                ->addMinutes($assessment->duration)
+                    ->copy()
+                    ->addMinutes($assessment->duration)
                 : null,
 
             /*
@@ -1001,10 +1004,9 @@ class AttemptController extends Controller
             |--------------------------------------------------------------------------
             */
 
-            'questions' => $questions
+            'questions' => $questions,
         ]);
     }
-
 
     // 🔹 ANSWER
     public function answer(Request $request)
@@ -1015,7 +1017,7 @@ class AttemptController extends Controller
 
             'question_id' => 'required|exists:assessment_questions,id',
 
-            'selected_option_id' => 'nullable|exists:assessment_options,id'
+            'selected_option_id' => 'nullable|exists:assessment_options,id',
         ]);
 
         /*
@@ -1026,7 +1028,7 @@ class AttemptController extends Controller
 
         $attempt = AssessmentAttempt::with([
             'assessment',
-            'attemptQuestions'
+            'attemptQuestions',
         ])->findOrFail(
             $request->attempt_id
         );
@@ -1040,7 +1042,7 @@ class AttemptController extends Controller
         if ($attempt->status !== 'in_progress') {
 
             return response()->json([
-                'message' => 'Attempt already submitted or expired'
+                'message' => 'Attempt already submitted or expired',
             ], 422);
         }
 
@@ -1061,7 +1063,7 @@ class AttemptController extends Controller
             if (now()->greaterThan($expire)) {
 
                 return response()->json([
-                    'message' => 'Time expired. Cannot answer.'
+                    'message' => 'Time expired. Cannot answer.',
                 ], 422);
             }
         }
@@ -1082,7 +1084,7 @@ class AttemptController extends Controller
         if (! $isAssigned) {
 
             return response()->json([
-                'message' => 'Invalid question for this attempt'
+                'message' => 'Invalid question for this attempt',
             ], 422);
         }
 
@@ -1092,7 +1094,7 @@ class AttemptController extends Controller
         |--------------------------------------------------------------------------
         */
 
-        $question = \App\Models\AssessmentQuestion::with(
+        $question = AssessmentQuestion::with(
             'options'
         )->findOrFail(
             $request->question_id
@@ -1116,7 +1118,7 @@ class AttemptController extends Controller
             if (! $validOption) {
 
                 return response()->json([
-                    'message' => 'Invalid option selected'
+                    'message' => 'Invalid option selected',
                 ], 422);
             }
         }
@@ -1128,11 +1130,11 @@ class AttemptController extends Controller
         */
 
         $options = $question->options
-            ->map(fn($opt) => [
+            ->map(fn ($opt) => [
 
                 'id' => $opt->id,
 
-                'text' => $opt->option_text
+                'text' => $opt->option_text,
             ]);
 
         /*
@@ -1156,27 +1158,22 @@ class AttemptController extends Controller
             [
                 'attempt_id' => $request->attempt_id,
 
-                'question_id' => $request->question_id
+                'question_id' => $request->question_id,
             ],
 
             [
-                'question_text_snapshot' =>
-                $question->question_text,
+                'question_text_snapshot' => $question->question_text,
 
                 'options_snapshot' => $options,
 
-                'correct_option_id_snapshot' =>
-                $correct->id ?? null,
+                'correct_option_id_snapshot' => $correct->id ?? null,
 
                 'marks_snapshot' => $question->marks,
 
-                'selected_option_id' =>
-                $request->selected_option_id,
+                'selected_option_id' => $request->selected_option_id,
             ]
         );
     }
-
-
 
     // 🔹 RESUME
     public function resume($id)
@@ -1195,7 +1192,7 @@ class AttemptController extends Controller
 
             'attemptQuestions.question.options',
 
-            'answers'
+            'answers',
 
         ])
             ->where('user_id', $userId)
@@ -1213,7 +1210,7 @@ class AttemptController extends Controller
         if (! $attempt) {
 
             return response()->json([
-                'message' => 'No active attempt'
+                'message' => 'No active attempt',
             ], 404);
         }
 
@@ -1229,8 +1226,8 @@ class AttemptController extends Controller
 
         $expiresAt = $duration
             ? $attempt->started_at
-            ->copy()
-            ->addMinutes($duration)
+                ->copy()
+                ->addMinutes($duration)
             : null;
 
         /*
@@ -1281,11 +1278,11 @@ class AttemptController extends Controller
                     |--------------------------------------------------------------------------
                     */
 
-                    'options' => $q->options->map(fn($opt) => [
+                    'options' => $q->options->map(fn ($opt) => [
 
                         'id' => $opt->id,
 
-                        'text' => $opt->option_text
+                        'text' => $opt->option_text,
                     ]),
 
                     /*
@@ -1294,9 +1291,8 @@ class AttemptController extends Controller
                     |--------------------------------------------------------------------------
                     */
 
-                    'selected_option_id' =>
-                    $answersMap[$q->id]
-                        ->selected_option_id ?? null
+                    'selected_option_id' => $answersMap[$q->id]
+                        ->selected_option_id ?? null,
                 ];
             })
             ->values();
@@ -1336,10 +1332,10 @@ class AttemptController extends Controller
 
         if (
             $assessment->assessmentable_type ===
-            \App\Models\Topic::class
+            Topic::class
         ) {
 
-            $topic = \App\Models\Topic::with(
+            $topic = Topic::with(
                 'chapter.module.level.program'
             )->find(
                 $assessment->assessmentable_id
@@ -1397,10 +1393,10 @@ class AttemptController extends Controller
 
         if (
             $assessment->assessmentable_type ===
-            \App\Models\Chapter::class
+            Chapter::class
         ) {
 
-            $chapter = \App\Models\Chapter::with(
+            $chapter = Chapter::with(
                 'module.level.program'
             )->find(
                 $assessment->assessmentable_id
@@ -1451,10 +1447,10 @@ class AttemptController extends Controller
 
         if (
             $assessment->assessmentable_type ===
-            \App\Models\Module::class
+            Module::class
         ) {
 
-            $module = \App\Models\Module::with(
+            $module = Module::with(
                 'level.program'
             )->find(
                 $assessment->assessmentable_id
@@ -1498,10 +1494,10 @@ class AttemptController extends Controller
 
         if (
             $assessment->assessmentable_type ===
-            \App\Models\Level::class
+            Level::class
         ) {
 
-            $level = \App\Models\Level::with(
+            $level = Level::with(
                 'program'
             )->find(
                 $assessment->assessmentable_id
@@ -1580,10 +1576,9 @@ class AttemptController extends Controller
             |--------------------------------------------------------------------------
             */
 
-            'answers' => $attempt->answers
+            'answers' => $attempt->answers,
         ]);
     }
-
 
     public function submit($id, Request $request)
     {
@@ -1591,7 +1586,7 @@ class AttemptController extends Controller
             'assessment_submitted',
             'User submitted an assessment',
             [
-                'assessment_id' => $id
+                'assessment_id' => $id,
             ]
         );
 
@@ -1603,7 +1598,7 @@ class AttemptController extends Controller
         $request->validate([
             'attempt_id' => 'required|exists:assessment_attempts,id',
             'submit_type' => 'nullable|in:manual,quit',
-            'time_taken_seconds' => 'nullable|numeric|min:0'
+            'time_taken_seconds' => 'nullable|numeric|min:0',
         ]);
 
         $userId = auth()->id();
@@ -1616,7 +1611,7 @@ class AttemptController extends Controller
         $attempt = AssessmentAttempt::with([
             'answers',
             'attemptQuestions.question',
-            'assessment.assessmentable'
+            'assessment.assessmentable',
         ])
             ->where('id', $request->attempt_id)
             ->where('user_id', $userId)
@@ -1630,7 +1625,7 @@ class AttemptController extends Controller
         if ($attempt->status !== 'in_progress') {
 
             return response()->json([
-                'message' => 'Already submitted'
+                'message' => 'Already submitted',
             ], 422);
         }
 
@@ -1644,7 +1639,7 @@ class AttemptController extends Controller
         if ((int) $assessment->id !== (int) $id) {
 
             return response()->json([
-                'message' => 'Assessment mismatch'
+                'message' => 'Assessment mismatch',
             ], 422);
         }
 
@@ -1658,10 +1653,10 @@ class AttemptController extends Controller
             config('assessment.exam.types', [])
         );
 
-        if (!in_array($assessment->type, $allowedTypes, true)) {
+        if (! in_array($assessment->type, $allowedTypes, true)) {
 
             return response()->json([
-                'message' => 'Invalid assessment type'
+                'message' => 'Invalid assessment type',
             ], 422);
         }
 
@@ -1949,7 +1944,7 @@ class AttemptController extends Controller
 
                 'time_taken' => $timeTaken,
 
-                'submit_type' => $submitType
+                'submit_type' => $submitType,
             ]);
 
             /*
@@ -1966,7 +1961,7 @@ class AttemptController extends Controller
             */
             if ($user) {
 
-                app(\App\Services\NotificationService::class)
+                app(NotificationService::class)
                     ->send(
 
                         $user,
@@ -1999,7 +1994,7 @@ class AttemptController extends Controller
                                 'percentage' => $result['percentage'],
 
                                 'status' => $attempt->status,
-                            ]
+                            ],
                         ],
 
                         ['db', 'push']
@@ -2036,10 +2031,10 @@ class AttemptController extends Controller
                         'percentage' => $result['percentage'],
 
                         'status' => $attempt->status,
-                    ]
+                    ],
                 ];
 
-                app(\App\Services\NotificationService::class)
+                app(NotificationService::class)
                     ->sendToRole(
                         'admin',
                         'ASSESSMENT_COMPLETED',
@@ -2047,7 +2042,7 @@ class AttemptController extends Controller
                         ['db', 'push']
                     );
 
-                app(\App\Services\NotificationService::class)
+                app(NotificationService::class)
                     ->sendToRole(
                         'superadmin',
                         'ASSESSMENT_COMPLETED',
@@ -2115,7 +2110,7 @@ class AttemptController extends Controller
                 ) {
 
                     $certificate = app(
-                        \App\Services\CertificationService::class
+                        CertificationService::class
                     )->generate(
 
                         auth()->user(),
@@ -2142,7 +2137,7 @@ class AttemptController extends Controller
 
                 if (
                     $assessmentCertificate &&
-                    !$certificate
+                    ! $certificate
                 ) {
 
                     $certificate = $assessmentCertificate;

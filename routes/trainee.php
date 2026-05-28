@@ -1,23 +1,22 @@
 <?php
 
-use Illuminate\Support\Facades\Route;
+use App\Modules\Trainee\Assessment\Controllers\AttemptController;
+use App\Modules\Trainee\Assessment\Controllers\FeedbackController;
 use App\Modules\Trainee\Auth\Controllers\AuthController;
 use App\Modules\Trainee\Auth\Controllers\PasswordController;
-use App\Modules\Trainee\Profile\Controllers\ProfileController;
-use App\Modules\Trainee\Assessment\Controllers\AttemptController;
-use App\Modules\Trainee\Progress\Controllers\ProgressController;
 use App\Modules\Trainee\Content\Controllers\ContentController;
 use App\Modules\Trainee\Content\Controllers\ContentProgressController;
-use App\Modules\Trainee\Assessment\Controllers\FeedbackController;
-use App\Modules\Trainee\FAQ\Controllers\FaqController;
-use App\Modules\Trainee\Reports\Controllers\AuditReportController;
-use App\Modules\Trainee\Reports\Controllers\UserProgressReportController;
-use App\Modules\Trainee\Reports\Controllers\AssessmentReportController;
-use App\Modules\Trainee\Reports\Controllers\CertificationReportController;
 use App\Modules\Trainee\Dashboard\Controllers\DashboardController;
+use App\Modules\Trainee\FAQ\Controllers\FaqController;
 use App\Modules\Trainee\Notification\Controllers\NotificationController;
+use App\Modules\Trainee\Profile\Controllers\ProfileController;
+use App\Modules\Trainee\Progress\Controllers\ProgressController;
+use App\Modules\Trainee\Reports\Controllers\AssessmentReportController;
+use App\Modules\Trainee\Reports\Controllers\AuditReportController;
+use App\Modules\Trainee\Reports\Controllers\CertificationReportController;
+use App\Modules\Trainee\Reports\Controllers\UserProgressReportController;
 use App\Modules\Trainee\Support\Controllers\SupportController;
-
+use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1/trainee')->group(function () {
 
@@ -45,7 +44,6 @@ Route::prefix('v1/trainee')->group(function () {
         Route::get('/profile', [ProfileController::class, 'profile']);
         Route::post('/update-profile', [ProfileController::class, 'updateProfile']);
         Route::post('/change-password', [ProfileController::class, 'changePassword']);
-
 
         Route::prefix('assessments')->group(function () {
             Route::post('{id}/start', [AttemptController::class, 'start']);

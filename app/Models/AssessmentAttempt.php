@@ -13,14 +13,14 @@ class AssessmentAttempt extends BaseModel
         'percentage',
         'status',
         'time_taken',
-        'submit_type'
+        'submit_type',
     ];
 
     protected $casts = [
-        'started_at'   => 'datetime',
+        'started_at' => 'datetime',
         'submitted_at' => 'datetime',
-        'score'        => 'float',
-        'percentage'   => 'float',
+        'score' => 'float',
+        'percentage' => 'float',
     ];
 
     /*

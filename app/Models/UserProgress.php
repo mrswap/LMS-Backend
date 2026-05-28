@@ -80,13 +80,13 @@ class UserProgress extends BaseModel
             |
             */
 
-            if (!is_null($progress->topic_id)) {
+            if (! is_null($progress->topic_id)) {
 
                 $exists = self::where('user_id', $progress->user_id)
                     ->where('topic_id', $progress->topic_id)
                     ->when(
                         $progress->id,
-                        fn($q) => $q->where('id', '!=', $progress->id)
+                        fn ($q) => $q->where('id', '!=', $progress->id)
                     )
                     ->exists();
 
