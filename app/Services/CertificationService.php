@@ -107,7 +107,8 @@ class CertificationService
             $attempt->id
         )->get();
 
-        $totalQuestions = $answers->count();
+        $totalQuestions = $attempt->attemptQuestions()
+            ->count();
 
         $attempted = $answers
             ->whereNotNull('selected_option_id')

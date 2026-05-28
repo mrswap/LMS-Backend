@@ -50,26 +50,27 @@ class AttemptController extends Controller
             ->findOrFail($id);
 
         /*
-        |--------------------------------------------------------------------------
-        | 🔐 ACCESS VALIDATION
-        |--------------------------------------------------------------------------
-        */
+    |--------------------------------------------------------------------------
+    | 🔐 ACCESS VALIDATION
+    |--------------------------------------------------------------------------
+    */
 
         $assessmentType = $assessment->type;
 
         $assessmentableId = $assessment->assessmentable_id;
 
         /*
-        |--------------------------------------------------------------------------
-        | TOPIC ASSESSMENT
-        |--------------------------------------------------------------------------
-        */
+    |--------------------------------------------------------------------------
+    | TOPIC ASSESSMENT
+    |--------------------------------------------------------------------------
+    */
 
         if ($assessmentType === 'topic') {
 
-            $topic = \App\Models\Topic::find(
-                $assessmentableId
-            );
+            $topic = \App\Models\Topic::where(
+                'status',
+                1
+            )->find($assessmentableId);
 
             if ($topic) {
 
@@ -90,16 +91,10 @@ class AttemptController extends Controller
         }
 
         /*
-        |--------------------------------------------------------------------------
-        | DYNAMIC HIGHER LEVEL VALIDATION
-        |--------------------------------------------------------------------------
-        */ else {
-
-            /*
-            |--------------------------------------------------------------------------
-            | CONFIG MAP
-            |--------------------------------------------------------------------------
-            */
+    |--------------------------------------------------------------------------
+    | DYNAMIC HIGHER LEVEL VALIDATION
+    |--------------------------------------------------------------------------
+    */ else {
 
             $validationMap = [
 
@@ -151,12 +146,6 @@ class AttemptController extends Controller
                 ],
             ];
 
-            /*
-            |--------------------------------------------------------------------------
-            | VALID TYPE
-            |--------------------------------------------------------------------------
-            */
-
             if (isset($validationMap[$assessmentType])) {
 
                 $config = $validationMap[$assessmentType];
@@ -165,28 +154,131 @@ class AttemptController extends Controller
 
                 $contentModel = $config['content_model'];
 
-                $entity = $modelClass::find(
-                    $assessmentableId
-                );
+                $entity = $modelClass::where(
+                    'status',
+                    1
+                )->find($assessmentableId);
 
                 if ($entity) {
 
                     /*
-                    |--------------------------------------------------------------------------
-                    | TOTAL CONTENT
-                    |--------------------------------------------------------------------------
-                    */
+|--------------------------------------------------------------------------
+| ACTIVE CONTENT IDS
+|--------------------------------------------------------------------------
+|
+| Ignore disabled hierarchy
+|
+*/
 
-                    $totalContent = $contentModel::where(
-                        $config['content_fk'],
-                        $entity->id
-                    )->count();
+                    if ($assessmentType === 'chapter') {
+
+                        /*
+                                        |--------------------------------------------------------------------------
+                                        | ONLY ACTIVE TOPICS OF ACTIVE CHAPTER
+                                        |--------------------------------------------------------------------------
+                                        */
+
+                        $activeContentIds = \App\Models\Topic::where(
+                            'chapter_id',
+                            $entity->id
+                        )
+                            ->where('status', 1)
+                            ->pluck('id');
+                    }
 
                     /*
+                        |--------------------------------------------------------------------------
+                        | MODULE
+                        |--------------------------------------------------------------------------
+                        */ elseif ($assessmentType === 'module') {
+
+                        /*
+                                                    |--------------------------------------------------------------------------
+                                                    | ACTIVE CHAPTERS
+                                                    |--------------------------------------------------------------------------
+                                                    */
+
+                        $activeChapterIds = \App\Models\Chapter::where(
+                            'module_id',
+                            $entity->id
+                        )
+                            ->where('status', 1)
+                            ->pluck('id');
+
+                        /*
+                                            |--------------------------------------------------------------------------
+                                            | ACTIVE TOPICS OF ACTIVE CHAPTERS
+                                            |--------------------------------------------------------------------------
+                                            */
+
+                        $activeContentIds = \App\Models\Topic::whereIn(
+                            'chapter_id',
+                            $activeChapterIds
+                        )
+                            ->where('status', 1)
+                            ->pluck('id');
+                    }
+
+                    /*
+                        |--------------------------------------------------------------------------
+                        | LEVEL
+                        |--------------------------------------------------------------------------
+                        */ elseif ($assessmentType === 'level') {
+
+                        /*
                     |--------------------------------------------------------------------------
-                    | COMPLETED CONTENT
+                    | ACTIVE MODULES
                     |--------------------------------------------------------------------------
                     */
+
+                        $activeModuleIds = \App\Models\Module::where(
+                            'level_id',
+                            $entity->id
+                        )
+                            ->where('status', 1)
+                            ->pluck('id');
+
+                        /*
+                        |--------------------------------------------------------------------------
+                        | ACTIVE CHAPTERS
+                        |--------------------------------------------------------------------------
+                        */
+
+                        $activeChapterIds = \App\Models\Chapter::whereIn(
+                            'module_id',
+                            $activeModuleIds
+                        )
+                            ->where('status', 1)
+                            ->pluck('id');
+
+                        /*
+                        |--------------------------------------------------------------------------
+                        | ACTIVE TOPICS
+                        |--------------------------------------------------------------------------
+                        */
+
+                        $activeContentIds = \App\Models\Topic::whereIn(
+                            'chapter_id',
+                            $activeChapterIds
+                        )
+                            ->where('status', 1)
+                            ->pluck('id');
+                    }
+
+                    /*
+                |--------------------------------------------------------------------------
+                | TOTAL ACTIVE CONTENT
+                |--------------------------------------------------------------------------
+                */
+
+                    $totalContent = $activeContentIds
+                        ->count();
+
+                    /*
+                |--------------------------------------------------------------------------
+                | COMPLETED CONTENT
+                |--------------------------------------------------------------------------
+                */
 
                     $progressQuery = \App\Models\UserProgress::where(
                         'user_id',
@@ -199,31 +291,46 @@ class AttemptController extends Controller
                         ->where('is_completed', true);
 
                     /*
-                    |--------------------------------------------------------------------------
-                    | EXTRA CONDITIONS
-                    |--------------------------------------------------------------------------
-                    */
+                |--------------------------------------------------------------------------
+                | EXTRA CONDITIONS
+                |--------------------------------------------------------------------------
+                */
 
                     if (
                         isset($config['extra_progress_conditions']) &&
                         is_callable($config['extra_progress_conditions'])
                     ) {
 
-                        $progressQuery = $config['extra_progress_conditions']($progressQuery);
+                        $progressQuery = $config['extra_progress_conditions'](
+                            $progressQuery
+                        );
                     } else {
 
-                        $progressQuery->whereNotNull('topic_id');
+                        $progressQuery->whereIn(
+                            'topic_id',
+                            $activeContentIds
+                        );
                     }
 
-                    $completedContent = $progressQuery->count();
+                    /*
+                |--------------------------------------------------------------------------
+                | FINAL COMPLETED COUNT
+                |--------------------------------------------------------------------------
+                */
+
+                    $completedContent = $progressQuery
+                        ->count();
 
                     /*
-                    |--------------------------------------------------------------------------
-                    | BLOCK ACCESS
-                    |--------------------------------------------------------------------------
-                    */
+                |--------------------------------------------------------------------------
+                | BLOCK ACCESS
+                |--------------------------------------------------------------------------
+                */
 
-                    if ($totalContent !== $completedContent) {
+                    if (
+                        $totalContent !==
+                        $completedContent
+                    ) {
 
                         return response()->json([
                             'message' => $config['message']
@@ -232,11 +339,12 @@ class AttemptController extends Controller
                 }
             }
         }
+
         /*
-        |--------------------------------------------------------------------------
-        | 🔹 MAX ATTEMPTS
-        |--------------------------------------------------------------------------
-        */
+    |--------------------------------------------------------------------------
+    | 🔹 MAX ATTEMPTS
+    |--------------------------------------------------------------------------
+    */
 
         $examTypes = config(
             'assessment.exam.types',
@@ -254,10 +362,10 @@ class AttemptController extends Controller
             : config('assessment.quiz.max_attempts', 50);
 
         /*
-        |--------------------------------------------------------------------------
-        | 🔹 COMPLETED ATTEMPTS
-        |--------------------------------------------------------------------------
-        */
+    |--------------------------------------------------------------------------
+    | 🔹 COMPLETED ATTEMPTS
+    |--------------------------------------------------------------------------
+    */
 
         $completedAttempts = AssessmentAttempt::where(
             'user_id',
@@ -276,10 +384,10 @@ class AttemptController extends Controller
         );
 
         /*
-        |--------------------------------------------------------------------------
-        | 🔁 ACTIVE ATTEMPT CHECK
-        |--------------------------------------------------------------------------
-        */
+    |--------------------------------------------------------------------------
+    | 🔁 ACTIVE ATTEMPT CHECK
+    |--------------------------------------------------------------------------
+    */
 
         $activeAttempt = AssessmentAttempt::where(
             'user_id',
@@ -319,10 +427,10 @@ class AttemptController extends Controller
         }
 
         /*
-        |--------------------------------------------------------------------------
-        | 🚫 LIMIT REACHED
-        |--------------------------------------------------------------------------
-        */
+    |--------------------------------------------------------------------------
+    | 🚫 LIMIT REACHED
+    |--------------------------------------------------------------------------
+    */
 
         if ($completedAttempts >= $maxAttempts) {
 
@@ -339,64 +447,103 @@ class AttemptController extends Controller
         }
 
         /*
+    |--------------------------------------------------------------------------
+    | ✅ CREATE ATTEMPT + QUESTIONS
+    |--------------------------------------------------------------------------
+    */
+
+        $attempt = DB::transaction(function () use (
+
+            $userId,
+            $id,
+            $assessment
+
+        ) {
+
+            /*
         |--------------------------------------------------------------------------
-        | ✅ CREATE ATTEMPT
-        |--------------------------------------------------------------------------
-        */
-
-        $attempt = AssessmentAttempt::create([
-
-            'user_id' => $userId,
-
-            'assessment_id' => $id,
-
-            'started_at' => now(),
-
-            'status' => 'in_progress'
-        ]);
-
-        /*
-        |--------------------------------------------------------------------------
-        | 🎯 GENERATE QUESTION SET
+        | CREATE ATTEMPT
         |--------------------------------------------------------------------------
         */
 
-        $selectedQuestionIds = app(
-            \App\Modules\Trainee\Assessment\Services\QuestionSelectionService::class
-        )->generate(
-            $assessment,
-            $userId
-        );
+            $attempt = AssessmentAttempt::create([
 
-        /*
-        |--------------------------------------------------------------------------
-        | 💾 STORE ATTEMPT QUESTIONS
-        |--------------------------------------------------------------------------
-        */
+                'user_id' => $userId,
 
-        foreach ($selectedQuestionIds as $questionId) {
+                'assessment_id' => $id,
 
-            \App\Models\AssessmentAttemptQuestion::create([
+                'started_at' => now(),
 
-                'attempt_id' => $attempt->id,
-
-                'question_id' => $questionId
+                'status' => 'in_progress'
             ]);
-        }
 
-        /*
+            /*
         |--------------------------------------------------------------------------
-        | 👤 USER
+        | GENERATE QUESTION SET
         |--------------------------------------------------------------------------
         */
+
+            $selectedQuestionIds = app(
+                \App\Modules\Trainee\Assessment\Services\QuestionSelectionService::class
+            )->generate(
+                $assessment,
+                $userId
+            );
+
+            /*
+        |--------------------------------------------------------------------------
+        | NO QUESTIONS
+        |--------------------------------------------------------------------------
+        */
+
+            if (empty($selectedQuestionIds)) {
+
+                throw new \Exception(
+                    'No questions available for this assessment'
+                );
+            }
+
+            /*
+        |--------------------------------------------------------------------------
+        | STORE ATTEMPT QUESTIONS
+        |--------------------------------------------------------------------------
+        */
+
+            foreach ($selectedQuestionIds as $questionId) {
+
+                \App\Models\AssessmentAttemptQuestion::create([
+
+                    'attempt_id' => $attempt->id,
+
+                    'question_id' => $questionId
+                ]);
+            }
+
+            /*
+        |--------------------------------------------------------------------------
+        | TEMP ATTRIBUTE
+        |--------------------------------------------------------------------------
+        */
+
+            $attempt->selected_question_ids =
+                $selectedQuestionIds;
+
+            return $attempt;
+        });
+
+        /*
+    |--------------------------------------------------------------------------
+    | 👤 USER
+    |--------------------------------------------------------------------------
+    */
 
         $user = auth()->user();
 
         /*
-        |--------------------------------------------------------------------------
-        | 🔔 USER NOTIFICATION
-        |--------------------------------------------------------------------------
-        */
+    |--------------------------------------------------------------------------
+    | 🔔 USER NOTIFICATION
+    |--------------------------------------------------------------------------
+    */
 
         if ($user) {
 
@@ -430,10 +577,10 @@ class AttemptController extends Controller
             );
 
             /*
-            |--------------------------------------------------------------------------
-            | 🛡 ADMIN PAYLOAD
-            |--------------------------------------------------------------------------
-            */
+        |--------------------------------------------------------------------------
+        | 🛡 ADMIN PAYLOAD
+        |--------------------------------------------------------------------------
+        */
 
             $adminPayload = [
 
@@ -460,10 +607,10 @@ class AttemptController extends Controller
             ];
 
             /*
-            |--------------------------------------------------------------------------
-            | 🛡 ADMINS
-            |--------------------------------------------------------------------------
-            */
+        |--------------------------------------------------------------------------
+        | 🛡 ADMINS
+        |--------------------------------------------------------------------------
+        */
 
             app(\App\Services\NotificationService::class)
                 ->sendToRole(
@@ -474,10 +621,10 @@ class AttemptController extends Controller
                 );
 
             /*
-            |--------------------------------------------------------------------------
-            | 👑 SUPER ADMINS
-            |--------------------------------------------------------------------------
-            */
+        |--------------------------------------------------------------------------
+        | 👑 SUPER ADMINS
+        |--------------------------------------------------------------------------
+        */
 
             app(\App\Services\NotificationService::class)
                 ->sendToRole(
@@ -489,10 +636,10 @@ class AttemptController extends Controller
         }
 
         /*
-        |--------------------------------------------------------------------------
-        | RESPONSE
-        |--------------------------------------------------------------------------
-        */
+    |--------------------------------------------------------------------------
+    | RESPONSE
+    |--------------------------------------------------------------------------
+    */
 
         return response()->json([
 
@@ -512,7 +659,9 @@ class AttemptController extends Controller
                 ->addMinutes($assessment->duration)
                 : null,
 
-            'question_count' => count($selectedQuestionIds),
+            'question_count' => count(
+                $attempt->selected_question_ids
+            ),
 
             'total_attempts_allowed' => $maxAttempts,
 
@@ -521,7 +670,6 @@ class AttemptController extends Controller
             'attempts_remaining' => $remainingAttempts,
         ]);
     }
-
 
     // 🔹 QUESTIONS
     public function questions($id, Request $request)
@@ -1467,7 +1615,7 @@ class AttemptController extends Controller
         */
         $attempt = AssessmentAttempt::with([
             'answers',
-            'assessment.questions',
+            'attemptQuestions.question',
             'assessment.assessmentable'
         ])
             ->where('id', $request->attempt_id)
@@ -1540,7 +1688,7 @@ class AttemptController extends Controller
         | 📊 QUESTION STATS
         |--------------------------------------------------
         */
-        $totalQuestions = $assessment->questions->count();
+        $totalQuestions = $attempt->attemptQuestions->count();
 
         $answeredCount = $attempt->answers
             ->whereNotNull('selected_option_id')
@@ -2012,7 +2160,7 @@ class AttemptController extends Controller
 
                 'obtained_marks' => $result['marks'],
 
-                'total_marks' => $assessment->total_marks,
+                'total_marks' => $result['total_marks'],
 
                 'passing_marks' => $assessment->passing_score,
 

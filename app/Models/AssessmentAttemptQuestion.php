@@ -4,6 +4,7 @@ namespace App\Models;
 
 class AssessmentAttemptQuestion extends BaseModel
 {
+    
     protected $fillable = [
         'attempt_id',
         'question_id',
