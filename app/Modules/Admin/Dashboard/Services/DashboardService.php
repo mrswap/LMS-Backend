@@ -14,10 +14,20 @@ use App\Models\TopicContent;
 use App\Models\User;
 use App\Models\UserContentProgress;
 use App\Models\UserProgress;
+use App\Services\HierarchyVisibilityService;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class DashboardService
 {
+    protected $visibilityService;
+
+    public function __construct(
+        HierarchyVisibilityService $visibilityService
+    ) {
+        $this->visibilityService = $visibilityService;
+    }
+
     public function getDashboard()
     {
         return [
@@ -27,6 +37,7 @@ class DashboardService
             | 🔹 EXECUTIVE OVERVIEW
             |--------------------------------------------------------------------------
             */
+
             'overview' => $this->getOverview(),
 
             /*
@@ -34,6 +45,7 @@ class DashboardService
             | 🔹 LEARNING FUNNEL
             |--------------------------------------------------------------------------
             */
+
             'learning_funnel' => $this->getLearningFunnel(),
 
             /*
@@ -41,6 +53,7 @@ class DashboardService
             | 🔹 ENGAGEMENT ANALYTICS
             |--------------------------------------------------------------------------
             */
+
             'engagement' => $this->getEngagementAnalytics(),
 
             /*
@@ -48,6 +61,7 @@ class DashboardService
             | 🔹 CONTENT GOVERNANCE
             |--------------------------------------------------------------------------
             */
+
             'publishing_pipeline' => $this->getPublishingPipeline(),
 
             /*
@@ -55,6 +69,7 @@ class DashboardService
             | 🔹 ASSESSMENT ANALYTICS
             |--------------------------------------------------------------------------
             */
+
             'assessment_analytics' => $this->getAssessmentAnalytics(),
 
             /*
@@ -62,6 +77,7 @@ class DashboardService
             | 🔹 CERTIFICATION ANALYTICS
             |--------------------------------------------------------------------------
             */
+
             'certification_analytics' => $this->getCertificationAnalytics(),
 
             /*
@@ -69,6 +85,7 @@ class DashboardService
             | 🔹 PROGRAM ANALYTICS
             |--------------------------------------------------------------------------
             */
+
             'program_analytics' => $this->getProgramAnalytics(),
 
             /*
@@ -76,6 +93,7 @@ class DashboardService
             | 🔹 RISK INDICATORS
             |--------------------------------------------------------------------------
             */
+
             'risk_indicators' => $this->getRiskIndicators(),
 
             /*
@@ -83,6 +101,7 @@ class DashboardService
             | 🔹 TOP PERFORMERS
             |--------------------------------------------------------------------------
             */
+
             'top_performers' => $this->getTopPerformers(),
         ];
     }
@@ -102,29 +121,69 @@ class DashboardService
             | USERS
             |--------------------------------------------------------------------------
             */
+
             'total_users' => User::count(),
 
-            'active_users' => User::where('is_active', true)->count(),
+            'active_users' => User::where(
+                'is_active',
+                true
+            )->count(),
 
-            'inactive_users' => User::where('is_active', false)->count(),
+            'inactive_users' => User::where(
+                'is_active',
+                false
+            )->count(),
 
             /*
             |--------------------------------------------------------------------------
             | LMS STRUCTURE
             |--------------------------------------------------------------------------
             */
-            'total_programs' => Program::where('status', true)->count(),
 
-            'total_levels' => Level::where('status', true)->count(),
+            'total_programs' => Program::where(
+                'status',
+                true
+            )
+                ->whereNull('deleted_at')
+                ->count(),
 
-            'total_modules' => Module::where('status', true)->count(),
+            'total_levels' => Level::where(
+                'status',
+                true
+            )
+                ->whereNull('deleted_at')
+                ->count(),
 
-            'total_chapters' => Chapter::where('status', true)->count(),
+            'total_modules' => Module::where(
+                'status',
+                true
+            )
+                ->whereNull('deleted_at')
+                ->count(),
 
-            'total_topics' => Topic::where('status', true)->count(),
+            'total_chapters' => Chapter::where(
+                'status',
+                true
+            )
+                ->whereNull('deleted_at')
+                ->count(),
 
-            'total_contents' => TopicContent::where('status', true)
-                ->where('publish_status', 'published')
+            'total_topics' => Topic::where(
+                'status',
+                true
+            )
+                ->whereNull('deleted_at')
+                ->count(),
+
+            'total_contents' => TopicContent::where(
+                'status',
+                true
+            )
+                ->whereNull('deleted_at')
+                ->where(
+                    'publish_status',
+                    'published'
+                )
                 ->count(),
 
             /*
@@ -132,9 +191,20 @@ class DashboardService
             | LEARNING ENGINE
             |--------------------------------------------------------------------------
             */
-            'total_assessments' => Assessment::where('status', true)->count(),
 
-            'total_certificates' => Certification::where('status', true)->count(),
+            'total_assessments' => Assessment::where(
+                'status',
+                true
+            )
+                ->whereNull('deleted_at')
+                ->count(),
+
+            'total_certificates' => Certification::where(
+                'status',
+                true
+            )
+                ->whereNull('deleted_at')
+                ->count(),
         ];
     }
 
@@ -148,33 +218,55 @@ class DashboardService
     {
         return [
 
-            'not_started_users' => User::whereDoesntHave('progress')
-                ->count(),
+            'not_started_users' => User::whereDoesntHave(
+                'progress'
+            )->count(),
 
-            'started_users' => UserProgress::whereHas('topic', function ($q) {
+            'started_users' => UserProgress::whereHas(
+                'topic',
+                function ($q) {
 
-                $q->where('status', true);
-            })->distinct('user_id')
+                    $q->where('status', true)
+                        ->whereNull('deleted_at');
+                }
+            )
+                ->distinct('user_id')
                 ->count('user_id'),
 
-            'in_progress_users' => UserProgress::where('is_unlocked', true)
+            'in_progress_users' => UserProgress::where(
+                'is_unlocked',
+                true
+            )
                 ->where('is_completed', false)
+
                 ->whereHas('topic', function ($q) {
 
-                    $q->where('status', true);
+                    $q->where('status', true)
+                        ->whereNull('deleted_at');
                 })
+
                 ->distinct('user_id')
                 ->count('user_id'),
 
-            'completed_users' => UserProgress::where('is_completed', true)
+            'completed_users' => UserProgress::where(
+                'is_completed',
+                true
+            )
+
                 ->whereHas('topic', function ($q) {
 
-                    $q->where('status', true);
+                    $q->where('status', true)
+                        ->whereNull('deleted_at');
                 })
+
                 ->distinct('user_id')
                 ->count('user_id'),
 
-            'certified_users' => Certification::where('status', true)
+            'certified_users' => Certification::where(
+                'status',
+                true
+            )
+                ->whereNull('deleted_at')
                 ->distinct('user_id')
                 ->count('user_id'),
         ];
@@ -190,31 +282,54 @@ class DashboardService
     {
         return [
 
-            'daily_active_users' => UserProgress::whereDate('updated_at', today())
+            'daily_active_users' => UserProgress::whereDate(
+                'updated_at',
+                today()
+            )
+
                 ->whereHas('topic', function ($q) {
 
-                    $q->where('status', true);
+                    $q->where('status', true)
+                        ->whereNull('deleted_at');
                 })
+
                 ->distinct('user_id')
                 ->count('user_id'),
 
-            'weekly_active_users' => UserProgress::where('updated_at', '>=', now()->subDays(7))
+            'weekly_active_users' => UserProgress::where(
+                'updated_at',
+                '>=',
+                now()->subDays(7)
+            )
+
                 ->whereHas('topic', function ($q) {
 
-                    $q->where('status', true);
+                    $q->where('status', true)
+                        ->whereNull('deleted_at');
                 })
+
                 ->distinct('user_id')
                 ->count('user_id'),
 
-            'monthly_active_users' => UserProgress::where('updated_at', '>=', now()->subDays(30))
+            'monthly_active_users' => UserProgress::where(
+                'updated_at',
+                '>=',
+                now()->subDays(30)
+            )
+
                 ->whereHas('topic', function ($q) {
 
-                    $q->where('status', true);
+                    $q->where('status', true)
+                        ->whereNull('deleted_at');
                 })
+
                 ->distinct('user_id')
                 ->count('user_id'),
 
-            'content_reads_today' => UserContentProgress::whereDate('updated_at', today())->count(),
+            'content_reads_today' => UserContentProgress::whereDate(
+                'updated_at',
+                today()
+            )->count(),
 
             'total_content_reads' => UserContentProgress::count(),
         ];
@@ -230,17 +345,29 @@ class DashboardService
     {
         return [
 
-            'programs' => $this->getPublishStats(Program::class),
+            'programs' => $this->getPublishStats(
+                Program::class
+            ),
 
-            'levels' => $this->getPublishStats(Level::class),
+            'levels' => $this->getPublishStats(
+                Level::class
+            ),
 
-            'modules' => $this->getPublishStats(Module::class),
+            'modules' => $this->getPublishStats(
+                Module::class
+            ),
 
-            'chapters' => $this->getPublishStats(Chapter::class),
+            'chapters' => $this->getPublishStats(
+                Chapter::class
+            ),
 
-            'topics' => $this->getPublishStats(Topic::class),
+            'topics' => $this->getPublishStats(
+                Topic::class
+            ),
 
-            'contents' => $this->getPublishStats(TopicContent::class),
+            'contents' => $this->getPublishStats(
+                TopicContent::class
+            ),
         ];
     }
 
@@ -256,22 +383,35 @@ class DashboardService
             'assessment',
             function ($q) {
 
-                $q->where('status', true);
+                $q->where('status', true)
+                    ->whereNull('deleted_at');
             }
         )->count();
 
-        $passedAttempts = AssessmentAttempt::where('status', 'passed')
+        $passedAttempts = AssessmentAttempt::where(
+            'status',
+            'passed'
+        )
+
             ->whereHas('assessment', function ($q) {
 
-                $q->where('status', true);
+                $q->where('status', true)
+                    ->whereNull('deleted_at');
             })
+
             ->count();
 
-        $failedAttempts = AssessmentAttempt::where('status', 'failed')
+        $failedAttempts = AssessmentAttempt::where(
+            'status',
+            'failed'
+        )
+
             ->whereHas('assessment', function ($q) {
 
-                $q->where('status', true);
+                $q->where('status', true)
+                    ->whereNull('deleted_at');
             })
+
             ->count();
 
         return [
@@ -283,21 +423,36 @@ class DashboardService
             'failed_attempts' => $failedAttempts,
 
             'pass_rate' => $totalAttempts > 0
-                ? round(($passedAttempts / $totalAttempts) * 100, 2)
+                ? round(
+                    (
+                        $passedAttempts
+                        / $totalAttempts
+                    ) * 100,
+                    2
+                )
                 : 0,
 
             'fail_rate' => $totalAttempts > 0
-                ? round(($failedAttempts / $totalAttempts) * 100, 2)
+                ? round(
+                    (
+                        $failedAttempts
+                        / $totalAttempts
+                    ) * 100,
+                    2
+                )
                 : 0,
 
             'avg_score' => round(
+
                 AssessmentAttempt::whereHas(
                     'assessment',
                     function ($q) {
 
-                        $q->where('status', true);
+                        $q->where('status', true)
+                            ->whereNull('deleted_at');
                     }
                 )->avg('percentage') ?? 0,
+
                 2
             ),
 
@@ -306,12 +461,19 @@ class DashboardService
             | Topic Quiz Avg
             |--------------------------------------------------------------------------
             */
-            'topic_quiz_avg' => round(
-                AssessmentAttempt::whereHas('assessment', function ($q) {
 
-                    $q->where('type', 'topic')
-                        ->where('status', true);
-                })->avg('percentage') ?? 0,
+            'topic_quiz_avg' => round(
+
+                AssessmentAttempt::whereHas(
+                    'assessment',
+                    function ($q) {
+
+                        $q->where('type', 'topic')
+                            ->where('status', true)
+                            ->whereNull('deleted_at');
+                    }
+                )->avg('percentage') ?? 0,
+
                 2
             ),
 
@@ -320,12 +482,19 @@ class DashboardService
             | Chapter Exam Avg
             |--------------------------------------------------------------------------
             */
-            'chapter_exam_avg' => round(
-                AssessmentAttempt::whereHas('assessment', function ($q) {
 
-                    $q->where('type', 'chapter')
-                        ->where('status', true);
-                })->avg('percentage') ?? 0,
+            'chapter_exam_avg' => round(
+
+                AssessmentAttempt::whereHas(
+                    'assessment',
+                    function ($q) {
+
+                        $q->where('type', 'chapter')
+                            ->where('status', true)
+                            ->whereNull('deleted_at');
+                    }
+                )->avg('percentage') ?? 0,
+
                 2
             ),
 
@@ -334,12 +503,19 @@ class DashboardService
             | Module Exam Avg
             |--------------------------------------------------------------------------
             */
-            'module_exam_avg' => round(
-                AssessmentAttempt::whereHas('assessment', function ($q) {
 
-                    $q->where('type', 'module')
-                        ->where('status', true);
-                })->avg('percentage') ?? 0,
+            'module_exam_avg' => round(
+
+                AssessmentAttempt::whereHas(
+                    'assessment',
+                    function ($q) {
+
+                        $q->where('type', 'module')
+                            ->where('status', true)
+                            ->whereNull('deleted_at');
+                    }
+                )->avg('percentage') ?? 0,
+
                 2
             ),
 
@@ -348,12 +524,19 @@ class DashboardService
             | Level Exam Avg
             |--------------------------------------------------------------------------
             */
-            'level_exam_avg' => round(
-                AssessmentAttempt::whereHas('assessment', function ($q) {
 
-                    $q->where('type', 'level')
-                        ->where('status', true);
-                })->avg('percentage') ?? 0,
+            'level_exam_avg' => round(
+
+                AssessmentAttempt::whereHas(
+                    'assessment',
+                    function ($q) {
+
+                        $q->where('type', 'level')
+                            ->where('status', true)
+                            ->whereNull('deleted_at');
+                    }
+                )->avg('percentage') ?? 0,
+
                 2
             ),
 
@@ -362,22 +545,34 @@ class DashboardService
             | Most Failed Assessments
             |--------------------------------------------------------------------------
             */
-            'most_failed_assessments' => Assessment::where('status', true)
+
+            'most_failed_assessments' => Assessment::where(
+                'status',
+                true
+            )
+                ->whereNull('deleted_at')
+
                 ->withCount([
 
                     'attempts as fail_count' => function ($q) {
 
-                        $q->where('status', 'failed');
-                    }
+                        $q->where(
+                            'status',
+                            'failed'
+                        );
+                    },
                 ])
+
                 ->orderByDesc('fail_count')
+
                 ->limit(10)
+
                 ->get([
                     'id',
                     'title',
                     'type',
                     'passing_score',
-                    'total_marks'
+                    'total_marks',
                 ]),
         ];
     }
@@ -392,31 +587,65 @@ class DashboardService
     {
         return [
 
-            'total_certificates' => Certification::where('status', true)
+            'total_certificates' => Certification::where(
+                'status',
+                true
+            )
+                ->whereNull('deleted_at')
                 ->count(),
 
-            'topic_certificates' => Certification::where('status', true)
+            'topic_certificates' => Certification::where(
+                'status',
+                true
+            )
+                ->whereNull('deleted_at')
                 ->where('type', 'topic')
                 ->count(),
 
-            'chapter_certificates' => Certification::where('status', true)
+            'chapter_certificates' => Certification::where(
+                'status',
+                true
+            )
+                ->whereNull('deleted_at')
                 ->where('type', 'chapter')
                 ->count(),
 
-            'module_certificates' => Certification::where('status', true)
+            'module_certificates' => Certification::where(
+                'status',
+                true
+            )
+                ->whereNull('deleted_at')
                 ->where('type', 'module')
                 ->count(),
 
-            'level_certificates' => Certification::where('status', true)
+            'level_certificates' => Certification::where(
+                'status',
+                true
+            )
+                ->whereNull('deleted_at')
                 ->where('type', 'level')
                 ->count(),
 
-            'certificates_issued_today' => Certification::where('status', true)
-                ->whereDate('issued_at', today())
+            'certificates_issued_today' => Certification::where(
+                'status',
+                true
+            )
+                ->whereNull('deleted_at')
+                ->whereDate(
+                    'issued_at',
+                    today()
+                )
                 ->count(),
 
-            'certificates_issued_this_month' => Certification::where('status', true)
-                ->whereMonth('issued_at', now()->month)
+            'certificates_issued_this_month' => Certification::where(
+                'status',
+                true
+            )
+                ->whereNull('deleted_at')
+                ->whereMonth(
+                    'issued_at',
+                    now()->month
+                )
                 ->count(),
         ];
     }
@@ -430,22 +659,44 @@ class DashboardService
     private function getProgramAnalytics()
     {
         return Program::with([
-            'levels.modules.chapters.topics.contents'
-        ])->where('status', true)
+
+            'levels.modules.chapters.topics.contents',
+
+        ])
+
+            ->where('status', true)
+            ->whereNull('deleted_at')
+
             ->get()
+
             ->map(function ($program) {
 
-                $levels = $program->levels;
+                $levels = $program->levels
+                    ->where('status', true)
+                    ->whereNull('deleted_at');
 
-                $modules = $levels->flatMap->modules;
+                $modules = $levels
+                    ->flatMap->modules
+                    ->where('status', true)
+                    ->whereNull('deleted_at');
 
-                $chapters = $modules->flatMap->chapters;
+                $chapters = $modules
+                    ->flatMap->chapters
+                    ->where('status', true)
+                    ->whereNull('deleted_at');
 
-                $topics = $chapters->flatMap->topics;
+                $topics = $chapters
+                    ->flatMap->topics
+                    ->where('status', true)
+                    ->whereNull('deleted_at');
 
-                $contents = $topics->flatMap->contents;
+                $contents = $topics
+                    ->flatMap->contents
+                    ->where('status', true)
+                    ->whereNull('deleted_at');
 
-                $topicIds = $topics->pluck('id');
+                $topicIds = $topics
+                    ->pluck('id');
 
                 return [
 
@@ -458,6 +709,7 @@ class DashboardService
                     | STRUCTURE
                     |--------------------------------------------------------------------------
                     */
+
                     'structure' => [
 
                         'levels' => $levels->count(),
@@ -476,30 +728,49 @@ class DashboardService
                     | PUBLISHING
                     |--------------------------------------------------------------------------
                     */
+
                     'publishing' => [
 
                         'published_topics' => $topics
-                            ->where('publish_status', 'published')
+                            ->where(
+                                'publish_status',
+                                'published'
+                            )
                             ->count(),
 
                         'draft_topics' => $topics
-                            ->where('publish_status', 'draft')
+                            ->where(
+                                'publish_status',
+                                'draft'
+                            )
                             ->count(),
 
                         'unpublished_topics' => $topics
-                            ->where('publish_status', 'unpublished')
+                            ->where(
+                                'publish_status',
+                                'unpublished'
+                            )
                             ->count(),
 
                         'published_contents' => $contents
-                            ->where('publish_status', 'published')
+                            ->where(
+                                'publish_status',
+                                'published'
+                            )
                             ->count(),
 
                         'draft_contents' => $contents
-                            ->where('publish_status', 'draft')
+                            ->where(
+                                'publish_status',
+                                'draft'
+                            )
                             ->count(),
 
                         'unpublished_contents' => $contents
-                            ->where('publish_status', 'unpublished')
+                            ->where(
+                                'publish_status',
+                                'unpublished'
+                            )
                             ->count(),
                     ],
 
@@ -508,35 +779,48 @@ class DashboardService
                     | LEARNING
                     |--------------------------------------------------------------------------
                     */
+
                     'learning' => [
 
                         'active_learners' => UserProgress::where(
                             'program_id',
                             $program->id
                         )
-                            ->distinct('user_id')
-                            ->count('user_id'),
+                            ->distinct(
+                                'user_id'
+                            )
+                            ->count(
+                                'user_id'
+                            ),
 
                         'completed_topics' => UserProgress::where(
                             'program_id',
                             $program->id
                         )
-                            ->where('is_completed', true)
+                            ->where(
+                                'is_completed',
+                                true
+                            )
                             ->count(),
 
                         'completion_rate' => $topicIds->count() > 0
+
                             ? round(
                                 (
                                     UserProgress::where(
                                         'program_id',
                                         $program->id
                                     )
-                                    ->where('is_completed', true)
-                                    ->count()
+                                        ->where(
+                                            'is_completed',
+                                            true
+                                        )
+                                        ->count()
                                     / $topicIds->count()
                                 ) * 100,
                                 2
                             )
+
                             : 0,
                     ],
 
@@ -545,152 +829,59 @@ class DashboardService
                     | ASSESSMENTS
                     |--------------------------------------------------------------------------
                     */
+
                     'assessment' => [
 
                         'topic_avg_score' => round(
+
                             AssessmentAttempt::whereHas(
                                 'assessment',
-                                function ($q) use ($topicIds) {
+                                function ($q) use (
+                                    $topicIds
+                                ) {
 
-                                    $q->where('type', 'topic')
+                                    $q->where(
+                                        'type',
+                                        'topic'
+                                    )
                                         ->whereIn(
                                             'assessmentable_id',
                                             $topicIds
                                         )
-                                        ->where('status', true);
-                                }
-                            )->avg('percentage') ?? 0,
-                            2
-                        ),
-
-                        'chapter_avg_score' => round(
-                            AssessmentAttempt::whereHas(
-                                'assessment',
-                                function ($q) use ($program) {
-
-                                    $q->where('type', 'chapter')
-                                        ->whereHasMorph(
-                                            'assessmentable',
-                                            [\App\Models\Chapter::class],
-                                            function ($qq) use ($program) {
-
-                                                $qq->whereHas(
-                                                    'module.level',
-                                                    function ($x) use ($program) {
-
-                                                        $x->where(
-                                                            'program_id',
-                                                            $program->id
-                                                        );
-                                                    }
-                                                );
-                                            }
+                                        ->where(
+                                            'status',
+                                            true
                                         )
-                                        ->where('status', true);
+                                        ->whereNull(
+                                            'deleted_at'
+                                        );
                                 }
                             )->avg('percentage') ?? 0,
-                            2
-                        ),
 
-                        'module_avg_score' => round(
-                            AssessmentAttempt::whereHas(
-                                'assessment',
-                                function ($q) use ($program) {
-
-                                    $q->where('type', 'module')
-                                        ->whereHasMorph(
-                                            'assessmentable',
-                                            [\App\Models\Module::class],
-                                            function ($qq) use ($program) {
-
-                                                $qq->where(
-                                                    'program_id',
-                                                    $program->id
-                                                );
-                                            }
-                                        )
-                                        ->where('status', true);
-                                }
-                            )->avg('percentage') ?? 0,
-                            2
-                        ),
-
-                        'level_avg_score' => round(
-                            AssessmentAttempt::whereHas(
-                                'assessment',
-                                function ($q) use ($program) {
-
-                                    $q->where('type', 'level')
-                                        ->whereHasMorph(
-                                            'assessmentable',
-                                            [\App\Models\Level::class],
-                                            function ($qq) use ($program) {
-
-                                                $qq->where(
-                                                    'program_id',
-                                                    $program->id
-                                                );
-                                            }
-                                        )
-                                        ->where('status', true);
-                                }
-                            )->avg('percentage') ?? 0,
                             2
                         ),
 
                         'total_attempts' => AssessmentAttempt::whereHas(
                             'assessment',
                             function ($q) use (
-                                $topicIds,
-                                $modules,
-                                $chapters,
-                                $levels
+                                $topicIds
                             ) {
 
-                                $q->where('status', true)
-                                    ->where(function ($qq) use (
-                                        $topicIds,
-                                        $modules,
-                                        $chapters,
-                                        $levels
-                                    ) {
-
-                                        $qq->where(function ($x) use ($topicIds) {
-
-                                            $x->where('type', 'topic')
-                                                ->whereIn(
-                                                    'assessmentable_id',
-                                                    $topicIds
-                                                );
-                                        })
-
-                                            ->orWhere(function ($x) use ($chapters) {
-
-                                                $x->where('type', 'chapter')
-                                                    ->whereIn(
-                                                        'assessmentable_id',
-                                                        $chapters->pluck('id')
-                                                    );
-                                            })
-
-                                            ->orWhere(function ($x) use ($modules) {
-
-                                                $x->where('type', 'module')
-                                                    ->whereIn(
-                                                        'assessmentable_id',
-                                                        $modules->pluck('id')
-                                                    );
-                                            })
-
-                                            ->orWhere(function ($x) use ($levels) {
-
-                                                $x->where('type', 'level')
-                                                    ->whereIn(
-                                                        'assessmentable_id',
-                                                        $levels->pluck('id')
-                                                    );
-                                            });
-                                    });
+                                $q->where(
+                                    'status',
+                                    true
+                                )
+                                    ->whereNull(
+                                        'deleted_at'
+                                    )
+                                    ->where(
+                                        'type',
+                                        'topic'
+                                    )
+                                    ->whereIn(
+                                        'assessmentable_id',
+                                        $topicIds
+                                    );
                             }
                         )->count(),
                     ],
@@ -713,20 +904,35 @@ class DashboardService
             | Low Performing Users
             |--------------------------------------------------------------------------
             */
+
             'low_performing_users' => AssessmentAttempt::whereHas(
                 'assessment',
                 function ($q) {
 
-                    $q->where('status', true);
+                    $q->where('status', true)
+                        ->whereNull('deleted_at');
                 }
-            )->select(
-                'user_id',
-                DB::raw('AVG(percentage) as avg_score')
             )
+
+                ->select(
+                    'user_id',
+                    DB::raw(
+                        'AVG(percentage) as avg_score'
+                    )
+                )
+
                 ->groupBy('user_id')
-                ->havingRaw('AVG(percentage) < 40')
-                ->with('user:id,name,email')
+
+                ->havingRaw(
+                    'AVG(percentage) < 40'
+                )
+
+                ->with(
+                    'user:id,name,email'
+                )
+
                 ->limit(10)
+
                 ->get(),
 
             /*
@@ -734,9 +940,11 @@ class DashboardService
             | Inactive Users
             |--------------------------------------------------------------------------
             */
+
             'inactive_users_7_days' => User::whereDoesntHave(
                 'progress',
                 function ($q) {
+
                     $q->where(
                         'updated_at',
                         '>=',
@@ -750,16 +958,29 @@ class DashboardService
             | Draft Heavy Programs
             |--------------------------------------------------------------------------
             */
+
             'programs_with_high_drafts' => Program::withCount([
+
                 'levels as draft_levels_count' => function ($q) {
-                    $q->where('publish_status', 'draft');
-                }
+
+                    $q->where(
+                        'publish_status',
+                        'draft'
+                    );
+                },
             ])
-                ->orderByDesc('draft_levels_count')
+
+                ->whereNull('deleted_at')
+
+                ->orderByDesc(
+                    'draft_levels_count'
+                )
+
                 ->limit(5)
+
                 ->get([
                     'id',
-                    'title'
+                    'title',
                 ]),
         ];
     }
@@ -776,18 +997,28 @@ class DashboardService
             'assessment',
             function ($q) {
 
-                $q->where('status', true);
+                $q->where('status', true)
+                    ->whereNull('deleted_at');
             }
         )
+
             ->select(
                 'user_id',
-                DB::raw('AVG(percentage) as avg_score')
+                DB::raw(
+                    'AVG(percentage) as avg_score'
+                )
             )
+
             ->where('status', 'passed')
+
             ->groupBy('user_id')
+
             ->orderByDesc('avg_score')
+
             ->limit(10)
+
             ->with('user:id,name,email')
+
             ->get();
     }
 
@@ -803,24 +1034,27 @@ class DashboardService
 
         $table = $instance->getTable();
 
-        $hasPublishStatus = \Schema::hasColumn(
+        $hasPublishStatus = Schema::hasColumn(
             $table,
             'publish_status'
         );
 
         /*
-        |--------------------------------------------------
+        |--------------------------------------------------------------------------
         | MODELS WITHOUT publish_status
-        |--------------------------------------------------
+        |--------------------------------------------------------------------------
         */
-        if (!$hasPublishStatus) {
+
+        if (! $hasPublishStatus) {
 
             return [
 
                 'published' => $model::where(
                     'status',
                     true
-                )->count(),
+                )
+                    ->whereNull('deleted_at')
+                    ->count(),
 
                 'draft' => 0,
 
@@ -829,26 +1063,33 @@ class DashboardService
         }
 
         /*
-        |--------------------------------------------------
+        |--------------------------------------------------------------------------
         | MODELS WITH publish_status
-        |--------------------------------------------------
+        |--------------------------------------------------------------------------
         */
+
         return [
 
             'published' => $model::where(
                 'publish_status',
                 'published'
-            )->count(),
+            )
+                ->whereNull('deleted_at')
+                ->count(),
 
             'draft' => $model::where(
                 'publish_status',
                 'draft'
-            )->count(),
+            )
+                ->whereNull('deleted_at')
+                ->count(),
 
             'unpublished' => $model::where(
                 'publish_status',
                 'unpublished'
-            )->count(),
+            )
+                ->whereNull('deleted_at')
+                ->count(),
         ];
     }
 }
