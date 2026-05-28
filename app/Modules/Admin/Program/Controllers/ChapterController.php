@@ -4,9 +4,9 @@ namespace App\Modules\Admin\Program\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Models\Chapter;
-use App\Models\Program;
 use App\Models\Level;
 use App\Models\Module;
+use App\Models\Program;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 
@@ -55,7 +55,7 @@ class ChapterController extends Controller
             'program:id,title',
             'level:id,title',
             'module:id,title',
-            'translations'
+            'translations',
         ]);
 
         /*
@@ -66,11 +66,11 @@ class ChapterController extends Controller
 
         if ($request->filled('program_id')) {
 
-            if (!Program::find($request->program_id)) {
+            if (! Program::find($request->program_id)) {
 
                 return response()->json([
                     'success' => false,
-                    'message' => 'Program not found'
+                    'message' => 'Program not found',
                 ], 404);
             }
 
@@ -82,11 +82,11 @@ class ChapterController extends Controller
 
         if ($request->filled('level_id')) {
 
-            if (!Level::find($request->level_id)) {
+            if (! Level::find($request->level_id)) {
 
                 return response()->json([
                     'success' => false,
-                    'message' => 'Level not found'
+                    'message' => 'Level not found',
                 ], 404);
             }
 
@@ -98,11 +98,11 @@ class ChapterController extends Controller
 
         if ($request->filled('module_id')) {
 
-            if (!Module::find($request->module_id)) {
+            if (! Module::find($request->module_id)) {
 
                 return response()->json([
                     'success' => false,
-                    'message' => 'Module not found'
+                    'message' => 'Module not found',
                 ], 404);
             }
 
@@ -112,6 +112,59 @@ class ChapterController extends Controller
             );
         }
 
+        /*
+|--------------------------------------------------------------------------
+| FILTER: STATUS
+|--------------------------------------------------------------------------
+*/
+
+        if (
+            $request->has('status') &&
+            $request->status !== 'all'
+        ) {
+
+            $status = (int) $request->status;
+
+            if (in_array($status, [0, 1], true)) {
+
+                $query->where(
+                    'status',
+                    $status
+                );
+            }
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | FILTER: PUBLISH STATUS
+        |--------------------------------------------------------------------------
+        */
+
+        if (
+            $request->filled('publish_status') &&
+            $request->publish_status !== 'all'
+        ) {
+
+            $allowedPublishStatuses = [
+                Chapter::PUBLISH_DRAFT,
+                Chapter::PUBLISH_PUBLISHED,
+                Chapter::PUBLISH_UNPUBLISHED,
+            ];
+
+            if (
+                in_array(
+                    $request->publish_status,
+                    $allowedPublishStatuses,
+                    true
+                )
+            ) {
+
+                $query->where(
+                    'publish_status',
+                    $request->publish_status
+                );
+            }
+        }
         /*
         |--------------------------------------------------------------------------
         | SEARCH
@@ -183,7 +236,7 @@ class ChapterController extends Controller
 
         if (
             $lang === 'en'
-            && !$request->filled('search')
+            && ! $request->filled('search')
         ) {
 
             $query->where(
@@ -192,7 +245,6 @@ class ChapterController extends Controller
                 'BASE_RECORD'
             );
         }
-
 
         /*
         |--------------------------------------------------------------------------
@@ -266,7 +318,7 @@ class ChapterController extends Controller
                     ->where('language_code', $lang)
                     ->first();
 
-                if (!$translation) {
+                if (! $translation) {
                     return null;
                 }
 
@@ -296,7 +348,7 @@ class ChapterController extends Controller
 
         return response()->json([
             'success' => true,
-            'data' => $chapters
+            'data' => $chapters,
         ]);
     }
 
@@ -316,8 +368,7 @@ class ChapterController extends Controller
             'module_id' => 'required|integer',
             'title' => 'required|string|max:255',
             'description' => 'nullable|string',
-            'thumbnail'
-            => 'nullable|image|mimes:jpg,jpeg,png|max:2048',
+            'thumbnail' => 'nullable|image|mimes:jpg,jpeg,png|max:2048',
         ]);
 
         $isSystemUser = $this->isSystemUser();
@@ -340,27 +391,27 @@ class ChapterController extends Controller
             $validated['module_id']
         );
 
-        if (!$program) {
+        if (! $program) {
 
             return response()->json([
                 'success' => false,
-                'message' => 'Program not found'
+                'message' => 'Program not found',
             ], 404);
         }
 
-        if (!$level) {
+        if (! $level) {
 
             return response()->json([
                 'success' => false,
-                'message' => 'Level not found'
+                'message' => 'Level not found',
             ], 404);
         }
 
-        if (!$module) {
+        if (! $module) {
 
             return response()->json([
                 'success' => false,
-                'message' => 'Module not found'
+                'message' => 'Module not found',
             ], 404);
         }
 
@@ -368,8 +419,7 @@ class ChapterController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message'
-                => 'Level does not belong to selected program'
+                'message' => 'Level does not belong to selected program',
             ], 422);
         }
 
@@ -380,8 +430,7 @@ class ChapterController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message'
-                => 'Module does not belong to selected level/program'
+                'message' => 'Module does not belong to selected level/program',
             ], 422);
         }
 
@@ -396,7 +445,7 @@ class ChapterController extends Controller
             && $request->file('thumbnail')->isValid()
         ) {
 
-            if (!file_exists(public_path($this->uploadPath))) {
+            if (! file_exists(public_path($this->uploadPath))) {
 
                 mkdir(
                     public_path($this->uploadPath),
@@ -408,10 +457,10 @@ class ChapterController extends Controller
             $file = $request->file('thumbnail');
 
             $filename = time()
-                . '_'
-                . Str::random(10)
-                . '.'
-                . $file->getClientOriginalExtension();
+                .'_'
+                .Str::random(10)
+                .'.'
+                .$file->getClientOriginalExtension();
 
             $file->move(
                 public_path($this->uploadPath),
@@ -419,7 +468,7 @@ class ChapterController extends Controller
             );
 
             $validated['thumbnail']
-                = $this->uploadPath . $filename;
+                = $this->uploadPath.$filename;
         }
 
         /*
@@ -451,41 +500,34 @@ class ChapterController extends Controller
 
                 'status' => $defaultStatus,
 
-                'publish_status'
-                => $defaultPublishStatus,
+                'publish_status' => $defaultPublishStatus,
             ]);
         } else {
 
             $chapter = Chapter::create([
-                'program_id'
-                => $validated['program_id'],
+                'program_id' => $validated['program_id'],
 
-                'level_id'
-                => $validated['level_id'],
+                'level_id' => $validated['level_id'],
 
-                'module_id'
-                => $validated['module_id'],
+                'module_id' => $validated['module_id'],
 
                 'title' => 'BASE_RECORD',
 
                 'description' => null,
 
-                'thumbnail'
-                => $validated['thumbnail'] ?? null,
+                'thumbnail' => $validated['thumbnail'] ?? null,
 
                 'created_by' => auth()->id(),
 
                 'status' => $defaultStatus,
 
-                'publish_status'
-                => $defaultPublishStatus,
+                'publish_status' => $defaultPublishStatus,
             ]);
 
             $chapter->translations()->create([
                 'language_code' => $lang,
                 'title' => $validated['title'],
-                'description'
-                => $validated['description'] ?? null,
+                'description' => $validated['description'] ?? null,
             ]);
         }
 
@@ -494,12 +536,12 @@ class ChapterController extends Controller
             'program:id,title',
             'level:id,title',
             'module:id,title',
-            'translations'
+            'translations',
         ]);
 
         return response()->json([
             'success' => true,
-            'data' => $chapter
+            'data' => $chapter,
         ], 201);
     }
 
@@ -518,7 +560,7 @@ class ChapterController extends Controller
             'program:id,title',
             'level:id,title',
             'module:id,title',
-            'translations'
+            'translations',
         ])->findOrFail($id);
 
         /*
@@ -528,9 +570,9 @@ class ChapterController extends Controller
         */
 
         if (
-            !$this->isSystemUser()
+            ! $this->isSystemUser()
             && (
-                !$chapter->status
+                ! $chapter->status
                 || $chapter->publish_status
                 !== Chapter::PUBLISH_PUBLISHED
             )
@@ -538,7 +580,7 @@ class ChapterController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Chapter not available'
+                'message' => 'Chapter not available',
             ], 404);
         }
 
@@ -548,8 +590,7 @@ class ChapterController extends Controller
 
                 return response()->json([
                     'success' => false,
-                    'message'
-                    => 'English content not available'
+                    'message' => 'English content not available',
                 ], 404);
             }
 
@@ -559,18 +600,15 @@ class ChapterController extends Controller
                     'id' => $chapter->id,
                     'language_code' => 'en',
                     'title' => $chapter->title,
-                    'description'
-                    => $chapter->description,
+                    'description' => $chapter->description,
                     'thumbnail' => $chapter->thumbnail,
-                    'status'
-                    => (bool) $chapter->status,
-                    'publish_status'
-                    => $chapter->publish_status,
+                    'status' => (bool) $chapter->status,
+                    'publish_status' => $chapter->publish_status,
                     'program' => $chapter->program,
                     'level' => $chapter->level,
                     'module' => $chapter->module,
                     'creator' => $chapter->creator,
-                ]
+                ],
             ]);
         }
 
@@ -578,12 +616,11 @@ class ChapterController extends Controller
             ->where('language_code', $lang)
             ->first();
 
-        if (!$translation) {
+        if (! $translation) {
 
             return response()->json([
                 'success' => false,
-                'message'
-                => 'Translation not available'
+                'message' => 'Translation not available',
             ], 404);
         }
 
@@ -594,17 +631,15 @@ class ChapterController extends Controller
                 'translation_id' => $translation->id,
                 'language_code' => $lang,
                 'title' => $translation->title,
-                'description'
-                => $translation->description,
+                'description' => $translation->description,
                 'thumbnail' => $chapter->thumbnail,
                 'status' => (bool) $chapter->status,
-                'publish_status'
-                => $chapter->publish_status,
+                'publish_status' => $chapter->publish_status,
                 'program' => $chapter->program,
                 'level' => $chapter->level,
                 'module' => $chapter->module,
                 'creator' => $chapter->creator,
-            ]
+            ],
         ]);
     }
 
@@ -627,8 +662,7 @@ class ChapterController extends Controller
             'module_id' => 'required|integer',
             'title' => 'required|string|max:255',
             'description' => 'nullable|string',
-            'thumbnail'
-            => 'nullable|image|mimes:jpg,jpeg,png|max:2048',
+            'thumbnail' => 'nullable|image|mimes:jpg,jpeg,png|max:2048',
         ]);
 
         $isSystemUser = $this->isSystemUser();
@@ -651,27 +685,27 @@ class ChapterController extends Controller
             $validated['module_id']
         );
 
-        if (!$program) {
+        if (! $program) {
 
             return response()->json([
                 'success' => false,
-                'message' => 'Program not found'
+                'message' => 'Program not found',
             ], 404);
         }
 
-        if (!$level) {
+        if (! $level) {
 
             return response()->json([
                 'success' => false,
-                'message' => 'Level not found'
+                'message' => 'Level not found',
             ], 404);
         }
 
-        if (!$module) {
+        if (! $module) {
 
             return response()->json([
                 'success' => false,
-                'message' => 'Module not found'
+                'message' => 'Module not found',
             ], 404);
         }
 
@@ -679,8 +713,7 @@ class ChapterController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message'
-                => 'Level does not belong to selected program'
+                'message' => 'Level does not belong to selected program',
             ], 422);
         }
 
@@ -691,8 +724,7 @@ class ChapterController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message'
-                => 'Module does not belong to selected level/program'
+                'message' => 'Module does not belong to selected level/program',
             ], 422);
         }
 
@@ -719,7 +751,7 @@ class ChapterController extends Controller
                 unlink(public_path($oldPath));
             }
 
-            if (!file_exists(public_path($this->uploadPath))) {
+            if (! file_exists(public_path($this->uploadPath))) {
 
                 mkdir(
                     public_path($this->uploadPath),
@@ -731,10 +763,10 @@ class ChapterController extends Controller
             $file = $request->file('thumbnail');
 
             $filename = time()
-                . '_'
-                . Str::random(10)
-                . '.'
-                . $file->getClientOriginalExtension();
+                .'_'
+                .Str::random(10)
+                .'.'
+                .$file->getClientOriginalExtension();
 
             $file->move(
                 public_path($this->uploadPath),
@@ -742,7 +774,7 @@ class ChapterController extends Controller
             );
 
             $validated['thumbnail']
-                = $this->uploadPath . $filename;
+                = $this->uploadPath.$filename;
         }
 
         /*
@@ -752,17 +784,13 @@ class ChapterController extends Controller
         */
 
         $updateData = [
-            'program_id'
-            => $validated['program_id'],
+            'program_id' => $validated['program_id'],
 
-            'level_id'
-            => $validated['level_id'],
+            'level_id' => $validated['level_id'],
 
-            'module_id'
-            => $validated['module_id'],
+            'module_id' => $validated['module_id'],
 
-            'thumbnail'
-            => $validated['thumbnail']
+            'thumbnail' => $validated['thumbnail']
                 ?? $chapter->getRawOriginal(
                     'thumbnail'
                 ),
@@ -827,13 +855,12 @@ class ChapterController extends Controller
 
             $chapter->translations()->updateOrCreate(
                 [
-                    'language_code' => $lang
+                    'language_code' => $lang,
                 ],
                 [
                     'title' => $validated['title'],
 
-                    'description'
-                    => $validated['description']
+                    'description' => $validated['description']
                         ?? null,
                 ]
             );
@@ -844,12 +871,12 @@ class ChapterController extends Controller
             'program:id,title',
             'level:id,title',
             'module:id,title',
-            'translations'
+            'translations',
         ]);
 
         return response()->json([
             'success' => true,
-            'data' => $chapter
+            'data' => $chapter,
         ]);
     }
 
@@ -879,7 +906,7 @@ class ChapterController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Deleted'
+            'message' => 'Deleted',
         ]);
     }
 
@@ -891,19 +918,18 @@ class ChapterController extends Controller
 
     public function toggleStatus($id)
     {
-        if (!$this->isSystemUser()) {
+        if (! $this->isSystemUser()) {
 
             return response()->json([
                 'success' => false,
-                'message'
-                => 'Only system users can change status'
+                'message' => 'Only system users can change status',
             ], 403);
         }
 
         $chapter = Chapter::findOrFail($id);
 
         $chapter->update([
-            'status' => !$chapter->status
+            'status' => ! $chapter->status,
         ]);
 
         return response()->json([
@@ -911,7 +937,7 @@ class ChapterController extends Controller
             'data' => [
                 'id' => $chapter->id,
                 'status' => (bool) $chapter->status,
-            ]
+            ],
         ]);
     }
 
@@ -926,20 +952,19 @@ class ChapterController extends Controller
         $id
     ) {
 
-        if (!$this->isSystemUser()) {
+        if (! $this->isSystemUser()) {
 
             return response()->json([
                 'success' => false,
-                'message'
-                => 'Only system users can change publish status'
+                'message' => 'Only system users can change publish status',
             ], 403);
         }
 
         $validated = $request->validate([
             'publish_status' => [
                 'required',
-                'in:draft,published,unpublished'
-            ]
+                'in:draft,published,unpublished',
+            ],
         ]);
 
         $chapter = Chapter::findOrFail($id);
@@ -951,8 +976,7 @@ class ChapterController extends Controller
     */
 
         $updateData = [
-            'publish_status'
-            => $validated['publish_status']
+            'publish_status' => $validated['publish_status'],
         ];
 
         /*
@@ -984,12 +1008,10 @@ class ChapterController extends Controller
             'data' => [
                 'id' => $chapter->id,
 
-                'status'
-                => (bool) $chapter->status,
+                'status' => (bool) $chapter->status,
 
-                'publish_status'
-                => $chapter->publish_status
-            ]
+                'publish_status' => $chapter->publish_status,
+            ],
         ]);
     }
 }

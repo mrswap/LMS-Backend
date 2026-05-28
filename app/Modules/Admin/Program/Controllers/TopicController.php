@@ -3,11 +3,11 @@
 namespace App\Modules\Admin\Program\Controllers;
 
 use App\Http\Controllers\Controller;
-use App\Models\Topic;
-use App\Models\Program;
+use App\Models\Chapter;
 use App\Models\Level;
 use App\Models\Module;
-use App\Models\Chapter;
+use App\Models\Program;
+use App\Models\Topic;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 
@@ -57,7 +57,7 @@ class TopicController extends Controller
             'level:id,title',
             'module:id,title',
             'chapter:id,title',
-            'translations'
+            'translations',
         ]);
 
         /*
@@ -68,11 +68,11 @@ class TopicController extends Controller
 
         if ($request->filled('program_id')) {
 
-            if (!Program::find($request->program_id)) {
+            if (! Program::find($request->program_id)) {
 
                 return response()->json([
                     'success' => false,
-                    'message' => 'Program not found'
+                    'message' => 'Program not found',
                 ], 404);
             }
 
@@ -84,11 +84,11 @@ class TopicController extends Controller
 
         if ($request->filled('level_id')) {
 
-            if (!Level::find($request->level_id)) {
+            if (! Level::find($request->level_id)) {
 
                 return response()->json([
                     'success' => false,
-                    'message' => 'Level not found'
+                    'message' => 'Level not found',
                 ], 404);
             }
 
@@ -100,11 +100,11 @@ class TopicController extends Controller
 
         if ($request->filled('module_id')) {
 
-            if (!Module::find($request->module_id)) {
+            if (! Module::find($request->module_id)) {
 
                 return response()->json([
                     'success' => false,
-                    'message' => 'Module not found'
+                    'message' => 'Module not found',
                 ], 404);
             }
 
@@ -116,11 +116,11 @@ class TopicController extends Controller
 
         if ($request->filled('chapter_id')) {
 
-            if (!Chapter::find($request->chapter_id)) {
+            if (! Chapter::find($request->chapter_id)) {
 
                 return response()->json([
                     'success' => false,
-                    'message' => 'Chapter not found'
+                    'message' => 'Chapter not found',
                 ], 404);
             }
 
@@ -130,6 +130,59 @@ class TopicController extends Controller
             );
         }
 
+        /*
+        |--------------------------------------------------------------------------
+        | FILTER: STATUS
+        |--------------------------------------------------------------------------
+        */
+
+        if (
+            $request->has('status') &&
+            $request->status !== 'all'
+        ) {
+
+            $status = (int) $request->status;
+
+            if (in_array($status, [0, 1], true)) {
+
+                $query->where(
+                    'status',
+                    $status
+                );
+            }
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | FILTER: PUBLISH STATUS
+        |--------------------------------------------------------------------------
+        */
+
+        if (
+            $request->filled('publish_status') &&
+            $request->publish_status !== 'all'
+        ) {
+
+            $allowedPublishStatuses = [
+                Topic::PUBLISH_DRAFT,
+                Topic::PUBLISH_PUBLISHED,
+                Topic::PUBLISH_UNPUBLISHED,
+            ];
+
+            if (
+                in_array(
+                    $request->publish_status,
+                    $allowedPublishStatuses,
+                    true
+                )
+            ) {
+
+                $query->where(
+                    'publish_status',
+                    $request->publish_status
+                );
+            }
+        }
         /*
         |--------------------------------------------------------------------------
         | SEARCH
@@ -209,7 +262,7 @@ class TopicController extends Controller
 
         if (
             $lang === 'en'
-            && !$request->filled('search')
+            && ! $request->filled('search')
         ) {
 
             $query->where(
@@ -218,7 +271,6 @@ class TopicController extends Controller
                 'BASE_RECORD'
             );
         }
-
 
         /*
         |--------------------------------------------------------------------------
@@ -279,11 +331,9 @@ class TopicController extends Controller
                         'title' => $topic->title,
                         'description' => $topic->description,
                         'thumbnail' => $topic->thumbnail,
-                        'estimated_duration'
-                        => $topic->estimated_duration,
+                        'estimated_duration' => $topic->estimated_duration,
                         'status' => (bool) $topic->status,
-                        'publish_status'
-                        => $topic->publish_status,
+                        'publish_status' => $topic->publish_status,
                         'program' => $topic->program,
                         'level' => $topic->level,
                         'module' => $topic->module,
@@ -297,7 +347,7 @@ class TopicController extends Controller
                     ->where('language_code', $lang)
                     ->first();
 
-                if (!$translation) {
+                if (! $translation) {
                     return null;
                 }
 
@@ -306,14 +356,11 @@ class TopicController extends Controller
                     'translation_id' => $translation->id,
                     'language_code' => $lang,
                     'title' => $translation->title,
-                    'description'
-                    => $translation->description,
+                    'description' => $translation->description,
                     'thumbnail' => $topic->thumbnail,
-                    'estimated_duration'
-                    => $topic->estimated_duration,
+                    'estimated_duration' => $topic->estimated_duration,
                     'status' => (bool) $topic->status,
-                    'publish_status'
-                    => $topic->publish_status,
+                    'publish_status' => $topic->publish_status,
                     'program' => $topic->program,
                     'level' => $topic->level,
                     'module' => $topic->module,
@@ -332,7 +379,7 @@ class TopicController extends Controller
 
         return response()->json([
             'success' => true,
-            'data' => $topics
+            'data' => $topics,
         ]);
     }
 
@@ -353,10 +400,8 @@ class TopicController extends Controller
             'chapter_id' => 'required|integer',
             'title' => 'required|string|max:255',
             'description' => 'nullable|string',
-            'estimated_duration'
-            => 'nullable|integer|min:1',
-            'thumbnail'
-            => 'nullable|image|mimes:jpg,jpeg,png|max:2048',
+            'estimated_duration' => 'nullable|integer|min:1',
+            'thumbnail' => 'nullable|image|mimes:jpg,jpeg,png|max:2048',
         ]);
 
         $isSystemUser = $this->isSystemUser();
@@ -383,35 +428,35 @@ class TopicController extends Controller
             $validated['chapter_id']
         );
 
-        if (!$program) {
+        if (! $program) {
 
             return response()->json([
                 'success' => false,
-                'message' => 'Program not found'
+                'message' => 'Program not found',
             ], 404);
         }
 
-        if (!$level) {
+        if (! $level) {
 
             return response()->json([
                 'success' => false,
-                'message' => 'Level not found'
+                'message' => 'Level not found',
             ], 404);
         }
 
-        if (!$module) {
+        if (! $module) {
 
             return response()->json([
                 'success' => false,
-                'message' => 'Module not found'
+                'message' => 'Module not found',
             ], 404);
         }
 
-        if (!$chapter) {
+        if (! $chapter) {
 
             return response()->json([
                 'success' => false,
-                'message' => 'Chapter not found'
+                'message' => 'Chapter not found',
             ], 404);
         }
 
@@ -419,8 +464,7 @@ class TopicController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message'
-                => 'Level does not belong to selected program'
+                'message' => 'Level does not belong to selected program',
             ], 422);
         }
 
@@ -431,8 +475,7 @@ class TopicController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message'
-                => 'Module does not belong to selected level/program'
+                'message' => 'Module does not belong to selected level/program',
             ], 422);
         }
 
@@ -444,8 +487,7 @@ class TopicController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message'
-                => 'Chapter does not belong to selected hierarchy'
+                'message' => 'Chapter does not belong to selected hierarchy',
             ], 422);
         }
 
@@ -460,7 +502,7 @@ class TopicController extends Controller
             && $request->file('thumbnail')->isValid()
         ) {
 
-            if (!file_exists(public_path($this->uploadPath))) {
+            if (! file_exists(public_path($this->uploadPath))) {
 
                 mkdir(
                     public_path($this->uploadPath),
@@ -472,10 +514,10 @@ class TopicController extends Controller
             $file = $request->file('thumbnail');
 
             $filename = time()
-                . '_'
-                . Str::random(10)
-                . '.'
-                . $file->getClientOriginalExtension();
+                .'_'
+                .Str::random(10)
+                .'.'
+                .$file->getClientOriginalExtension();
 
             $file->move(
                 public_path($this->uploadPath),
@@ -483,7 +525,7 @@ class TopicController extends Controller
             );
 
             $validated['thumbnail']
-                = $this->uploadPath . $filename;
+                = $this->uploadPath.$filename;
         }
 
         /*
@@ -515,48 +557,39 @@ class TopicController extends Controller
 
                 'status' => $defaultStatus,
 
-                'publish_status'
-                => $defaultPublishStatus,
+                'publish_status' => $defaultPublishStatus,
             ]);
         } else {
 
             $topic = Topic::create([
-                'program_id'
-                => $validated['program_id'],
+                'program_id' => $validated['program_id'],
 
-                'level_id'
-                => $validated['level_id'],
+                'level_id' => $validated['level_id'],
 
-                'module_id'
-                => $validated['module_id'],
+                'module_id' => $validated['module_id'],
 
-                'chapter_id'
-                => $validated['chapter_id'],
+                'chapter_id' => $validated['chapter_id'],
 
                 'title' => 'BASE_RECORD',
 
                 'description' => null,
 
-                'thumbnail'
-                => $validated['thumbnail'] ?? null,
+                'thumbnail' => $validated['thumbnail'] ?? null,
 
-                'estimated_duration'
-                => $validated['estimated_duration']
+                'estimated_duration' => $validated['estimated_duration']
                     ?? null,
 
                 'created_by' => auth()->id(),
 
                 'status' => $defaultStatus,
 
-                'publish_status'
-                => $defaultPublishStatus,
+                'publish_status' => $defaultPublishStatus,
             ]);
 
             $topic->translations()->create([
                 'language_code' => $lang,
                 'title' => $validated['title'],
-                'description'
-                => $validated['description'] ?? null,
+                'description' => $validated['description'] ?? null,
             ]);
         }
 
@@ -566,12 +599,12 @@ class TopicController extends Controller
             'level:id,title',
             'module:id,title',
             'chapter:id,title',
-            'translations'
+            'translations',
         ]);
 
         return response()->json([
             'success' => true,
-            'data' => $topic
+            'data' => $topic,
         ], 201);
     }
 
@@ -591,7 +624,7 @@ class TopicController extends Controller
             'level:id,title',
             'module:id,title',
             'chapter:id,title',
-            'translations'
+            'translations',
         ])->findOrFail($id);
 
         /*
@@ -601,9 +634,9 @@ class TopicController extends Controller
         */
 
         if (
-            !$this->isSystemUser()
+            ! $this->isSystemUser()
             && (
-                !$topic->status
+                ! $topic->status
                 || $topic->publish_status
                 !== Topic::PUBLISH_PUBLISHED
             )
@@ -611,7 +644,7 @@ class TopicController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Topic not available'
+                'message' => 'Topic not available',
             ], 404);
         }
 
@@ -621,8 +654,7 @@ class TopicController extends Controller
 
                 return response()->json([
                     'success' => false,
-                    'message'
-                    => 'English content not available'
+                    'message' => 'English content not available',
                 ], 404);
             }
 
@@ -634,17 +666,15 @@ class TopicController extends Controller
                     'title' => $topic->title,
                     'description' => $topic->description,
                     'thumbnail' => $topic->thumbnail,
-                    'estimated_duration'
-                    => $topic->estimated_duration,
+                    'estimated_duration' => $topic->estimated_duration,
                     'status' => (bool) $topic->status,
-                    'publish_status'
-                    => $topic->publish_status,
+                    'publish_status' => $topic->publish_status,
                     'program' => $topic->program,
                     'level' => $topic->level,
                     'module' => $topic->module,
                     'chapter' => $topic->chapter,
                     'creator' => $topic->creator,
-                ]
+                ],
             ]);
         }
 
@@ -652,12 +682,11 @@ class TopicController extends Controller
             ->where('language_code', $lang)
             ->first();
 
-        if (!$translation) {
+        if (! $translation) {
 
             return response()->json([
                 'success' => false,
-                'message'
-                => 'Translation not available'
+                'message' => 'Translation not available',
             ], 404);
         }
 
@@ -668,20 +697,17 @@ class TopicController extends Controller
                 'translation_id' => $translation->id,
                 'language_code' => $lang,
                 'title' => $translation->title,
-                'description'
-                => $translation->description,
+                'description' => $translation->description,
                 'thumbnail' => $topic->thumbnail,
-                'estimated_duration'
-                => $topic->estimated_duration,
+                'estimated_duration' => $topic->estimated_duration,
                 'status' => (bool) $topic->status,
-                'publish_status'
-                => $topic->publish_status,
+                'publish_status' => $topic->publish_status,
                 'program' => $topic->program,
                 'level' => $topic->level,
                 'module' => $topic->module,
                 'chapter' => $topic->chapter,
                 'creator' => $topic->creator,
-            ]
+            ],
         ]);
     }
 
@@ -705,10 +731,8 @@ class TopicController extends Controller
             'chapter_id' => 'required|integer',
             'title' => 'required|string|max:255',
             'description' => 'nullable|string',
-            'estimated_duration'
-            => 'nullable|integer|min:1',
-            'thumbnail'
-            => 'nullable|image|mimes:jpg,jpeg,png|max:2048',
+            'estimated_duration' => 'nullable|integer|min:1',
+            'thumbnail' => 'nullable|image|mimes:jpg,jpeg,png|max:2048',
         ]);
 
         $isSystemUser = $this->isSystemUser();
@@ -735,35 +759,35 @@ class TopicController extends Controller
             $validated['chapter_id']
         );
 
-        if (!$program) {
+        if (! $program) {
 
             return response()->json([
                 'success' => false,
-                'message' => 'Program not found'
+                'message' => 'Program not found',
             ], 404);
         }
 
-        if (!$level) {
+        if (! $level) {
 
             return response()->json([
                 'success' => false,
-                'message' => 'Level not found'
+                'message' => 'Level not found',
             ], 404);
         }
 
-        if (!$module) {
+        if (! $module) {
 
             return response()->json([
                 'success' => false,
-                'message' => 'Module not found'
+                'message' => 'Module not found',
             ], 404);
         }
 
-        if (!$chapter) {
+        if (! $chapter) {
 
             return response()->json([
                 'success' => false,
-                'message' => 'Chapter not found'
+                'message' => 'Chapter not found',
             ], 404);
         }
 
@@ -771,8 +795,7 @@ class TopicController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message'
-                => 'Level does not belong to selected program'
+                'message' => 'Level does not belong to selected program',
             ], 422);
         }
 
@@ -783,8 +806,7 @@ class TopicController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message'
-                => 'Module does not belong to selected level/program'
+                'message' => 'Module does not belong to selected level/program',
             ], 422);
         }
 
@@ -796,8 +818,7 @@ class TopicController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message'
-                => 'Chapter does not belong to selected hierarchy'
+                'message' => 'Chapter does not belong to selected hierarchy',
             ], 422);
         }
 
@@ -824,7 +845,7 @@ class TopicController extends Controller
                 unlink(public_path($oldPath));
             }
 
-            if (!file_exists(public_path($this->uploadPath))) {
+            if (! file_exists(public_path($this->uploadPath))) {
 
                 mkdir(
                     public_path($this->uploadPath),
@@ -836,10 +857,10 @@ class TopicController extends Controller
             $file = $request->file('thumbnail');
 
             $filename = time()
-                . '_'
-                . Str::random(10)
-                . '.'
-                . $file->getClientOriginalExtension();
+                .'_'
+                .Str::random(10)
+                .'.'
+                .$file->getClientOriginalExtension();
 
             $file->move(
                 public_path($this->uploadPath),
@@ -847,7 +868,7 @@ class TopicController extends Controller
             );
 
             $validated['thumbnail']
-                = $this->uploadPath . $filename;
+                = $this->uploadPath.$filename;
         }
 
         /*
@@ -857,24 +878,18 @@ class TopicController extends Controller
         */
 
         $updateData = [
-            'program_id'
-            => $validated['program_id'],
+            'program_id' => $validated['program_id'],
 
-            'level_id'
-            => $validated['level_id'],
+            'level_id' => $validated['level_id'],
 
-            'module_id'
-            => $validated['module_id'],
+            'module_id' => $validated['module_id'],
 
-            'chapter_id'
-            => $validated['chapter_id'],
+            'chapter_id' => $validated['chapter_id'],
 
-            'estimated_duration'
-            => $validated['estimated_duration']
+            'estimated_duration' => $validated['estimated_duration']
                 ?? $topic->estimated_duration,
 
-            'thumbnail'
-            => $validated['thumbnail']
+            'thumbnail' => $validated['thumbnail']
                 ?? $topic->getRawOriginal(
                     'thumbnail'
                 ),
@@ -939,13 +954,12 @@ class TopicController extends Controller
 
             $topic->translations()->updateOrCreate(
                 [
-                    'language_code' => $lang
+                    'language_code' => $lang,
                 ],
                 [
                     'title' => $validated['title'],
 
-                    'description'
-                    => $validated['description']
+                    'description' => $validated['description']
                         ?? null,
                 ]
             );
@@ -957,12 +971,12 @@ class TopicController extends Controller
             'level:id,title',
             'module:id,title',
             'chapter:id,title',
-            'translations'
+            'translations',
         ]);
 
         return response()->json([
             'success' => true,
-            'data' => $topic
+            'data' => $topic,
         ]);
     }
 
@@ -992,7 +1006,7 @@ class TopicController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Deleted'
+            'message' => 'Deleted',
         ]);
     }
 
@@ -1004,19 +1018,18 @@ class TopicController extends Controller
 
     public function toggleStatus($id)
     {
-        if (!$this->isSystemUser()) {
+        if (! $this->isSystemUser()) {
 
             return response()->json([
                 'success' => false,
-                'message'
-                => 'Only system users can change status'
+                'message' => 'Only system users can change status',
             ], 403);
         }
 
         $topic = Topic::findOrFail($id);
 
         $topic->update([
-            'status' => !$topic->status
+            'status' => ! $topic->status,
         ]);
 
         return response()->json([
@@ -1024,7 +1037,7 @@ class TopicController extends Controller
             'data' => [
                 'id' => $topic->id,
                 'status' => (bool) $topic->status,
-            ]
+            ],
         ]);
     }
 
@@ -1039,20 +1052,19 @@ class TopicController extends Controller
         $id
     ) {
 
-        if (!$this->isSystemUser()) {
+        if (! $this->isSystemUser()) {
 
             return response()->json([
                 'success' => false,
-                'message'
-                => 'Only system users can change publish status'
+                'message' => 'Only system users can change publish status',
             ], 403);
         }
 
         $validated = $request->validate([
             'publish_status' => [
                 'required',
-                'in:draft,published,unpublished'
-            ]
+                'in:draft,published,unpublished',
+            ],
         ]);
 
         $topic = Topic::findOrFail($id);
@@ -1064,8 +1076,7 @@ class TopicController extends Controller
     */
 
         $updateData = [
-            'publish_status'
-            => $validated['publish_status']
+            'publish_status' => $validated['publish_status'],
         ];
 
         /*
@@ -1097,12 +1108,10 @@ class TopicController extends Controller
             'data' => [
                 'id' => $topic->id,
 
-                'status'
-                => (bool) $topic->status,
+                'status' => (bool) $topic->status,
 
-                'publish_status'
-                => $topic->publish_status
-            ]
+                'publish_status' => $topic->publish_status,
+            ],
         ]);
     }
 }

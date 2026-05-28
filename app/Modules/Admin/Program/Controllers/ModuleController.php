@@ -3,9 +3,9 @@
 namespace App\Modules\Admin\Program\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Models\Level;
 use App\Models\Module;
 use App\Models\Program;
-use App\Models\Level;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 
@@ -53,7 +53,7 @@ class ModuleController extends Controller
             'creator:id,name',
             'program:id,title',
             'level:id,title',
-            'translations'
+            'translations',
         ]);
 
         /*
@@ -64,11 +64,11 @@ class ModuleController extends Controller
 
         if ($request->filled('program_id')) {
 
-            if (!Program::find($request->program_id)) {
+            if (! Program::find($request->program_id)) {
 
                 return response()->json([
                     'success' => false,
-                    'message' => 'Program not found'
+                    'message' => 'Program not found',
                 ], 404);
             }
 
@@ -80,11 +80,11 @@ class ModuleController extends Controller
 
         if ($request->filled('level_id')) {
 
-            if (!Level::find($request->level_id)) {
+            if (! Level::find($request->level_id)) {
 
                 return response()->json([
                     'success' => false,
-                    'message' => 'Level not found'
+                    'message' => 'Level not found',
                 ], 404);
             }
 
@@ -94,6 +94,59 @@ class ModuleController extends Controller
             );
         }
 
+        /*
+        |--------------------------------------------------------------------------
+        | FILTER: STATUS
+        |--------------------------------------------------------------------------
+        */
+
+        if (
+            $request->has('status') &&
+            $request->status !== 'all'
+        ) {
+
+            $status = (int) $request->status;
+
+            if (in_array($status, [0, 1], true)) {
+
+                $query->where(
+                    'status',
+                    $status
+                );
+            }
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | FILTER: PUBLISH STATUS
+        |--------------------------------------------------------------------------
+        */
+
+        if (
+            $request->filled('publish_status') &&
+            $request->publish_status !== 'all'
+        ) {
+
+            $allowedPublishStatuses = [
+                Module::PUBLISH_DRAFT,
+                Module::PUBLISH_PUBLISHED,
+                Module::PUBLISH_UNPUBLISHED,
+            ];
+
+            if (
+                in_array(
+                    $request->publish_status,
+                    $allowedPublishStatuses,
+                    true
+                )
+            ) {
+
+                $query->where(
+                    'publish_status',
+                    $request->publish_status
+                );
+            }
+        }
         /*
         |--------------------------------------------------------------------------
         | SEARCH
@@ -157,7 +210,7 @@ class ModuleController extends Controller
 
         if (
             $lang === 'en'
-            && !$request->filled('search')
+            && ! $request->filled('search')
         ) {
 
             $query->where(
@@ -166,7 +219,6 @@ class ModuleController extends Controller
                 'BASE_RECORD'
             );
         }
-
 
         /*
         |--------------------------------------------------------------------------
@@ -239,7 +291,7 @@ class ModuleController extends Controller
                     ->where('language_code', $lang)
                     ->first();
 
-                if (!$translation) {
+                if (! $translation) {
                     return null;
                 }
 
@@ -268,7 +320,7 @@ class ModuleController extends Controller
 
         return response()->json([
             'success' => true,
-            'data' => $modules
+            'data' => $modules,
         ]);
     }
 
@@ -287,8 +339,7 @@ class ModuleController extends Controller
             'level_id' => 'required|integer',
             'title' => 'required|string|max:255',
             'description' => 'nullable|string',
-            'thumbnail'
-            => 'nullable|image|mimes:jpg,jpeg,png|max:2048',
+            'thumbnail' => 'nullable|image|mimes:jpg,jpeg,png|max:2048',
         ]);
 
         $isSystemUser = $this->isSystemUser();
@@ -303,11 +354,11 @@ class ModuleController extends Controller
             $validated['program_id']
         );
 
-        if (!$program) {
+        if (! $program) {
 
             return response()->json([
                 'success' => false,
-                'message' => 'Program not found'
+                'message' => 'Program not found',
             ], 404);
         }
 
@@ -315,11 +366,11 @@ class ModuleController extends Controller
             $validated['level_id']
         );
 
-        if (!$level) {
+        if (! $level) {
 
             return response()->json([
                 'success' => false,
-                'message' => 'Level not found'
+                'message' => 'Level not found',
             ], 404);
         }
 
@@ -327,8 +378,7 @@ class ModuleController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message'
-                => 'Level does not belong to selected program'
+                'message' => 'Level does not belong to selected program',
             ], 422);
         }
 
@@ -343,7 +393,7 @@ class ModuleController extends Controller
             && $request->file('thumbnail')->isValid()
         ) {
 
-            if (!file_exists(public_path($this->uploadPath))) {
+            if (! file_exists(public_path($this->uploadPath))) {
 
                 mkdir(
                     public_path($this->uploadPath),
@@ -355,10 +405,10 @@ class ModuleController extends Controller
             $file = $request->file('thumbnail');
 
             $filename = time()
-                . '_'
-                . Str::random(10)
-                . '.'
-                . $file->getClientOriginalExtension();
+                .'_'
+                .Str::random(10)
+                .'.'
+                .$file->getClientOriginalExtension();
 
             $file->move(
                 public_path($this->uploadPath),
@@ -366,7 +416,7 @@ class ModuleController extends Controller
             );
 
             $validated['thumbnail']
-                = $this->uploadPath . $filename;
+                = $this->uploadPath.$filename;
         }
 
         /*
@@ -398,38 +448,32 @@ class ModuleController extends Controller
 
                 'status' => $defaultStatus,
 
-                'publish_status'
-                => $defaultPublishStatus,
+                'publish_status' => $defaultPublishStatus,
             ]);
         } else {
 
             $module = Module::create([
-                'program_id'
-                => $validated['program_id'],
+                'program_id' => $validated['program_id'],
 
-                'level_id'
-                => $validated['level_id'],
+                'level_id' => $validated['level_id'],
 
                 'title' => 'BASE_RECORD',
 
                 'description' => null,
 
-                'thumbnail'
-                => $validated['thumbnail'] ?? null,
+                'thumbnail' => $validated['thumbnail'] ?? null,
 
                 'created_by' => auth()->id(),
 
                 'status' => $defaultStatus,
 
-                'publish_status'
-                => $defaultPublishStatus,
+                'publish_status' => $defaultPublishStatus,
             ]);
 
             $module->translations()->create([
                 'language_code' => $lang,
                 'title' => $validated['title'],
-                'description'
-                => $validated['description'] ?? null,
+                'description' => $validated['description'] ?? null,
             ]);
         }
 
@@ -437,12 +481,12 @@ class ModuleController extends Controller
             'creator:id,name',
             'program:id,title',
             'level:id,title',
-            'translations'
+            'translations',
         ]);
 
         return response()->json([
             'success' => true,
-            'data' => $module
+            'data' => $module,
         ], 201);
     }
 
@@ -460,7 +504,7 @@ class ModuleController extends Controller
             'creator:id,name',
             'program:id,title',
             'level:id,title',
-            'translations'
+            'translations',
         ])->findOrFail($id);
 
         /*
@@ -470,9 +514,9 @@ class ModuleController extends Controller
         */
 
         if (
-            !$this->isSystemUser()
+            ! $this->isSystemUser()
             && (
-                !$module->status
+                ! $module->status
                 || $module->publish_status
                 !== Module::PUBLISH_PUBLISHED
             )
@@ -480,7 +524,7 @@ class ModuleController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Module not available'
+                'message' => 'Module not available',
             ], 404);
         }
 
@@ -490,8 +534,7 @@ class ModuleController extends Controller
 
                 return response()->json([
                     'success' => false,
-                    'message'
-                    => 'English content not available'
+                    'message' => 'English content not available',
                 ], 404);
             }
 
@@ -501,17 +544,14 @@ class ModuleController extends Controller
                     'id' => $module->id,
                     'language_code' => 'en',
                     'title' => $module->title,
-                    'description'
-                    => $module->description,
+                    'description' => $module->description,
                     'thumbnail' => $module->thumbnail,
-                    'status'
-                    => (bool) $module->status,
-                    'publish_status'
-                    => $module->publish_status,
+                    'status' => (bool) $module->status,
+                    'publish_status' => $module->publish_status,
                     'program' => $module->program,
                     'level' => $module->level,
                     'creator' => $module->creator,
-                ]
+                ],
             ]);
         }
 
@@ -519,12 +559,11 @@ class ModuleController extends Controller
             ->where('language_code', $lang)
             ->first();
 
-        if (!$translation) {
+        if (! $translation) {
 
             return response()->json([
                 'success' => false,
-                'message'
-                => 'Translation not available'
+                'message' => 'Translation not available',
             ], 404);
         }
 
@@ -535,16 +574,14 @@ class ModuleController extends Controller
                 'translation_id' => $translation->id,
                 'language_code' => $lang,
                 'title' => $translation->title,
-                'description'
-                => $translation->description,
+                'description' => $translation->description,
                 'thumbnail' => $module->thumbnail,
                 'status' => (bool) $module->status,
-                'publish_status'
-                => $module->publish_status,
+                'publish_status' => $module->publish_status,
                 'program' => $module->program,
                 'level' => $module->level,
                 'creator' => $module->creator,
-            ]
+            ],
         ]);
     }
 
@@ -566,8 +603,7 @@ class ModuleController extends Controller
             'level_id' => 'required|integer',
             'title' => 'required|string|max:255',
             'description' => 'nullable|string',
-            'thumbnail'
-            => 'nullable|image|mimes:jpg,jpeg,png|max:2048',
+            'thumbnail' => 'nullable|image|mimes:jpg,jpeg,png|max:2048',
         ]);
 
         $isSystemUser = $this->isSystemUser();
@@ -582,11 +618,11 @@ class ModuleController extends Controller
             $validated['program_id']
         );
 
-        if (!$program) {
+        if (! $program) {
 
             return response()->json([
                 'success' => false,
-                'message' => 'Program not found'
+                'message' => 'Program not found',
             ], 404);
         }
 
@@ -594,11 +630,11 @@ class ModuleController extends Controller
             $validated['level_id']
         );
 
-        if (!$level) {
+        if (! $level) {
 
             return response()->json([
                 'success' => false,
-                'message' => 'Level not found'
+                'message' => 'Level not found',
             ], 404);
         }
 
@@ -606,8 +642,7 @@ class ModuleController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message'
-                => 'Level does not belong to selected program'
+                'message' => 'Level does not belong to selected program',
             ], 422);
         }
 
@@ -634,7 +669,7 @@ class ModuleController extends Controller
                 unlink(public_path($oldPath));
             }
 
-            if (!file_exists(public_path($this->uploadPath))) {
+            if (! file_exists(public_path($this->uploadPath))) {
 
                 mkdir(
                     public_path($this->uploadPath),
@@ -646,10 +681,10 @@ class ModuleController extends Controller
             $file = $request->file('thumbnail');
 
             $filename = time()
-                . '_'
-                . Str::random(10)
-                . '.'
-                . $file->getClientOriginalExtension();
+                .'_'
+                .Str::random(10)
+                .'.'
+                .$file->getClientOriginalExtension();
 
             $file->move(
                 public_path($this->uploadPath),
@@ -657,7 +692,7 @@ class ModuleController extends Controller
             );
 
             $validated['thumbnail']
-                = $this->uploadPath . $filename;
+                = $this->uploadPath.$filename;
         }
 
         /*
@@ -667,14 +702,11 @@ class ModuleController extends Controller
         */
 
         $updateData = [
-            'program_id'
-            => $validated['program_id'],
+            'program_id' => $validated['program_id'],
 
-            'level_id'
-            => $validated['level_id'],
+            'level_id' => $validated['level_id'],
 
-            'thumbnail'
-            => $validated['thumbnail']
+            'thumbnail' => $validated['thumbnail']
                 ?? $module->getRawOriginal(
                     'thumbnail'
                 ),
@@ -739,13 +771,12 @@ class ModuleController extends Controller
 
             $module->translations()->updateOrCreate(
                 [
-                    'language_code' => $lang
+                    'language_code' => $lang,
                 ],
                 [
                     'title' => $validated['title'],
 
-                    'description'
-                    => $validated['description']
+                    'description' => $validated['description']
                         ?? null,
                 ]
             );
@@ -755,12 +786,12 @@ class ModuleController extends Controller
             'creator:id,name',
             'program:id,title',
             'level:id,title',
-            'translations'
+            'translations',
         ]);
 
         return response()->json([
             'success' => true,
-            'data' => $module
+            'data' => $module,
         ]);
     }
 
@@ -790,7 +821,7 @@ class ModuleController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Deleted'
+            'message' => 'Deleted',
         ]);
     }
 
@@ -802,19 +833,18 @@ class ModuleController extends Controller
 
     public function toggleStatus($id)
     {
-        if (!$this->isSystemUser()) {
+        if (! $this->isSystemUser()) {
 
             return response()->json([
                 'success' => false,
-                'message'
-                => 'Only system users can change status'
+                'message' => 'Only system users can change status',
             ], 403);
         }
 
         $module = Module::findOrFail($id);
 
         $module->update([
-            'status' => !$module->status
+            'status' => ! $module->status,
         ]);
 
         return response()->json([
@@ -822,7 +852,7 @@ class ModuleController extends Controller
             'data' => [
                 'id' => $module->id,
                 'status' => (bool) $module->status,
-            ]
+            ],
         ]);
     }
 
@@ -832,26 +862,24 @@ class ModuleController extends Controller
     |--------------------------------------------------------------------------
     */
 
-
     public function updatePublishStatus(
         Request $request,
         $id
     ) {
 
-        if (!$this->isSystemUser()) {
+        if (! $this->isSystemUser()) {
 
             return response()->json([
                 'success' => false,
-                'message'
-                => 'Only system users can change publish status'
+                'message' => 'Only system users can change publish status',
             ], 403);
         }
 
         $validated = $request->validate([
             'publish_status' => [
                 'required',
-                'in:draft,published,unpublished'
-            ]
+                'in:draft,published,unpublished',
+            ],
         ]);
 
         $module = Module::findOrFail($id);
@@ -863,8 +891,7 @@ class ModuleController extends Controller
     */
 
         $updateData = [
-            'publish_status'
-            => $validated['publish_status']
+            'publish_status' => $validated['publish_status'],
         ];
 
         /*
@@ -896,12 +923,10 @@ class ModuleController extends Controller
             'data' => [
                 'id' => $module->id,
 
-                'status'
-                => (bool) $module->status,
+                'status' => (bool) $module->status,
 
-                'publish_status'
-                => $module->publish_status
-            ]
+                'publish_status' => $module->publish_status,
+            ],
         ]);
     }
 }

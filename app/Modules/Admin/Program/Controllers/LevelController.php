@@ -4,7 +4,6 @@ namespace App\Modules\Admin\Program\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Models\Level;
-use App\Models\LevelTranslation;
 use App\Models\Program;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -56,11 +55,11 @@ class LevelController extends Controller
 
         if ($request->filled('program_id')) {
 
-            if (!Program::find($request->program_id)) {
+            if (! Program::find($request->program_id)) {
 
                 return response()->json([
                     'success' => false,
-                    'message' => 'Program not found'
+                    'message' => 'Program not found',
                 ], 404);
             }
 
@@ -102,14 +101,66 @@ class LevelController extends Controller
                 );
             }
         }
+        /*
+        |--------------------------------------------------------------------------
+        | FILTER: STATUS
+        |--------------------------------------------------------------------------
+        */
 
+        if (
+            $request->has('status') &&
+            $request->status !== 'all'
+        ) {
+
+            $status = (int) $request->status;
+
+            if (in_array($status, [0, 1], true)) {
+
+                $query->where(
+                    'status',
+                    $status
+                );
+            }
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | FILTER: PUBLISH STATUS
+        |--------------------------------------------------------------------------
+        */
+
+        if (
+            $request->filled('publish_status') &&
+            $request->publish_status !== 'all'
+        ) {
+
+            $allowedPublishStatuses = [
+                Level::PUBLISH_DRAFT,
+                Level::PUBLISH_PUBLISHED,
+                Level::PUBLISH_UNPUBLISHED,
+            ];
+
+            if (
+                in_array(
+                    $request->publish_status,
+                    $allowedPublishStatuses,
+                    true
+                )
+            ) {
+
+                $query->where(
+                    'publish_status',
+                    $request->publish_status
+                );
+            }
+        }
         /*
         |--------------------------------------------------------------------------
         | BASE RECORD FILTER
         |--------------------------------------------------------------------------
         */
 
-        if ($lang === 'en' && !$request->filled('search')) {
+        if ($lang === 'en' && ! $request->filled('search')) {
 
             $query->where(
                 'title',
@@ -117,7 +168,6 @@ class LevelController extends Controller
                 'BASE_RECORD'
             );
         }
-
 
         /*
         |--------------------------------------------------------------------------
@@ -189,7 +239,7 @@ class LevelController extends Controller
                     ->where('language_code', $lang)
                     ->first();
 
-                if (!$translation) {
+                if (! $translation) {
                     return null;
                 }
 
@@ -217,7 +267,7 @@ class LevelController extends Controller
 
         return response()->json([
             'success' => true,
-            'data' => $levels
+            'data' => $levels,
         ]);
     }
 
@@ -261,7 +311,7 @@ class LevelController extends Controller
             && $request->file('thumbnail')->isValid()
         ) {
 
-            if (!file_exists(public_path($this->uploadPath))) {
+            if (! file_exists(public_path($this->uploadPath))) {
 
                 mkdir(
                     public_path($this->uploadPath),
@@ -273,10 +323,10 @@ class LevelController extends Controller
             $file = $request->file('thumbnail');
 
             $filename = time()
-                . '_'
-                . Str::random(10)
-                . '.'
-                . $file->getClientOriginalExtension();
+                .'_'
+                .Str::random(10)
+                .'.'
+                .$file->getClientOriginalExtension();
 
             $file->move(
                 public_path($this->uploadPath),
@@ -284,7 +334,7 @@ class LevelController extends Controller
             );
 
             $validated['thumbnail']
-                = $this->uploadPath . $filename;
+                = $this->uploadPath.$filename;
         }
 
         /*
@@ -314,8 +364,7 @@ class LevelController extends Controller
                 'program_id' => $validated['program_id'],
                 'title' => 'BASE_RECORD',
                 'description' => null,
-                'thumbnail'
-                => $validated['thumbnail'] ?? null,
+                'thumbnail' => $validated['thumbnail'] ?? null,
 
                 'created_by' => auth()->id(),
 
@@ -331,8 +380,7 @@ class LevelController extends Controller
             $level->translations()->create([
                 'language_code' => $lang,
                 'title' => $validated['title'],
-                'description'
-                => $validated['description'] ?? null,
+                'description' => $validated['description'] ?? null,
             ]);
         }
 
@@ -344,7 +392,7 @@ class LevelController extends Controller
 
         return response()->json([
             'success' => true,
-            'data' => $level
+            'data' => $level,
         ], 201);
     }
 
@@ -361,7 +409,7 @@ class LevelController extends Controller
         $level = Level::with([
             'creator:id,name',
             'program:id,title',
-            'translations'
+            'translations',
         ])->findOrFail($id);
 
         if ($lang === 'en') {
@@ -370,7 +418,7 @@ class LevelController extends Controller
 
                 return response()->json([
                     'success' => false,
-                    'message' => 'English content not available'
+                    'message' => 'English content not available',
                 ], 404);
             }
 
@@ -386,7 +434,7 @@ class LevelController extends Controller
                     'publish_status' => $level->publish_status,
                     'program' => $level->program,
                     'creator' => $level->creator,
-                ]
+                ],
             ]);
         }
 
@@ -394,11 +442,11 @@ class LevelController extends Controller
             ->where('language_code', $lang)
             ->first();
 
-        if (!$translation) {
+        if (! $translation) {
 
             return response()->json([
                 'success' => false,
-                'message' => 'Translation not available'
+                'message' => 'Translation not available',
             ], 404);
         }
 
@@ -415,7 +463,7 @@ class LevelController extends Controller
                 'publish_status' => $level->publish_status,
                 'program' => $level->program,
                 'creator' => $level->creator,
-            ]
+            ],
         ]);
     }
 
@@ -461,11 +509,11 @@ class LevelController extends Controller
             $validated['program_id']
         );
 
-        if (!$program) {
+        if (! $program) {
 
             return response()->json([
                 'success' => false,
-                'message' => 'Program not found'
+                'message' => 'Program not found',
             ], 404);
         }
 
@@ -491,7 +539,7 @@ class LevelController extends Controller
                 unlink(public_path($oldPath));
             }
 
-            if (!file_exists(public_path($this->uploadPath))) {
+            if (! file_exists(public_path($this->uploadPath))) {
 
                 mkdir(
                     public_path($this->uploadPath),
@@ -503,10 +551,10 @@ class LevelController extends Controller
             $file = $request->file('thumbnail');
 
             $filename = time()
-                . '_'
-                . Str::random(10)
-                . '.'
-                . $file->getClientOriginalExtension();
+                .'_'
+                .Str::random(10)
+                .'.'
+                .$file->getClientOriginalExtension();
 
             $file->move(
                 public_path($this->uploadPath),
@@ -514,7 +562,7 @@ class LevelController extends Controller
             );
 
             $validated['thumbnail']
-                = $this->uploadPath . $filename;
+                = $this->uploadPath.$filename;
         }
 
         /*
@@ -524,11 +572,9 @@ class LevelController extends Controller
         */
 
         $updateData = [
-            'program_id'
-            => $validated['program_id'],
+            'program_id' => $validated['program_id'],
 
-            'thumbnail'
-            => $validated['thumbnail']
+            'thumbnail' => $validated['thumbnail']
                 ?? $level->getRawOriginal('thumbnail'),
         ];
 
@@ -588,13 +634,12 @@ class LevelController extends Controller
 
             $level->translations()->updateOrCreate(
                 [
-                    'language_code' => $lang
+                    'language_code' => $lang,
                 ],
                 [
                     'title' => $validated['title'],
 
-                    'description'
-                    => $validated['description']
+                    'description' => $validated['description']
                         ?? null,
                 ]
             );
@@ -608,7 +653,7 @@ class LevelController extends Controller
 
         return response()->json([
             'success' => true,
-            'data' => $level
+            'data' => $level,
         ]);
     }
 
@@ -638,7 +683,7 @@ class LevelController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Deleted'
+            'message' => 'Deleted',
         ]);
     }
 
@@ -654,19 +699,18 @@ class LevelController extends Controller
 
         $user->loadMissing('role');
 
-        if (!(bool) $user?->role?->is_system) {
+        if (! (bool) $user?->role?->is_system) {
 
             return response()->json([
                 'success' => false,
-                'message'
-                => 'Only system users can change status'
+                'message' => 'Only system users can change status',
             ], 403);
         }
 
         $level = Level::findOrFail($id);
 
         $level->update([
-            'status' => !$level->status
+            'status' => ! $level->status,
         ]);
 
         return response()->json([
@@ -674,7 +718,7 @@ class LevelController extends Controller
             'data' => [
                 'id' => $level->id,
                 'status' => (bool) $level->status,
-            ]
+            ],
         ]);
     }
 
@@ -693,20 +737,19 @@ class LevelController extends Controller
 
         $user->loadMissing('role');
 
-        if (!(bool) $user?->role?->is_system) {
+        if (! (bool) $user?->role?->is_system) {
 
             return response()->json([
                 'success' => false,
-                'message'
-                => 'Only system users can change publish status'
+                'message' => 'Only system users can change publish status',
             ], 403);
         }
 
         $validated = $request->validate([
             'publish_status' => [
                 'required',
-                'in:draft,published,unpublished'
-            ]
+                'in:draft,published,unpublished',
+            ],
         ]);
 
         $level = Level::findOrFail($id);
@@ -718,8 +761,7 @@ class LevelController extends Controller
     */
 
         $updateData = [
-            'publish_status'
-            => $validated['publish_status']
+            'publish_status' => $validated['publish_status'],
         ];
 
         /*
@@ -751,12 +793,10 @@ class LevelController extends Controller
             'data' => [
                 'id' => $level->id,
 
-                'status'
-                => (bool) $level->status,
+                'status' => (bool) $level->status,
 
-                'publish_status'
-                => $level->publish_status
-            ]
+                'publish_status' => $level->publish_status,
+            ],
         ]);
     }
 }
