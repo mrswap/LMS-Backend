@@ -107,10 +107,12 @@ class ProgressionService
             | NEXT TOPIC
             |--------------------------------------------------------------------------
             */
-
-            $nextTopic = Topic::where('chapter_id', $topic->chapter_id)
-                ->where('order', '>', $topic->order)
-                ->orderBy('order')
+            $nextTopic = Topic::where(
+                'chapter_id',
+                $topic->chapter_id
+            )
+                ->where('id', '>', $topic->id)
+                ->orderBy('id')
                 ->first();
             /*
             |--------------------------------------------------------------------------
@@ -297,10 +299,12 @@ class ProgressionService
         | NEXT CHAPTER
         |--------------------------------------------------------------------------
         */
-
-        $nextChapter = Chapter::where('module_id', $chapter->module_id)
-            ->where('order', '>', $chapter->order)
-            ->orderBy('order')
+        $nextChapter = Chapter::where(
+            'module_id',
+            $chapter->module_id
+        )
+            ->where('id', '>', $chapter->id)
+            ->orderBy('id')
             ->first();
         /*
         |--------------------------------------------------------------------------
@@ -936,10 +940,14 @@ class ProgressionService
         Module $currentModule
     ) {
 
-        $nextModule = Module::where('level_id', $currentModule->level_id)
-            ->where('order', '>', $currentModule->order)
-            ->orderBy('order')
+        $nextModule = Module::where(
+            'level_id',
+            $currentModule->level_id
+        )
+            ->where('id', '>', $currentModule->id)
+            ->orderBy('id')
             ->first();
+
 
         if (! $nextModule) {
             return;
@@ -1144,10 +1152,17 @@ class ProgressionService
             return;
         }
 
-        $nextLevel = Level::where('program_id',  $currentLevel->program_id)
-            ->where('order', '>', $currentLevel->order)
-            ->orderBy('order')
+        
+        $nextLevel = Level::where(
+            'program_id',
+            $currentLevel->program_id
+        )
+            ->where('id', '>', $currentLevel->id)
+            ->orderBy('id')
             ->first();
+
+
+
         if (! $nextLevel) {
             return;
         }
