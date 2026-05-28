@@ -77,7 +77,7 @@ class Assessment extends BaseModel
     }
 
 
-        public function getFileAttribute($value)
+    public function getFileAttribute($value)
     {
         if (empty($value)) {
             return url('public/uploads/logo.png');
@@ -175,5 +175,17 @@ class Assessment extends BaseModel
     public function isCaseBased()
     {
         return in_array($this->type, ['chapter', 'module']);
+    }
+
+    public function getQuestionLimitAttribute()
+    {
+        return match ($this->type) {
+
+            'topic' => 5,
+
+            'module' => 15,
+
+            default => $this->questions()->count()
+        };
     }
 }

@@ -44,6 +44,14 @@ class AssessmentAttempt extends BaseModel
         return $this->belongsTo(User::class, 'user_id')->withTrashed();
     }
 
+    public function attemptQuestions()
+    {
+        return $this->hasMany(
+            AssessmentAttemptQuestion::class,
+            'attempt_id'
+        );
+    }
+
     /*
     |--------------------------------------------------------------------------
     | Cascade Soft Delete

@@ -16,6 +16,7 @@ use App\Models\Module;
 use App\Models\Chapter;
 use App\Services\AuditService;
 use Carbon\Carbon;
+use App\Models\AssessmentAttemptQuestion;
 use App\Services\CertificationService;
 use App\Models\User;
 use App\Services\NotificationService;
@@ -32,53 +33,258 @@ class AttemptController extends Controller
     }
 
     // 🔹 START
+
     public function start($id)
     {
-        AuditService::log('assessment_started', 'User started an assessment', ['assessment_id' => $id]);
+        AuditService::log(
+            'assessment_started',
+            'User started an assessment',
+            [
+                'assessment_id' => $id
+            ]
+        );
 
         $userId = auth()->id();
 
-        $assessment = Assessment::findOrFail($id);
+        $assessment = Assessment::with('questions')
+            ->findOrFail($id);
 
-        // 🔹 Topic content completion check
-        if ($assessment->type === 'topic') {
+        /*
+        |--------------------------------------------------------------------------
+        | 🔐 ACCESS VALIDATION
+        |--------------------------------------------------------------------------
+        */
 
-            $topic = \App\Models\Topic::find($assessment->assessmentable_id);
+        $assessmentType = $assessment->type;
+
+        $assessmentableId = $assessment->assessmentable_id;
+
+        /*
+        |--------------------------------------------------------------------------
+        | TOPIC ASSESSMENT
+        |--------------------------------------------------------------------------
+        */
+
+        if ($assessmentType === 'topic') {
+
+            $topic = \App\Models\Topic::find(
+                $assessmentableId
+            );
 
             if ($topic) {
-                $isReady = app(\App\Modules\Trainee\Progress\Controllers\ProgressController::class)
-                    ->isTopicContentCompleted($topic, $userId);
 
-                if (!$isReady) {
+                $isReady = app(
+                    \App\Modules\Trainee\Progress\Controllers\ProgressController::class
+                )->isTopicContentCompleted(
+                    $topic,
+                    $userId
+                );
+
+                if (! $isReady) {
+
                     return response()->json([
-                        'message' => 'Complete all content first'
+                        'message' => 'Complete all topic content first'
                     ], 422);
                 }
             }
         }
 
-        // 🔹 max attempts config
-        $examTypes = config('assessment.exam.types', []);
+        /*
+        |--------------------------------------------------------------------------
+        | DYNAMIC HIGHER LEVEL VALIDATION
+        |--------------------------------------------------------------------------
+        */ else {
+
+            /*
+            |--------------------------------------------------------------------------
+            | CONFIG MAP
+            |--------------------------------------------------------------------------
+            */
+
+            $validationMap = [
+
+                'chapter' => [
+
+                    'model' => \App\Models\Chapter::class,
+
+                    'content_model' => \App\Models\Topic::class,
+
+                    'content_fk' => 'chapter_id',
+
+                    'progress_fk' => 'chapter_id',
+
+                    'message' => 'Complete all chapter topics first',
+                ],
+
+                'module' => [
+
+                    'model' => \App\Models\Module::class,
+
+                    'content_model' => \App\Models\Topic::class,
+
+                    'content_fk' => 'module_id',
+
+                    'progress_fk' => 'module_id',
+
+                    'message' => 'Complete all module topics first',
+                ],
+
+                'level' => [
+
+                    'model' => \App\Models\Level::class,
+
+                    'content_model' => \App\Models\Module::class,
+
+                    'content_fk' => 'level_id',
+
+                    'progress_fk' => 'level_id',
+
+                    'message' => 'Complete all level modules first',
+
+                    'extra_progress_conditions' => function ($query) {
+
+                        return $query
+                            ->whereNull('chapter_id')
+                            ->whereNull('topic_id')
+                            ->whereNotNull('module_id');
+                    }
+                ],
+            ];
+
+            /*
+            |--------------------------------------------------------------------------
+            | VALID TYPE
+            |--------------------------------------------------------------------------
+            */
+
+            if (isset($validationMap[$assessmentType])) {
+
+                $config = $validationMap[$assessmentType];
+
+                $modelClass = $config['model'];
+
+                $contentModel = $config['content_model'];
+
+                $entity = $modelClass::find(
+                    $assessmentableId
+                );
+
+                if ($entity) {
+
+                    /*
+                    |--------------------------------------------------------------------------
+                    | TOTAL CONTENT
+                    |--------------------------------------------------------------------------
+                    */
+
+                    $totalContent = $contentModel::where(
+                        $config['content_fk'],
+                        $entity->id
+                    )->count();
+
+                    /*
+                    |--------------------------------------------------------------------------
+                    | COMPLETED CONTENT
+                    |--------------------------------------------------------------------------
+                    */
+
+                    $progressQuery = \App\Models\UserProgress::where(
+                        'user_id',
+                        $userId
+                    )
+                        ->where(
+                            $config['progress_fk'],
+                            $entity->id
+                        )
+                        ->where('is_completed', true);
+
+                    /*
+                    |--------------------------------------------------------------------------
+                    | EXTRA CONDITIONS
+                    |--------------------------------------------------------------------------
+                    */
+
+                    if (
+                        isset($config['extra_progress_conditions']) &&
+                        is_callable($config['extra_progress_conditions'])
+                    ) {
+
+                        $progressQuery = $config['extra_progress_conditions']($progressQuery);
+                    } else {
+
+                        $progressQuery->whereNotNull('topic_id');
+                    }
+
+                    $completedContent = $progressQuery->count();
+
+                    /*
+                    |--------------------------------------------------------------------------
+                    | BLOCK ACCESS
+                    |--------------------------------------------------------------------------
+                    */
+
+                    if ($totalContent !== $completedContent) {
+
+                        return response()->json([
+                            'message' => $config['message']
+                        ], 422);
+                    }
+                }
+            }
+        }
+        /*
+        |--------------------------------------------------------------------------
+        | 🔹 MAX ATTEMPTS
+        |--------------------------------------------------------------------------
+        */
+
+        $examTypes = config(
+            'assessment.exam.types',
+            []
+        );
 
         $isExam = in_array(
             $assessment->type,
-            $examTypes
+            $examTypes,
+            true
         );
 
         $maxAttempts = $isExam
             ? config('assessment.exam.max_attempts', 50)
             : config('assessment.quiz.max_attempts', 50);
 
-        // 🔹 completed attempts count (IMPORTANT)
-        $completedAttempts = AssessmentAttempt::where('user_id', $userId)
+        /*
+        |--------------------------------------------------------------------------
+        | 🔹 COMPLETED ATTEMPTS
+        |--------------------------------------------------------------------------
+        */
+
+        $completedAttempts = AssessmentAttempt::where(
+            'user_id',
+            $userId
+        )
             ->where('assessment_id', $id)
-            ->whereIn('status', ['passed', 'failed'])
+            ->whereIn('status', [
+                'passed',
+                'failed'
+            ])
             ->count();
 
-        $remainingAttempts = max(0, $maxAttempts - $completedAttempts);
+        $remainingAttempts = max(
+            0,
+            $maxAttempts - $completedAttempts
+        );
 
-        // 🔁 active attempt check
-        $activeAttempt = AssessmentAttempt::where('user_id', $userId)
+        /*
+        |--------------------------------------------------------------------------
+        | 🔁 ACTIVE ATTEMPT CHECK
+        |--------------------------------------------------------------------------
+        */
+
+        $activeAttempt = AssessmentAttempt::where(
+            'user_id',
+            $userId
+        )
             ->where('assessment_id', $id)
             ->where('status', 'in_progress')
             ->latest()
@@ -87,92 +293,166 @@ class AttemptController extends Controller
         if ($activeAttempt) {
 
             return response()->json([
+
                 'message' => 'Resume existing attempt',
 
                 'attempt_id' => $activeAttempt->id,
+
                 'type' => $assessment->type,
+
                 'duration' => $assessment->duration,
+
                 'started_at' => $activeAttempt->started_at,
+
                 'expires_at' => $assessment->duration
-                    ? $activeAttempt->started_at->addMinutes($assessment->duration)
+                    ? $activeAttempt->started_at
+                    ->copy()
+                    ->addMinutes($assessment->duration)
                     : null,
 
-                // 🆕 attempt stats
                 'total_attempts_allowed' => $maxAttempts,
+
                 'attempts_used' => $completedAttempts,
+
                 'attempts_remaining' => $remainingAttempts,
             ]);
         }
 
-        // 🚫 limit reached
+        /*
+        |--------------------------------------------------------------------------
+        | 🚫 LIMIT REACHED
+        |--------------------------------------------------------------------------
+        */
+
         if ($completedAttempts >= $maxAttempts) {
+
             return response()->json([
+
                 'message' => 'Max attempts reached',
 
                 'total_attempts_allowed' => $maxAttempts,
+
                 'attempts_used' => $completedAttempts,
+
                 'attempts_remaining' => 0,
             ], 422);
         }
 
-        // ✅ create new attempt
+        /*
+        |--------------------------------------------------------------------------
+        | ✅ CREATE ATTEMPT
+        |--------------------------------------------------------------------------
+        */
+
         $attempt = AssessmentAttempt::create([
+
             'user_id' => $userId,
+
             'assessment_id' => $id,
+
             'started_at' => now(),
+
             'status' => 'in_progress'
         ]);
 
         /*
-        |--------------------------------------------------
-        | 👤 USER
-        |--------------------------------------------------
+        |--------------------------------------------------------------------------
+        | 🎯 GENERATE QUESTION SET
+        |--------------------------------------------------------------------------
         */
+
+        $selectedQuestionIds = app(
+            \App\Modules\Trainee\Assessment\Services\QuestionSelectionService::class
+        )->generate(
+            $assessment,
+            $userId
+        );
+
+        /*
+        |--------------------------------------------------------------------------
+        | 💾 STORE ATTEMPT QUESTIONS
+        |--------------------------------------------------------------------------
+        */
+
+        foreach ($selectedQuestionIds as $questionId) {
+
+            \App\Models\AssessmentAttemptQuestion::create([
+
+                'attempt_id' => $attempt->id,
+
+                'question_id' => $questionId
+            ]);
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | 👤 USER
+        |--------------------------------------------------------------------------
+        */
+
         $user = auth()->user();
 
         /*
-        |--------------------------------------------------
+        |--------------------------------------------------------------------------
         | 🔔 USER NOTIFICATION
-        |--------------------------------------------------
+        |--------------------------------------------------------------------------
         */
+
         if ($user) {
 
             app(\App\Services\NotificationService::class)->send(
+
                 $user,
+
                 'ASSESSMENT_STARTED',
+
                 [
+
                     'title' => 'Assessment Started',
+
                     'message' => 'You started an assessment',
 
                     'screen' => 'AssessmentQuestions',
+
                     'id' => $assessment->id,
 
                     'meta' => [
+
                         'assessment_id' => $assessment->id,
+
                         'assessment_type' => $assessment->type,
+
                         'attempt_id' => $attempt->id,
                     ]
                 ],
+
                 ['db', 'push']
             );
 
             /*
-            |--------------------------------------------------
+            |--------------------------------------------------------------------------
             | 🛡 ADMIN PAYLOAD
-            |--------------------------------------------------
+            |--------------------------------------------------------------------------
             */
+
             $adminPayload = [
+
                 'title' => 'Assessment Started',
+
                 'message' => "{$user->name} started an assessment",
 
                 'screen' => 'AssessmentReview',
+
                 'id' => $assessment->id,
 
                 'meta' => [
+
                     'user_id' => $user->id,
+
                     'user_name' => $user->name,
 
                     'assessment_id' => $assessment->id,
+
                     'assessment_type' => $assessment->type,
 
                     'attempt_id' => $attempt->id,
@@ -180,66 +460,96 @@ class AttemptController extends Controller
             ];
 
             /*
-            |--------------------------------------------------
+            |--------------------------------------------------------------------------
             | 🛡 ADMINS
-            |--------------------------------------------------
+            |--------------------------------------------------------------------------
             */
-            app(\App\Services\NotificationService::class)->sendToRole(
-                'admin',
-                'ASSESSMENT_STARTED',
-                $adminPayload,
-                ['db', 'push']
-            );
+
+            app(\App\Services\NotificationService::class)
+                ->sendToRole(
+                    'admin',
+                    'ASSESSMENT_STARTED',
+                    $adminPayload,
+                    ['db', 'push']
+                );
 
             /*
-            |--------------------------------------------------
+            |--------------------------------------------------------------------------
             | 👑 SUPER ADMINS
-            |--------------------------------------------------
+            |--------------------------------------------------------------------------
             */
-            app(\App\Services\NotificationService::class)->sendToRole(
-                'superadmin',
-                'ASSESSMENT_STARTED',
-                $adminPayload,
-                ['db', 'push']
-            );
+
+            app(\App\Services\NotificationService::class)
+                ->sendToRole(
+                    'superadmin',
+                    'ASSESSMENT_STARTED',
+                    $adminPayload,
+                    ['db', 'push']
+                );
         }
 
+        /*
+        |--------------------------------------------------------------------------
+        | RESPONSE
+        |--------------------------------------------------------------------------
+        */
 
         return response()->json([
+
             'message' => 'New attempt started',
 
             'attempt_id' => $attempt->id,
+
             'type' => $assessment->type,
+
             'duration' => $assessment->duration,
+
             'started_at' => $attempt->started_at,
+
             'expires_at' => $assessment->duration
-                ? $attempt->started_at->copy()->addMinutes($assessment->duration)
+                ? $attempt->started_at
+                ->copy()
+                ->addMinutes($assessment->duration)
                 : null,
 
-            // 🆕 attempt stats
+            'question_count' => count($selectedQuestionIds),
+
             'total_attempts_allowed' => $maxAttempts,
+
             'attempts_used' => $completedAttempts,
+
             'attempts_remaining' => $remainingAttempts,
         ]);
     }
+
 
     // 🔹 QUESTIONS
     public function questions($id, Request $request)
     {
         $attemptId = $request->attempt_id;
 
-        $attempt = AssessmentAttempt::with('assessment')
-            ->findOrFail($attemptId);
+        /*
+        |--------------------------------------------------------------------------
+        | 🔹 ATTEMPT
+        |--------------------------------------------------------------------------
+        */
 
-        $assessment = Assessment::with([
-            'questions.options'
-        ])->findOrFail($id);
+        $attempt = AssessmentAttempt::with([
+
+            'assessment',
+
+            'attemptQuestions.question.options'
+
+        ])->findOrFail($attemptId);
+
+        $assessment = $attempt->assessment;
 
         /*
         |--------------------------------------------------------------------------
         | 🔹 ANSWERS
         |--------------------------------------------------------------------------
         */
+
         $answers = AssessmentAnswer::where(
             'attempt_id',
             $attemptId
@@ -252,57 +562,67 @@ class AttemptController extends Controller
         | 🔹 QUESTIONS TRANSFORM
         |--------------------------------------------------------------------------
         */
-        $questions = $assessment->questions->map(function ($q) use ($answers) {
 
-            return [
+        $questions = $attempt->attemptQuestions
+            ->map(function ($attemptQuestion) use ($answers) {
 
-                'id' => $q->id,
+                $q = $attemptQuestion->question;
 
-                'question_text' => $q->question_text,
+                return [
 
-                'file' => $q->file,
+                    'id' => $q->id,
 
-                /*
-            |--------------------------------------------------------------------------
-            | 🆕 CASE STUDY
-            |--------------------------------------------------------------------------
-            */
-                'is_case' => (bool) $q->is_case,
+                    'question_text' => $q->question_text,
 
-                'case_title' => $q->case_title,
+                    'file' => $q->file,
 
-                'case_text' => $q->case_text,
+                    /*
+                    |--------------------------------------------------------------------------
+                    | 🆕 CASE STUDY
+                    |--------------------------------------------------------------------------
+                    */
 
-                'case_order' => $q->case_order,
+                    'is_case' => (bool) $q->is_case,
 
-                /*
-            |--------------------------------------------------------------------------
-            | OPTIONS
-            |--------------------------------------------------------------------------
-            */
-                'options' => $q->options->map(fn($opt) => [
+                    'case_title' => $q->case_title,
 
-                    'id' => $opt->id,
+                    'case_text' => $q->case_text,
 
-                    'text' => $opt->option_text
-                ]),
+                    'case_order' => $q->case_order,
 
-                /*
-            |--------------------------------------------------------------------------
-            | SELECTED OPTION
-            |--------------------------------------------------------------------------
-            */
-                'selected_option_id' => $answers[$q->id]
-                    ->selected_option_id ?? null
-            ];
-        });
+                    /*
+                    |--------------------------------------------------------------------------
+                    | OPTIONS
+                    |--------------------------------------------------------------------------
+                    */
+
+                    'options' => $q->options->map(fn($opt) => [
+
+                        'id' => $opt->id,
+
+                        'text' => $opt->option_text
+                    ]),
+
+                    /*
+                    |--------------------------------------------------------------------------
+                    | SELECTED OPTION
+                    |--------------------------------------------------------------------------
+                    */
+
+                    'selected_option_id' =>
+                    $answers[$q->id]
+                        ->selected_option_id ?? null
+                ];
+            })
+            ->values();
 
         /*
         |--------------------------------------------------------------------------
         | 🔹 ATTEMPT PROGRESS STATS
         |--------------------------------------------------------------------------
         */
-        $totalQuestions = $assessment->questions->count();
+
+        $totalQuestions = $questions->count();
 
         $answeredCount = $answers->filter(function ($a) {
 
@@ -316,6 +636,7 @@ class AttemptController extends Controller
         | 🔹 HIERARCHY CONTEXT
         |--------------------------------------------------------------------------
         */
+
         $context = null;
 
         /*
@@ -323,6 +644,7 @@ class AttemptController extends Controller
         | TOPIC
         |--------------------------------------------------------------------------
         */
+
         if (
             $assessment->assessmentable_type ===
             \App\Models\Topic::class
@@ -371,6 +693,7 @@ class AttemptController extends Controller
         | CHAPTER
         |--------------------------------------------------------------------------
         */
+
         if (
             $assessment->assessmentable_type ===
             \App\Models\Chapter::class
@@ -414,6 +737,7 @@ class AttemptController extends Controller
         | MODULE
         |--------------------------------------------------------------------------
         */
+
         if (
             $assessment->assessmentable_type ===
             \App\Models\Module::class
@@ -452,6 +776,7 @@ class AttemptController extends Controller
         | LEVEL
         |--------------------------------------------------------------------------
         */
+
         if (
             $assessment->assessmentable_type ===
             \App\Models\Level::class
@@ -485,6 +810,7 @@ class AttemptController extends Controller
         | RESPONSE
         |--------------------------------------------------------------------------
         */
+
         return response()->json([
 
             'attempt_id' => $attemptId,
@@ -506,6 +832,7 @@ class AttemptController extends Controller
             | 🆕 ATTEMPT PROGRESS
             |--------------------------------------------------------------------------
             */
+
             'total_questions' => $totalQuestions,
 
             'answered_questions' => $answeredCount,
@@ -517,6 +844,7 @@ class AttemptController extends Controller
             | 🆕 CONTEXT
             |--------------------------------------------------------------------------
             */
+
             'context' => $context,
 
             /*
@@ -524,6 +852,7 @@ class AttemptController extends Controller
             | QUESTIONS
             |--------------------------------------------------------------------------
             */
+
             'questions' => $questions
         ]);
     }
@@ -533,59 +862,193 @@ class AttemptController extends Controller
     public function answer(Request $request)
     {
         $request->validate([
+
             'attempt_id' => 'required|exists:assessment_attempts,id',
+
             'question_id' => 'required|exists:assessment_questions,id',
+
             'selected_option_id' => 'nullable|exists:assessment_options,id'
         ]);
 
-        $question = \App\Models\AssessmentQuestion::with('options')
-            ->findOrFail($request->question_id);
+        /*
+        |--------------------------------------------------------------------------
+        | 🔹 ATTEMPT
+        |--------------------------------------------------------------------------
+        */
 
-        $options = $question->options->map(fn($opt) => [
-            'id' => $opt->id,
-            'text' => $opt->option_text
-        ]);
+        $attempt = AssessmentAttempt::with([
+            'assessment',
+            'attemptQuestions'
+        ])->findOrFail(
+            $request->attempt_id
+        );
 
-        $correct = $question->options->where('is_correct', true)->first();
-        $attempt = AssessmentAttempt::findOrFail($request->attempt_id);
+        /*
+        |--------------------------------------------------------------------------
+        | 🔒 ATTEMPT STATUS
+        |--------------------------------------------------------------------------
+        */
 
         if ($attempt->status !== 'in_progress') {
+
             return response()->json([
                 'message' => 'Attempt already submitted or expired'
             ], 422);
         }
+
+        /*
+        |--------------------------------------------------------------------------
+        | 🔒 TIME CHECK
+        |--------------------------------------------------------------------------
+        */
+
         if ($attempt->assessment->duration) {
-            $expire = $attempt->started_at->copy()->addMinutes($attempt->assessment->duration);
+
+            $expire = $attempt->started_at
+                ->copy()
+                ->addMinutes(
+                    $attempt->assessment->duration
+                );
 
             if (now()->greaterThan($expire)) {
+
                 return response()->json([
                     'message' => 'Time expired. Cannot answer.'
                 ], 422);
             }
         }
+
+        /*
+        |--------------------------------------------------------------------------
+        | 🔒 QUESTION BELONGS TO ATTEMPT
+        |--------------------------------------------------------------------------
+        */
+
+        $isAssigned = $attempt->attemptQuestions
+            ->where(
+                'question_id',
+                $request->question_id
+            )
+            ->count();
+
+        if (! $isAssigned) {
+
+            return response()->json([
+                'message' => 'Invalid question for this attempt'
+            ], 422);
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | 🔹 QUESTION
+        |--------------------------------------------------------------------------
+        */
+
+        $question = \App\Models\AssessmentQuestion::with(
+            'options'
+        )->findOrFail(
+            $request->question_id
+        );
+
+        /*
+        |--------------------------------------------------------------------------
+        | 🔒 OPTION BELONGS TO QUESTION
+        |--------------------------------------------------------------------------
+        */
+
+        if ($request->selected_option_id) {
+
+            $validOption = $question->options
+                ->where(
+                    'id',
+                    $request->selected_option_id
+                )
+                ->first();
+
+            if (! $validOption) {
+
+                return response()->json([
+                    'message' => 'Invalid option selected'
+                ], 422);
+            }
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | 🔹 OPTION SNAPSHOT
+        |--------------------------------------------------------------------------
+        */
+
+        $options = $question->options
+            ->map(fn($opt) => [
+
+                'id' => $opt->id,
+
+                'text' => $opt->option_text
+            ]);
+
+        /*
+        |--------------------------------------------------------------------------
+        | 🔹 CORRECT OPTION
+        |--------------------------------------------------------------------------
+        */
+
+        $correct = $question->options
+            ->where('is_correct', true)
+            ->first();
+
+        /*
+        |--------------------------------------------------------------------------
+        | 💾 SAVE ANSWER
+        |--------------------------------------------------------------------------
+        */
+
         return AssessmentAnswer::updateOrCreate(
+
             [
                 'attempt_id' => $request->attempt_id,
+
                 'question_id' => $request->question_id
             ],
+
             [
-                'question_text_snapshot' => $question->question_text,
+                'question_text_snapshot' =>
+                $question->question_text,
+
                 'options_snapshot' => $options,
-                'correct_option_id_snapshot' => $correct->id ?? null,
+
+                'correct_option_id_snapshot' =>
+                $correct->id ?? null,
+
                 'marks_snapshot' => $question->marks,
-                'selected_option_id' => $request->selected_option_id,
+
+                'selected_option_id' =>
+                $request->selected_option_id,
             ]
         );
     }
+
+
 
     // 🔹 RESUME
     public function resume($id)
     {
         $userId = auth()->id();
 
+        /*
+        |--------------------------------------------------------------------------
+        | 🔹 ATTEMPT
+        |--------------------------------------------------------------------------
+        */
+
         $attempt = AssessmentAttempt::with([
-            'assessment.questions.options',
+
+            'assessment',
+
+            'attemptQuestions.question.options',
+
             'answers'
+
         ])
             ->where('user_id', $userId)
             ->where('assessment_id', $id)
@@ -593,7 +1056,14 @@ class AttemptController extends Controller
             ->latest()
             ->first();
 
-        if (!$attempt) {
+        /*
+        |--------------------------------------------------------------------------
+        | ❌ NO ACTIVE ATTEMPT
+        |--------------------------------------------------------------------------
+        */
+
+        if (! $attempt) {
+
             return response()->json([
                 'message' => 'No active attempt'
             ], 404);
@@ -602,146 +1072,370 @@ class AttemptController extends Controller
         $assessment = $attempt->assessment;
 
         /*
-        |-----------------------------
-        | TIME
-        |-----------------------------
+        |--------------------------------------------------------------------------
+        | ⏱ TIME
+        |--------------------------------------------------------------------------
         */
+
         $duration = $assessment->duration ?? null;
+
         $expiresAt = $duration
-            ? $attempt->started_at->copy()->addMinutes($duration)
+            ? $attempt->started_at
+            ->copy()
+            ->addMinutes($duration)
             : null;
 
         /*
-        |-----------------------------
-        | ANSWERS MAP
-        |-----------------------------
+        |--------------------------------------------------------------------------
+        | 🔹 ANSWERS MAP
+        |--------------------------------------------------------------------------
         */
-        $answersMap = $attempt->answers->keyBy('question_id');
+
+        $answersMap = $attempt->answers
+            ->keyBy('question_id');
 
         /*
-        |-----------------------------
-        | QUESTION LIST (WITH SELECTION)
-        |-----------------------------
+        |--------------------------------------------------------------------------
+        | 🔹 QUESTIONS
+        |--------------------------------------------------------------------------
         */
-        $questions = $assessment->questions->map(function ($q) use ($answersMap) {
 
-            return [
-                'id' => $q->id,
-                'question_text' => $q->question_text,
-                'file' => $q->file,
+        $questions = $attempt->attemptQuestions
+            ->map(function ($attemptQuestion) use ($answersMap) {
 
-                'options' => $q->options->map(fn($opt) => [
-                    'id' => $opt->id,
-                    'text' => $opt->option_text
-                ]),
+                $q = $attemptQuestion->question;
 
-                'selected_option_id' => $answersMap[$q->id]->selected_option_id ?? null
-            ];
-        });
+                return [
+
+                    'id' => $q->id,
+
+                    'question_text' => $q->question_text,
+
+                    'file' => $q->file,
+
+                    /*
+                    |--------------------------------------------------------------------------
+                    | 🆕 CASE STUDY
+                    |--------------------------------------------------------------------------
+                    */
+
+                    'is_case' => (bool) $q->is_case,
+
+                    'case_title' => $q->case_title,
+
+                    'case_text' => $q->case_text,
+
+                    'case_order' => $q->case_order,
+
+                    /*
+                    |--------------------------------------------------------------------------
+                    | OPTIONS
+                    |--------------------------------------------------------------------------
+                    */
+
+                    'options' => $q->options->map(fn($opt) => [
+
+                        'id' => $opt->id,
+
+                        'text' => $opt->option_text
+                    ]),
+
+                    /*
+                    |--------------------------------------------------------------------------
+                    | SELECTED OPTION
+                    |--------------------------------------------------------------------------
+                    */
+
+                    'selected_option_id' =>
+                    $answersMap[$q->id]
+                        ->selected_option_id ?? null
+                ];
+            })
+            ->values();
 
         /*
-        |-----------------------------
-        | ATTEMPT PROGRESS
-        |-----------------------------
+        |--------------------------------------------------------------------------
+        | 🔹 ATTEMPT PROGRESS
+        |--------------------------------------------------------------------------
         */
-        $totalQuestions = $assessment->questions->count();
 
-        $answeredCount = $attempt->answers->filter(function ($a) {
-            return !is_null($a->selected_option_id);
-        })->count();
+        $totalQuestions = $questions->count();
+
+        $answeredCount = $attempt->answers
+            ->filter(function ($a) {
+
+                return ! is_null(
+                    $a->selected_option_id
+                );
+            })
+            ->count();
 
         $remainingCount = $totalQuestions - $answeredCount;
 
         /*
-        |-----------------------------
-        | CONTEXT (HIERARCHY)
-        |-----------------------------
+        |--------------------------------------------------------------------------
+        | 🔹 CONTEXT
+        |--------------------------------------------------------------------------
         */
+
         $context = null;
 
-        if ($assessment->assessmentable_type === \App\Models\Topic::class) {
+        /*
+        |--------------------------------------------------------------------------
+        | TOPIC
+        |--------------------------------------------------------------------------
+            */
 
-            $topic = \App\Models\Topic::with('chapter.module.level.program')
-                ->find($assessment->assessmentable_id);
+        if (
+            $assessment->assessmentable_type ===
+            \App\Models\Topic::class
+        ) {
 
-            $context = [
-                'type' => 'topic',
+            $topic = \App\Models\Topic::with(
+                'chapter.module.level.program'
+            )->find(
+                $assessment->assessmentable_id
+            );
 
-                'topic' => [
-                    'id' => $topic->id,
-                    'title' => $topic->title,
-                ],
+            if ($topic) {
 
-                'chapter' => [
-                    'id' => $topic->chapter->id ?? null,
-                    'title' => $topic->chapter->title ?? null,
-                ],
+                $context = [
 
-                'module' => [
-                    'id' => $topic->chapter->module->id ?? null,
-                    'title' => $topic->chapter->module->title ?? null,
-                ],
+                    'type' => 'topic',
 
-                'level' => [
-                    'id' => $topic->chapter->module->level->id ?? null,
-                    'title' => $topic->chapter->module->level->title ?? null,
-                ],
+                    'topic' => [
 
-                'program' => [
-                    'id' => $topic->chapter->module->level->program->id ?? null,
-                    'title' => $topic->chapter->module->level->program->title ?? null,
-                ],
-            ];
-        }
+                        'id' => $topic->id,
 
-        if ($assessment->assessmentable_type === \App\Models\Level::class) {
+                        'title' => $topic->title,
+                    ],
 
-            $level = \App\Models\Level::with('program')
-                ->find($assessment->assessmentable_id);
+                    'chapter' => [
 
-            $context = [
-                'type' => 'level',
+                        'id' => $topic->chapter->id ?? null,
 
-                'level' => [
-                    'id' => $level->id,
-                    'title' => $level->title,
-                ],
+                        'title' => $topic->chapter->title ?? null,
+                    ],
 
-                'program' => [
-                    'id' => $level->program->id ?? null,
-                    'title' => $level->program->title ?? null,
-                ],
-            ];
+                    'module' => [
+
+                        'id' => $topic->chapter->module->id ?? null,
+
+                        'title' => $topic->chapter->module->title ?? null,
+                    ],
+
+                    'level' => [
+
+                        'id' => $topic->chapter->module->level->id ?? null,
+
+                        'title' => $topic->chapter->module->level->title ?? null,
+                    ],
+
+                    'program' => [
+
+                        'id' => $topic->chapter->module->level->program->id ?? null,
+
+                        'title' => $topic->chapter->module->level->program->title ?? null,
+                    ],
+                ];
+            }
         }
 
         /*
-        |-----------------------------
-        | RESPONSE
-        |-----------------------------
+        |--------------------------------------------------------------------------
+        | CHAPTER
+        |--------------------------------------------------------------------------
         */
+
+        if (
+            $assessment->assessmentable_type ===
+            \App\Models\Chapter::class
+        ) {
+
+            $chapter = \App\Models\Chapter::with(
+                'module.level.program'
+            )->find(
+                $assessment->assessmentable_id
+            );
+
+            if ($chapter) {
+
+                $context = [
+
+                    'type' => 'chapter',
+
+                    'chapter' => [
+
+                        'id' => $chapter->id,
+
+                        'title' => $chapter->title,
+                    ],
+
+                    'module' => [
+
+                        'id' => $chapter->module->id ?? null,
+
+                        'title' => $chapter->module->title ?? null,
+                    ],
+
+                    'level' => [
+
+                        'id' => $chapter->module->level->id ?? null,
+
+                        'title' => $chapter->module->level->title ?? null,
+                    ],
+
+                    'program' => [
+
+                        'id' => $chapter->module->level->program->id ?? null,
+
+                        'title' => $chapter->module->level->program->title ?? null,
+                    ],
+                ];
+            }
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | MODULE
+        |--------------------------------------------------------------------------
+        */
+
+        if (
+            $assessment->assessmentable_type ===
+            \App\Models\Module::class
+        ) {
+
+            $module = \App\Models\Module::with(
+                'level.program'
+            )->find(
+                $assessment->assessmentable_id
+            );
+
+            if ($module) {
+
+                $context = [
+
+                    'type' => 'module',
+
+                    'module' => [
+
+                        'id' => $module->id,
+
+                        'title' => $module->title,
+                    ],
+
+                    'level' => [
+
+                        'id' => $module->level->id ?? null,
+
+                        'title' => $module->level->title ?? null,
+                    ],
+
+                    'program' => [
+
+                        'id' => $module->level->program->id ?? null,
+
+                        'title' => $module->level->program->title ?? null,
+                    ],
+                ];
+            }
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | LEVEL
+        |--------------------------------------------------------------------------
+        */
+
+        if (
+            $assessment->assessmentable_type ===
+            \App\Models\Level::class
+        ) {
+
+            $level = \App\Models\Level::with(
+                'program'
+            )->find(
+                $assessment->assessmentable_id
+            );
+
+            if ($level) {
+
+                $context = [
+
+                    'type' => 'level',
+
+                    'level' => [
+
+                        'id' => $level->id,
+
+                        'title' => $level->title,
+                    ],
+
+                    'program' => [
+
+                        'id' => $level->program->id ?? null,
+
+                        'title' => $level->program->title ?? null,
+                    ],
+                ];
+            }
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | RESPONSE
+        |--------------------------------------------------------------------------
+        */
+
         return response()->json([
+
             'attempt_id' => $attempt->id,
 
             'type' => $assessment->type,
 
             'started_at' => $attempt->started_at,
+
             'expires_at' => $expiresAt,
 
-            // 🆕 attempt stats
+            /*
+            |--------------------------------------------------------------------------
+            | 🆕 ATTEMPT STATS
+            |--------------------------------------------------------------------------
+            */
+
             'total_questions' => $totalQuestions,
+
             'answered_questions' => $answeredCount,
+
             'remaining_questions' => $remainingCount,
 
-            // 🆕 context (topic / level name)
+            /*
+            |--------------------------------------------------------------------------
+            | 🆕 CONTEXT
+            |--------------------------------------------------------------------------
+            */
+
             'context' => $context,
 
-            // 🆕 full questions (resume ready)
+            /*
+            |--------------------------------------------------------------------------
+            | 🆕 QUESTIONS
+            |--------------------------------------------------------------------------
+            */
+
             'questions' => $questions,
 
-            // raw answers (optional, keep if needed)
+            /*
+            |--------------------------------------------------------------------------
+            | OPTIONAL RAW ANSWERS
+            |--------------------------------------------------------------------------
+            */
+
             'answers' => $attempt->answers
         ]);
     }
+
 
     public function submit($id, Request $request)
     {
