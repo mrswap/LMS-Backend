@@ -98,6 +98,9 @@ class AuthController extends Controller
                     . "verify-email?token=$token";
             }
 
+            $verifyLink = rtrim(env('FRONT_END_SALES_URL'), '/') . "/verify-email?token={$token}";
+
+            /*
             /*
             |-----------------------------------------
             | SMTP + MAIL

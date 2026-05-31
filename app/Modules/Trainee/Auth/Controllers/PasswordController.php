@@ -87,6 +87,8 @@ class PasswordController extends Controller
                 . "trainee/reset-password?token=$token";
         }
 
+        $verifyLink = rtrim(env('FRONT_END_SALES_URL'), '/') . "/trainee/reset-password?token={$token}";
+
         /*
         |-----------------------------------------
         | APPLY SMTP CONFIG
