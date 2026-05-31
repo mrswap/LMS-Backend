@@ -42,6 +42,9 @@ class TopicImporterService
                 [
                     'status' => true,
                     'publish_status' => 'published',
+                    'description' =>
+                    $moduleData['description']
+                        ?? null,
                     'created_by' => $createdBy,
                 ]
             );
@@ -65,6 +68,9 @@ class TopicImporterService
 
                     [
                         'status' => true,
+                        'description' =>
+                        $chapterData['description']
+                            ?? null,
                         'publish_status' => 'published',
                         'created_by' => $createdBy,
                     ]
@@ -90,6 +96,10 @@ class TopicImporterService
 
                         [
                             'status' => true,
+                            'description' =>
+                            $topicData['description']
+                                ?? null,
+
                             'publish_status' => 'published',
                             'created_by' => $createdBy,
                         ]

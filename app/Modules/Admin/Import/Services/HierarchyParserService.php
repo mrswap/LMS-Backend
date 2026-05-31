@@ -43,10 +43,10 @@ class HierarchyParserService
         );
 
         /*
-        |--------------------------------------------------------------------------
-        | DOM LOAD
-        |--------------------------------------------------------------------------
-        */
+|--------------------------------------------------------------------------
+| DOM LOAD
+|--------------------------------------------------------------------------
+*/
 
         libxml_use_internal_errors(true);
 
@@ -63,10 +63,10 @@ class HierarchyParserService
         libxml_clear_errors();
 
         /*
-        |--------------------------------------------------------------------------
-        | BODY
-        |--------------------------------------------------------------------------
-        */
+|--------------------------------------------------------------------------
+| BODY
+|--------------------------------------------------------------------------
+*/
 
         $body = $dom
             ->getElementsByTagName('body')
@@ -80,10 +80,10 @@ class HierarchyParserService
         }
 
         /*
-        |--------------------------------------------------------------------------
-        | STORAGE
-        |--------------------------------------------------------------------------
-        */
+|--------------------------------------------------------------------------
+| STORAGE
+|--------------------------------------------------------------------------
+*/
 
         $modules = [];
 
@@ -95,29 +95,31 @@ class HierarchyParserService
 
         $currentContentIndex = null;
 
+        $currentDescriptionTarget = null;
+
         /*
-        |--------------------------------------------------------------------------
-        | LOOP NODES
-        |--------------------------------------------------------------------------
-        */
+|--------------------------------------------------------------------------
+| LOOP NODES
+|--------------------------------------------------------------------------
+*/
 
         foreach ($body->childNodes as $node) {
 
             /*
-            |--------------------------------------------------------------------------
-            | RAW HTML
-            |--------------------------------------------------------------------------
-            */
+|--------------------------------------------------------------------------
+| RAW HTML
+|--------------------------------------------------------------------------
+*/
 
             $rawHtml = trim(
                 $dom->saveHTML($node)
             );
 
             /*
-            |--------------------------------------------------------------------------
-            | TEXT
-            |--------------------------------------------------------------------------
-            */
+|--------------------------------------------------------------------------
+| TEXT
+|--------------------------------------------------------------------------
+*/
 
             $text = trim(
                 preg_replace(
@@ -136,10 +138,10 @@ class HierarchyParserService
             }
 
             /*
-            |--------------------------------------------------------------------------
-            | Ignore separators
-            |--------------------------------------------------------------------------
-            */
+|--------------------------------------------------------------------------
+| Ignore separators
+|--------------------------------------------------------------------------
+*/
 
             if (
                 preg_match(
@@ -151,10 +153,10 @@ class HierarchyParserService
             }
 
             /*
-            |--------------------------------------------------------------------------
-            | MODULE
-            |--------------------------------------------------------------------------
-            */
+|--------------------------------------------------------------------------
+| MODULE
+|--------------------------------------------------------------------------
+*/
 
             if (
                 preg_match(
@@ -166,6 +168,9 @@ class HierarchyParserService
                 $modules[] = [
 
                     'title' => $text,
+                    'description' => null,
+
+
 
                     'chapters' => [],
                 ];
@@ -183,10 +188,10 @@ class HierarchyParserService
             }
 
             /*
-            |--------------------------------------------------------------------------
-            | CHAPTER
-            |--------------------------------------------------------------------------
-            */
+|--------------------------------------------------------------------------
+| CHAPTER
+|--------------------------------------------------------------------------
+*/
 
             if (
                 preg_match(
@@ -201,20 +206,21 @@ class HierarchyParserService
                     continue;
                 }
 
-                $modules
-                [$currentModuleIndex]
-                ['chapters'][] = [
+                $modules[$currentModuleIndex]['chapters'][] = [
 
                     'title' => $text,
 
                     'topics' => [],
+
+                    'description' => null,
+
+
+
                 ];
 
                 $currentChapterIndex =
                     count(
-                        $modules
-                        [$currentModuleIndex]
-                        ['chapters']
+                        $modules[$currentModuleIndex]['chapters']
                     ) - 1;
 
                 $currentTopicIndex = null;
@@ -225,10 +231,10 @@ class HierarchyParserService
             }
 
             /*
-            |--------------------------------------------------------------------------
-            | TOPIC
-            |--------------------------------------------------------------------------
-            */
+|--------------------------------------------------------------------------
+| TOPIC
+|--------------------------------------------------------------------------
+*/
 
             if (
                 preg_match(
@@ -243,39 +249,205 @@ class HierarchyParserService
                     continue;
                 }
 
-                $modules
-                [$currentModuleIndex]
-                ['chapters']
-                [$currentChapterIndex]
-                ['topics'][] = [
+                $modules[$currentModuleIndex]['chapters'][$currentChapterIndex]['topics'][] = [
 
                     'title' => $text,
+                    'description' => null,
 
                     'contents' => [],
                 ];
 
                 $currentTopicIndex =
                     count(
-                        $modules
-                        [$currentModuleIndex]
-                        ['chapters']
-                        [$currentChapterIndex]
-                        ['topics']
+                        $modules[$currentModuleIndex]['chapters'][$currentChapterIndex]['topics']
                     ) - 1;
 
                 $currentContentIndex = null;
 
                 continue;
             }
+            /*
+|--------------------------------------------------------------------------
+| DESCRIPTION MARKERS
+|--------------------------------------------------------------------------
+|
+| 1.D
+| 1.1.D
+| 1.1.1.D
+|
+*/
+
+            if (
+                preg_match(
+                    '/^(\d+(?:\.\d+){0,2})\.D\s*(.*)$/i',
+                    $text,
+                    $matches
+                )
+            ) {
+
+                $code = trim($matches[1]);
+
+                $inlineDescription = trim(
+                    $matches[2] ?? ''
+                );
+
+                /*
+|--------------------------------------------------------------------------
+| MODULE
+|--------------------------------------------------------------------------
+*/
+
+                if (
+                    preg_match('/^\d+$/', $code)
+                ) {
+
+                    $currentDescriptionTarget = [
+                        'type' => 'module',
+                        'module' => $currentModuleIndex,
+                    ];
+
+                    if ($inlineDescription !== '') {
+
+                        $modules[$currentModuleIndex]['description']
+                            = $inlineDescription;
+                    }
+                }
+
+                /*
+|--------------------------------------------------------------------------
+| CHAPTER
+|--------------------------------------------------------------------------
+*/ elseif (
+                    preg_match('/^\d+\.\d+$/', $code)
+                ) {
+
+                    $currentDescriptionTarget = [
+                        'type' => 'chapter',
+                        'module' => $currentModuleIndex,
+                        'chapter' => $currentChapterIndex,
+                    ];
+
+                    if ($inlineDescription !== '') {
+
+                        $modules[$currentModuleIndex]['chapters'][$currentChapterIndex]['description']
+                            = $inlineDescription;
+                    }
+                }
+
+                /*
+|--------------------------------------------------------------------------
+| TOPIC
+|--------------------------------------------------------------------------
+*/ elseif (
+                    preg_match('/^\d+\.\d+\.\d+$/', $code)
+                ) {
+
+                    $currentDescriptionTarget = [
+                        'type' => 'topic',
+                        'module' => $currentModuleIndex,
+                        'chapter' => $currentChapterIndex,
+                        'topic' => $currentTopicIndex,
+                    ];
+
+                    if ($inlineDescription !== '') {
+
+                        $modules[$currentModuleIndex]['chapters'][$currentChapterIndex]['topics'][$currentTopicIndex]['description']
+                            = $inlineDescription;
+                    }
+                }
+
+                continue;
+            }
 
             /*
-            |--------------------------------------------------------------------------
-            | HEADING
-            |--------------------------------------------------------------------------
-            |
-            | 1.1.1.H1 Heading
-            |
-            */
+|--------------------------------------------------------------------------
+| DESCRIPTION CONTENT
+|--------------------------------------------------------------------------
+*/
+
+            if ($currentDescriptionTarget !== null) {
+
+                /*
+|--------------------------------------------------------------------------
+| Stop Description On New Structure
+|--------------------------------------------------------------------------
+*/
+
+                if (
+
+                    preg_match('/^Module\s+\d+\s*:/i', $text) ||
+
+                    preg_match('/^Chapter\s+\d+(\.\d+)?\s*:/i', $text) ||
+
+                    preg_match('/^Topic\s+\d+\.\d+\.\d+\s*:/i', $text) ||
+
+                    preg_match('/^\d+\.\d+\.\d+\.(H\d+)/i', $text) ||
+
+                    preg_match('/^\d+\.\d+\.\d+\.(C\d+)/i', $text)
+
+                ) {
+
+                    $currentDescriptionTarget = null;
+                } else {
+
+                    switch ($currentDescriptionTarget['type']) {
+
+                        case 'module':
+
+                            $existing =
+                                $modules[$currentDescriptionTarget['module']]['description'] ?? '';
+
+                            $modules[$currentDescriptionTarget['module']]['description']
+                                = trim(
+                                    $existing .
+                                        "\n" .
+                                        $text
+                                );
+
+                            break;
+
+                        case 'chapter':
+
+                            $existing =
+                                $modules[$currentDescriptionTarget['module']]['chapters'][$currentDescriptionTarget['chapter']]['description'] ?? '';
+
+                            $modules[$currentDescriptionTarget['module']]['chapters'][$currentDescriptionTarget['chapter']]['description']
+                                = trim(
+                                    $existing .
+                                        "\n" .
+                                        $text
+                                );
+
+                            break;
+
+                        case 'topic':
+
+                            $existing =
+                                $modules[$currentDescriptionTarget['module']]['chapters'][$currentDescriptionTarget['chapter']]['topics'][$currentDescriptionTarget['topic']]['description']
+                                ?? '';
+
+                            $modules[$currentDescriptionTarget['module']]['chapters'][$currentDescriptionTarget['chapter']]['topics'][$currentDescriptionTarget['topic']]['description']
+                                = trim(
+                                    $existing .
+                                        "\n" .
+                                        $text
+                                );
+
+                            break;
+                    }
+
+                    continue;
+                }
+            }
+
+            /*
+|--------------------------------------------------------------------------
+| HEADING
+|--------------------------------------------------------------------------
+|
+| 1.1.1.H1 Heading
+|
+*/
 
             if (
                 preg_match(
@@ -299,13 +471,7 @@ class HierarchyParserService
 
                 $title = trim($matches[3]);
 
-                $modules
-                [$currentModuleIndex]
-                ['chapters']
-                [$currentChapterIndex]
-                ['topics']
-                [$currentTopicIndex]
-                ['contents'][] = [
+                $modules[$currentModuleIndex]['chapters'][$currentChapterIndex]['topics'][$currentTopicIndex]['contents'][] = [
 
                     'topic_code' => $topicCode,
 
@@ -322,26 +488,37 @@ class HierarchyParserService
 
                 $currentContentIndex =
                     count(
-                        $modules
-                        [$currentModuleIndex]
-                        ['chapters']
-                        [$currentChapterIndex]
-                        ['topics']
-                        [$currentTopicIndex]
-                        ['contents']
+                        $modules[$currentModuleIndex]['chapters'][$currentChapterIndex]['topics'][$currentTopicIndex]['contents']
                     ) - 1;
 
                 continue;
             }
 
             /*
-            |--------------------------------------------------------------------------
-            | CONTENT START
-            |--------------------------------------------------------------------------
-            |
-            | 1.1.1.C1
-            |
-            */
+|--------------------------------------------------------------------------
+| STOP CONTENT WHEN ASSESSMENT STARTS
+|--------------------------------------------------------------------------
+*/
+
+            if (
+                preg_match(
+                    '/^\d+\.\d+\.\d+\.Q\d+/i',
+                    $text
+                )
+            ) {
+
+                $currentContentIndex = null;
+
+                continue;
+            }
+            /*
+|--------------------------------------------------------------------------
+| CONTENT START
+|--------------------------------------------------------------------------
+|
+| 1.1.1.C1
+|
+*/
 
             if (
                 preg_match(
@@ -351,10 +528,10 @@ class HierarchyParserService
             ) {
 
                 /*
-                |--------------------------------------------------------------------------
-                | Remove Cx Marker ONLY
-                |--------------------------------------------------------------------------
-                */
+|--------------------------------------------------------------------------
+| Remove Cx Marker ONLY
+|--------------------------------------------------------------------------
+*/
 
                 $cleanHtml = preg_replace(
                     '/^\s*<[^>]+>\s*\d+\.\d+\.\d+\.(C\d+)\s*/i',
@@ -372,49 +549,65 @@ class HierarchyParserService
                     $currentContentIndex !== null
                 ) {
 
-                    $modules
-                    [$currentModuleIndex]
-                    ['chapters']
-                    [$currentChapterIndex]
-                    ['topics']
-                    [$currentTopicIndex]
-                    ['contents']
-                    [$currentContentIndex]
-                    ['content']
-                    .= $cleanHtml;
+                    $modules[$currentModuleIndex]['chapters'][$currentChapterIndex]['topics'][$currentTopicIndex]['contents'][$currentContentIndex]['content']
+                        .= $cleanHtml;
                 }
+
+                continue;
+            }
+            /*
+    |--------------------------------------------------------------------------
+    | IGNORE ASSESSMENT OPTIONS & ANSWERS
+    |--------------------------------------------------------------------------
+    */
+
+            if (
+                preg_match(
+                    '/^\d+\.\d+\.\d+\.Q\d+\.(O\d+|A)/i',
+                    $text
+                )
+            ) {
 
                 continue;
             }
 
             /*
-            |--------------------------------------------------------------------------
-            | NORMAL CONTENT
-            |--------------------------------------------------------------------------
-            */
+    |--------------------------------------------------------------------------
+    | IGNORE ASSESSMENT TITLES
+    |--------------------------------------------------------------------------
+    */
+
+            if (
+                preg_match(
+                    '/assessment|mcqs?/i',
+                    $text
+                )
+            ) {
+
+                $currentContentIndex = null;
+
+                continue;
+            }
+            /*
+    |--------------------------------------------------------------------------
+    | NORMAL CONTENT
+    |--------------------------------------------------------------------------
+    */
 
             if (
                 $currentContentIndex !== null
             ) {
 
-                $modules
-                [$currentModuleIndex]
-                ['chapters']
-                [$currentChapterIndex]
-                ['topics']
-                [$currentTopicIndex]
-                ['contents']
-                [$currentContentIndex]
-                ['content']
-                .= $rawHtml;
+                $modules[$currentModuleIndex]['chapters'][$currentChapterIndex]['topics'][$currentTopicIndex]['contents'][$currentContentIndex]['content']
+                    .= $rawHtml;
             }
         }
 
         /*
-        |--------------------------------------------------------------------------
-        | VALIDATION
-        |--------------------------------------------------------------------------
-        */
+    |--------------------------------------------------------------------------
+    | VALIDATION
+    |--------------------------------------------------------------------------
+    */
 
         if (empty($modules)) {
 
