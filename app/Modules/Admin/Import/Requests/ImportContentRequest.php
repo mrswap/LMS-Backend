@@ -59,6 +59,11 @@ class ImportContentRequest extends FormRequest
             'html.required' => 'HTML content is required.',
             'html.string'   => 'HTML content must be valid.',
             'html.min'      => 'Content is too short.',
+
+            'type.required' => 'Import type is required.',
+            'type.string'   => 'Import type must be valid.',
+            'type.in'       => 'Invalid import type selected.',
+
         ];
     }
 
@@ -76,6 +81,12 @@ class ImportContentRequest extends FormRequest
             'level_id' => $this->level_id
                 ? (int) $this->level_id
                 : null,
+
+            'type' => [
+                'required',
+                'string',
+                'in:all,content,quiz,exam,both',
+            ],
 
             'html' => is_string($this->html)
                 ? trim($this->html)
@@ -96,5 +107,10 @@ class ImportContentRequest extends FormRequest
     public function getHtml(): string
     {
         return (string) $this->validated('html');
+    }
+
+    public function getType(): string
+    {
+        return (string) $this->validated('type');
     }
 }
