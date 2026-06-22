@@ -2,21 +2,23 @@
 
 namespace App\Modules\Admin\Import\Services;
 
+use Illuminate\Support\Facades\Log;
+
 class HierarchyParserService
 {
     /*
-    |--------------------------------------------------------------------------
-    | Parse HTML Hierarchy
-    |--------------------------------------------------------------------------
-    */
+|--------------------------------------------------------------------------
+| Parse HTML Hierarchy
+|--------------------------------------------------------------------------
+*/
 
     public function parse(string $html): array
     {
         /*
-        |--------------------------------------------------------------------------
-        | Preserve Structure Breaks
-        |--------------------------------------------------------------------------
-        */
+|--------------------------------------------------------------------------
+| Preserve Structure Breaks
+|--------------------------------------------------------------------------
+*/
 
         $html = preg_replace(
             '/<\/p>/i',
@@ -43,14 +45,14 @@ class HierarchyParserService
         );
 
         /*
-|--------------------------------------------------------------------------
-| DOM LOAD
-|--------------------------------------------------------------------------
-*/
+        |--------------------------------------------------------------------------
+        | DOM LOAD
+        |--------------------------------------------------------------------------
+        */
 
         libxml_use_internal_errors(true);
 
-        $dom = new \DOMDocument();
+        $dom = new \DOMDocument;
 
         $dom->loadHTML(
             mb_convert_encoding(
@@ -63,26 +65,38 @@ class HierarchyParserService
         libxml_clear_errors();
 
         /*
-|--------------------------------------------------------------------------
-| BODY
-|--------------------------------------------------------------------------
-*/
+        |--------------------------------------------------------------------------
+        | BODY
+        |--------------------------------------------------------------------------
+        */
 
         $body = $dom
             ->getElementsByTagName('body')
             ->item(0);
 
-        if (!$body) {
+        if (! $body) {
             throw new \Exception(
                 'Invalid HTML body.'
             );
         }
+        /*
+        |--------------------------------------------------------------------------
+        | FLATTEN DOM
+        |--------------------------------------------------------------------------
+        */
+
+        $nodes = [];
+
+        $this->flattenNodes(
+            $body,
+            $nodes
+        );
 
         /*
-|--------------------------------------------------------------------------
-| STORAGE
-|--------------------------------------------------------------------------
-*/
+        |--------------------------------------------------------------------------
+        | STORAGE
+        |--------------------------------------------------------------------------
+        */
 
         $modules = [];
 
@@ -97,42 +111,42 @@ class HierarchyParserService
         $currentDescriptionTarget = null;
 
         /*
-|--------------------------------------------------------------------------
-| ASSESSMENT BLOCK FLAG
-|--------------------------------------------------------------------------
-|
-| Raised as soon as any assessment marker or title is encountered.
-| Prevents ANY node from being appended into TopicContent.content
-| until a new structural element (Module / Chapter / Topic / Heading /
-| Content marker) explicitly resets it.
-|
-*/
+        |--------------------------------------------------------------------------
+        | ASSESSMENT BLOCK FLAG
+        |--------------------------------------------------------------------------
+        |
+        | Raised as soon as any assessment marker or title is encountered.
+        | Prevents ANY node from being appended into TopicContent.content
+        | until a new structural element (Module / Chapter / Topic / Heading /
+        | Content marker) explicitly resets it.
+        |
+        */
 
         $inAssessmentBlock = false;
 
         /*
-|--------------------------------------------------------------------------
-| LOOP NODES
-|--------------------------------------------------------------------------
-*/
+        |--------------------------------------------------------------------------
+        | LOOP NODES
+        |--------------------------------------------------------------------------
+        */
 
-        foreach ($body->childNodes as $node) {
+        foreach ($nodes as $node) {
 
             /*
-|--------------------------------------------------------------------------
-| RAW HTML
-|--------------------------------------------------------------------------
-*/
+            |--------------------------------------------------------------------------
+            | RAW HTML
+            |--------------------------------------------------------------------------
+            */
 
             $rawHtml = trim(
                 $dom->saveHTML($node)
             );
 
             /*
-|--------------------------------------------------------------------------
-| TEXT
-|--------------------------------------------------------------------------
-*/
+            |--------------------------------------------------------------------------
+            | TEXT
+            |--------------------------------------------------------------------------
+            */
 
             $text = trim(
                 preg_replace(
@@ -141,6 +155,20 @@ class HierarchyParserService
                     strip_tags($rawHtml)
                 )
             );
+
+            /*
+            |--------------------------------------------------------------------------
+            | Remove Word Bullets
+            |--------------------------------------------------------------------------
+            */
+
+            $text = preg_replace(
+                '/^[●•▪◦◆►]+\s*/u',
+                '',
+                $text
+            );
+
+            $text = trim($text);
 
             if (
                 empty($text)
@@ -151,10 +179,10 @@ class HierarchyParserService
             }
 
             /*
-|--------------------------------------------------------------------------
-| Ignore separators
-|--------------------------------------------------------------------------
-*/
+            |--------------------------------------------------------------------------
+            | Ignore separators
+            |--------------------------------------------------------------------------
+            */
 
             if (
                 preg_match(
@@ -166,10 +194,10 @@ class HierarchyParserService
             }
 
             /*
-|--------------------------------------------------------------------------
-| MODULE
-|--------------------------------------------------------------------------
-*/
+            |--------------------------------------------------------------------------
+            | MODULE
+            |--------------------------------------------------------------------------
+            */
 
             if (
                 preg_match(
@@ -194,10 +222,10 @@ class HierarchyParserService
             }
 
             /*
-|--------------------------------------------------------------------------
-| CHAPTER
-|--------------------------------------------------------------------------
-*/
+            |--------------------------------------------------------------------------
+            | CHAPTER
+            |--------------------------------------------------------------------------
+            */
 
             if (
                 preg_match(
@@ -217,7 +245,7 @@ class HierarchyParserService
                 ];
 
                 $currentChapterIndex =
-                    count($modules[$currentModuleIndex]['chapters']) - 1;
+                count($modules[$currentModuleIndex]['chapters']) - 1;
 
                 $currentTopicIndex = null;
                 $currentContentIndex = null;
@@ -227,17 +255,21 @@ class HierarchyParserService
             }
 
             /*
-|--------------------------------------------------------------------------
-| TOPIC
-|--------------------------------------------------------------------------
-*/
+            |--------------------------------------------------------------------------
+            | TOPIC
+            |--------------------------------------------------------------------------
+            */
 
             if (
                 preg_match(
-                    '/^Topic\s+\d+\.\d+\.\d+\s*:/i',
+                    '/Topic\s+\d+\.\d+\.\d+\s*:/i',
                     $text
                 )
             ) {
+
+                Log::info('TOPIC FOUND', [
+                    'text' => $text,
+                ]);
 
                 if ($currentChapterIndex === null) {
                     continue;
@@ -250,9 +282,9 @@ class HierarchyParserService
                 ];
 
                 $currentTopicIndex =
-                    count(
-                        $modules[$currentModuleIndex]['chapters'][$currentChapterIndex]['topics']
-                    ) - 1;
+                count(
+                    $modules[$currentModuleIndex]['chapters'][$currentChapterIndex]['topics']
+                ) - 1;
 
                 $currentContentIndex = null;
                 $inAssessmentBlock = false;
@@ -261,15 +293,15 @@ class HierarchyParserService
             }
 
             /*
-|--------------------------------------------------------------------------
-| DESCRIPTION MARKERS
-|--------------------------------------------------------------------------
-|
-| 1.D
-| 1.1.D
-| 1.1.1.D
-|
-*/
+            |--------------------------------------------------------------------------
+            | DESCRIPTION MARKERS
+            |--------------------------------------------------------------------------
+            |
+            | 1.D
+            | 1.1.D
+            | 1.1.1.D
+            |
+            */
 
             if (
                 preg_match(
@@ -283,8 +315,8 @@ class HierarchyParserService
                 $inlineDescription = trim($matches[2] ?? '');
 
                 /*
-| MODULE
-*/
+                | MODULE
+                */
                 if (preg_match('/^\d+$/', $code)) {
 
                     $currentDescriptionTarget = [
@@ -297,8 +329,8 @@ class HierarchyParserService
                     }
 
                     /*
-| CHAPTER
-*/
+                    | CHAPTER
+                    */
                 } elseif (preg_match('/^\d+\.\d+$/', $code)) {
 
                     $currentDescriptionTarget = [
@@ -309,12 +341,12 @@ class HierarchyParserService
 
                     if ($inlineDescription !== '') {
                         $modules[$currentModuleIndex]['chapters'][$currentChapterIndex]['description']
-                            = $inlineDescription;
+                        = $inlineDescription;
                     }
 
                     /*
-| TOPIC
-*/
+                    | TOPIC
+                    */
                 } elseif (preg_match('/^\d+\.\d+\.\d+$/', $code)) {
 
                     $currentDescriptionTarget = [
@@ -326,7 +358,7 @@ class HierarchyParserService
 
                     if ($inlineDescription !== '') {
                         $modules[$currentModuleIndex]['chapters'][$currentChapterIndex]['topics'][$currentTopicIndex]['description']
-                            = $inlineDescription;
+                        = $inlineDescription;
                     }
                 }
 
@@ -334,21 +366,21 @@ class HierarchyParserService
             }
 
             /*
-|--------------------------------------------------------------------------
-| DESCRIPTION CONTENT
-|--------------------------------------------------------------------------
-*/
+            |--------------------------------------------------------------------------
+            | DESCRIPTION CONTENT
+            |--------------------------------------------------------------------------
+            */
 
             if ($currentDescriptionTarget !== null) {
 
                 /*
-| Stop description accumulation on any new structural marker
-*/
+                | Stop description accumulation on any new structural marker
+                */
 
                 if (
                     preg_match('/^Module\s+\d+\s*:/i', $text) ||
                     preg_match('/^Chapter\s+\d+(\.\d+)?\s*:/i', $text) ||
-                    preg_match('/^Topic\s+\d+\.\d+\.\d+\s*:/i', $text) ||
+                    preg_match('/Topic\s+\d+\.\d+\.\d+\s*:/i', $text) ||
                     preg_match('/^\d+\.\d+\.\d+\.(H\d+)/i', $text) ||
                     preg_match('/^\d+\.\d+\.\d+\.(C\d+)/i', $text)
                 ) {
@@ -363,28 +395,28 @@ class HierarchyParserService
 
                         case 'module':
                             $existing =
-                                $modules[$currentDescriptionTarget['module']]['description'] ?? '';
+                            $modules[$currentDescriptionTarget['module']]['description'] ?? '';
 
                             $modules[$currentDescriptionTarget['module']]['description'] =
-                                trim($existing . "\n" . $text);
+                            trim($existing."\n".$text);
                             break;
 
                         case 'chapter':
                             $existing =
-                                $modules[$currentDescriptionTarget['module']]['chapters'][$currentDescriptionTarget['chapter']]['description'] ?? '';
+                            $modules[$currentDescriptionTarget['module']]['chapters'][$currentDescriptionTarget['chapter']]['description'] ?? '';
 
                             $modules[$currentDescriptionTarget['module']]['chapters'][$currentDescriptionTarget['chapter']]['description'] =
-                                trim($existing . "\n" . $text);
+                            trim($existing."\n".$text);
                             break;
 
                         case 'topic':
                             $existing =
-                                $modules[$currentDescriptionTarget['module']]['chapters'][$currentDescriptionTarget['chapter']]['topics'][$currentDescriptionTarget['topic']]['description']
-                                ?? '';
+                            $modules[$currentDescriptionTarget['module']]['chapters'][$currentDescriptionTarget['chapter']]['topics'][$currentDescriptionTarget['topic']]['description']
+                            ?? '';
 
                             $modules[$currentDescriptionTarget['module']]['chapters'][$currentDescriptionTarget['chapter']]['topics'][$currentDescriptionTarget['topic']]['description']
-                                =
-                                trim($existing . "\n" . $text);
+                            =
+                            trim($existing."\n".$text);
                             break;
                     }
 
@@ -393,19 +425,19 @@ class HierarchyParserService
             }
 
             /*
-|--------------------------------------------------------------------------
-| ASSESSMENT TITLE GUARD
-|--------------------------------------------------------------------------
-|
-| Matches human-readable section headers such as:
-| "Topic Assessment → 5 MCQs"
-| "Assessment"
-| "MCQs"
-|
-| Raises $inAssessmentBlock and clears $currentContentIndex so that
-| nothing after this header is written into TopicContent.
-|
-*/
+            |--------------------------------------------------------------------------
+            | ASSESSMENT TITLE GUARD
+            |--------------------------------------------------------------------------
+            |
+            | Matches human-readable section headers such as:
+            | "Topic Assessment → 5 MCQs"
+            | "Assessment"
+            | "MCQs"
+            |
+            | Raises $inAssessmentBlock and clears $currentContentIndex so that
+            | nothing after this header is written into TopicContent.
+            |
+            */
 
             if (
                 preg_match(
@@ -420,13 +452,13 @@ class HierarchyParserService
             }
 
             /*
-|--------------------------------------------------------------------------
-| ASSESSMENT QUESTION GUARD (1.1.1.Q1 ...)
-|--------------------------------------------------------------------------
-|
-| Matches the question stem line. Sets the flag and discards the node.
-|
-*/
+            |--------------------------------------------------------------------------
+            | ASSESSMENT QUESTION GUARD (1.1.1.Q1 ...)
+            |--------------------------------------------------------------------------
+            |
+            | Matches the question stem line. Sets the flag and discards the node.
+            |
+            */
 
             if (
                 preg_match(
@@ -441,14 +473,14 @@ class HierarchyParserService
             }
 
             /*
-|--------------------------------------------------------------------------
-| ASSESSMENT OPTIONS & ANSWERS GUARD (1.1.1.Q1.O1 / 1.1.1.Q1.A)
-|--------------------------------------------------------------------------
-|
-| Matches option and answer lines. Flag should already be raised, but we
-| guard explicitly here as a safety net.
-|
-*/
+            |--------------------------------------------------------------------------
+            | ASSESSMENT OPTIONS & ANSWERS GUARD (1.1.1.Q1.O1 / 1.1.1.Q1.A)
+            |--------------------------------------------------------------------------
+            |
+            | Matches option and answer lines. Flag should already be raised, but we
+            | guard explicitly here as a safety net.
+            |
+            */
 
             if (
                 preg_match(
@@ -462,23 +494,62 @@ class HierarchyParserService
             }
 
             /*
-|--------------------------------------------------------------------------
-| HEADING
-|--------------------------------------------------------------------------
-|
-| 1.1.1.H1 Heading Title
-|
-| A new heading always exits assessment mode and opens a fresh content slot.
-|
-*/
+            |--------------------------------------------------------------------------
+            | HEADING
+            |--------------------------------------------------------------------------
+            |
+            | 1.1.1.H1 Heading Title
+            |
+            | A new heading always exits assessment mode and opens a fresh content slot.
+            |
+            */
+
+            /*
+            |--------------------------------------------------------------------------
+            | Learning Objectives Fallback
+            |--------------------------------------------------------------------------
+            */
+
+            if (
+                strcasecmp(
+                    trim($text),
+                    'Learning Objectives'
+                ) === 0
+            ) {
+
+                if ($currentTopicIndex === null) {
+                    continue;
+                }
+
+                $modules[$currentModuleIndex]['chapters'][$currentChapterIndex]['topics'][$currentTopicIndex]['contents'][] = [
+
+                    'topic_code' => null,
+                    'heading_code' => 'H0',
+                    'heading_level' => 'h0',
+                    'type' => 'text',
+                    'title' => 'Learning Objectives',
+                    'content' => '',
+                ];
+
+                $currentContentIndex =
+                count(
+                    $modules[$currentModuleIndex]['chapters'][$currentChapterIndex]['topics'][$currentTopicIndex]['contents']
+                ) - 1;
+
+                continue;
+            }
 
             if (
                 preg_match(
-                    '/^(\d+\.\d+\.\d+)\.(H\d+)\s+(.*)$/i',
+                    '/(\d+\.\d+\.\d+)\.(H\d+)\s+(.*)/i',
                     $text,
                     $matches
                 )
             ) {
+
+                Log::info('HEADING FOUND', [
+                    'text' => $text,
+                ]);
 
                 if ($currentTopicIndex === null) {
                     continue;
@@ -498,9 +569,9 @@ class HierarchyParserService
                 ];
 
                 $currentContentIndex =
-                    count(
-                        $modules[$currentModuleIndex]['chapters'][$currentChapterIndex]['topics'][$currentTopicIndex]['contents']
-                    ) - 1;
+                count(
+                    $modules[$currentModuleIndex]['chapters'][$currentChapterIndex]['topics'][$currentTopicIndex]['contents']
+                ) - 1;
 
                 // A heading always exits assessment mode.
                 $inAssessmentBlock = false;
@@ -509,20 +580,20 @@ class HierarchyParserService
             }
 
             /*
-|--------------------------------------------------------------------------
-| CONTENT MARKER
-|--------------------------------------------------------------------------
-|
-| 1.1.1.C1
-|
-| Appends inline content to the currently open heading slot.
-| A Cx marker always exits assessment mode.
-|
-*/
+            |--------------------------------------------------------------------------
+            | CONTENT MARKER
+            |--------------------------------------------------------------------------
+            |
+            | 1.1.1.C1
+            |
+            | Appends inline content to the currently open heading slot.
+            | A Cx marker always exits assessment mode.
+            |
+            */
 
             if (
                 preg_match(
-                    '/^(\d+\.\d+\.\d+)\.(C\d+)/i',
+                    '/(\d+\.\d+\.\d+)\.(C\d+)/i',
                     $text
                 )
             ) {
@@ -531,8 +602,8 @@ class HierarchyParserService
                 $inAssessmentBlock = false;
 
                 /*
-| Strip the Cx marker from the raw HTML before storing.
-*/
+                | Strip the Cx marker from the raw HTML before storing.
+                */
 
                 $cleanHtml = preg_replace(
                     '/^\s*<[^>]+>\s*\d+\.\d+\.\d+\.(C\d+)\s*/i',
@@ -548,26 +619,26 @@ class HierarchyParserService
 
                 if ($currentContentIndex !== null) {
                     $modules[$currentModuleIndex]['chapters'][$currentChapterIndex]['topics'][$currentTopicIndex]['contents'][$currentContentIndex]['content']
-                        .= $cleanHtml;
+                    .= $cleanHtml;
                 }
 
                 continue;
             }
 
             /*
-    |--------------------------------------------------------------------------
-    | NORMAL CONTENT
-    |--------------------------------------------------------------------------
-    |
-    | Only reached when:
-    | - $currentContentIndex points to an open heading slot AND
-    | - $inAssessmentBlock is FALSE
-    |
-    | The assessment flag is the definitive gate — even if $currentContentIndex
-    | somehow remained non-null after an assessment block, the flag prevents
-    | any assessment text from leaking into TopicContent.
-    |
-    */
+            |--------------------------------------------------------------------------
+            | NORMAL CONTENT
+            |--------------------------------------------------------------------------
+            |
+            | Only reached when:
+            | - $currentContentIndex points to an open heading slot AND
+            | - $inAssessmentBlock is FALSE
+            |
+            | The assessment flag is the definitive gate — even if $currentContentIndex
+            | somehow remained non-null after an assessment block, the flag prevents
+            | any assessment text from leaking into TopicContent.
+            |
+            */
 
             if (
                 $currentContentIndex !== null
@@ -575,15 +646,15 @@ class HierarchyParserService
                 ! $inAssessmentBlock
             ) {
                 $modules[$currentModuleIndex]['chapters'][$currentChapterIndex]['topics'][$currentTopicIndex]['contents'][$currentContentIndex]['content']
-                    .= $rawHtml;
+                .= $rawHtml;
             }
         }
 
         /*
-    |--------------------------------------------------------------------------
-    | VALIDATION
-    |--------------------------------------------------------------------------
-    */
+        |--------------------------------------------------------------------------
+        | VALIDATION
+        |--------------------------------------------------------------------------
+        */
 
         if (empty($modules)) {
             throw new \Exception(
@@ -594,5 +665,33 @@ class HierarchyParserService
         return [
             'modules' => $modules,
         ];
+    }
+
+    protected function flattenNodes(
+        \DOMNode $node,
+        array &$nodes
+    ): void {
+
+        foreach ($node->childNodes as $child) {
+
+            if (
+                ! in_array(
+                    strtolower($child->nodeName),
+                    [
+                        'p',
+                        'div',
+                        'table',
+                        'img',
+                        'ul',
+                        'ol',
+                        'figure',
+                    ]
+                )
+            ) {
+                continue;
+            }
+
+            $nodes[] = $child;
+        }
     }
 }

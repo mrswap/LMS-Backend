@@ -2,11 +2,11 @@
 
 namespace App\Modules\Admin\Import\Services;
 
+use App\Jobs\GenerateTopicContentAudioJob;
 use App\Models\Chapter;
 use App\Models\Module;
 use App\Models\Topic;
 use App\Models\TopicContent;
-use App\Jobs\GenerateTopicContentAudioJob;
 
 class TopicImporterService
 {
@@ -31,7 +31,7 @@ class TopicImporterService
             |--------------------------------------------------------------------------
             */
 
-            $module = Module::firstOrCreate(
+            $module = Module::updateOrCreate(
 
                 [
                     'program_id' => $programId,
@@ -42,9 +42,7 @@ class TopicImporterService
                 [
                     'status' => true,
                     'publish_status' => 'published',
-                    'description' =>
-                    $moduleData['description']
-                        ?? null,
+                    'description' => $moduleData['description'] ?? null,
                     'created_by' => $createdBy,
                 ]
             );
@@ -57,7 +55,7 @@ class TopicImporterService
 
             foreach ($moduleData['chapters'] as $chapterData) {
 
-                $chapter = Chapter::firstOrCreate(
+                $chapter = Chapter::updateOrCreate(
 
                     [
                         'program_id' => $programId,
@@ -68,9 +66,7 @@ class TopicImporterService
 
                     [
                         'status' => true,
-                        'description' =>
-                        $chapterData['description']
-                            ?? null,
+                        'description' => $chapterData['description'] ?? null,
                         'publish_status' => 'published',
                         'created_by' => $createdBy,
                     ]
@@ -84,7 +80,7 @@ class TopicImporterService
 
                 foreach ($chapterData['topics'] as $topicData) {
 
-                    $topic = Topic::firstOrCreate(
+                    $topic = Topic::updateOrCreate(
 
                         [
                             'program_id' => $programId,
@@ -96,14 +92,26 @@ class TopicImporterService
 
                         [
                             'status' => true,
-                            'description' =>
-                            $topicData['description']
-                                ?? null,
-
+                            'description' => $topicData['description'] ?? null,
                             'publish_status' => 'published',
                             'created_by' => $createdBy,
                         ]
                     );
+
+                    /*
+                    |--------------------------------------------------------------------------
+                    | RE-IMPORT SAFE
+                    |--------------------------------------------------------------------------
+                    */
+
+                    TopicContent::query()
+
+                        ->where(
+                            'topic_id',
+                            $topic->id
+                        )
+
+                        ->delete();
 
                     /*
                     |--------------------------------------------------------------------------
@@ -113,67 +121,31 @@ class TopicImporterService
 
                     $order = 1;
 
-                    foreach ($topicData['contents'] as $content) {
+                    foreach (
+                        $topicData['contents'] ?? [] as $content
+                    ) {
 
-                        $exists =
-                            TopicContent::query()
+                        $topicContent =
+                            TopicContent::create([
 
-                            ->where(
-                                'topic_id',
-                                $topic->id
-                            )
+                                'topic_id' => $topic->id,
 
-                            ->where(
-                                'title',
-                                $content['title'] ?? null
-                            )
+                                'type' => 'text',
 
-                            ->exists();
+                                'title' => $content['title'] ?? null,
 
-                        if ($exists) {
+                                'content' => $content['content'] ?? null,
 
-                            $order++;
+                                'meta' => [],
 
-                            continue;
-                        }
+                                'order' => $order++,
 
-                        $topicContent = TopicContent::create([
+                                'status' => true,
 
-                            'topic_id' => $topic->id,
+                                'publish_status' => 'published',
 
-                            'type' => 'text',
-
-                            'title' =>
-                            $content['title'] ?? null,
-
-                            'content' =>
-                            $content['content'] ?? null,
-
-                            'meta' => [
-
-                                'topic_code' =>
-                                $content['topic_code']
-                                    ?? null,
-
-                                'heading_code' =>
-                                $content['heading_code']
-                                    ?? null,
-
-                                'heading_level' =>
-                                $content['heading_level']
-                                    ?? null,
-                            ],
-
-                            'order' => $order++,
-
-                            'status' => true,
-
-                            'publish_status' =>
-                            'published',
-
-                            'created_by' =>
-                            $createdBy,
-                        ]);
+                                'created_by' => $createdBy,
+                            ]);
 
                         /*
                         |--------------------------------------------------------------------------
@@ -187,7 +159,9 @@ class TopicImporterService
                             )
                         );
 
-                        if (strlen($plainText) > 100) {
+                        if (
+                            strlen($plainText) > 100
+                        ) {
 
                             GenerateTopicContentAudioJob::dispatch(
                                 $topicContent->id

@@ -8,18 +8,6 @@ class HtmlCleanerService
         string $html
     ): string {
 
-        $html = str_replace(
-            [
-                '&nbsp;',
-                "\r",
-            ],
-            [
-                ' ',
-                '',
-            ],
-            $html
-        );
-
         return trim($html);
     }
 }

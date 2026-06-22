@@ -3,6 +3,7 @@
 namespace App\Modules\Admin\Import\Services;
 
 use App\Models\ImportLog;
+use Exception;
 
 class HtmlImportService
 {
@@ -27,73 +28,143 @@ class HtmlImportService
         |--------------------------------------------------------------------------
         | STEP 1
         |--------------------------------------------------------------------------
+        | CLEAN HTML
         */
 
         $cleanHtml = $this->cleanerService->clean(
             $import->raw_html
         );
 
+        if (empty(trim($cleanHtml))) {
+
+            throw new Exception(
+                'Empty HTML received.'
+            );
+        }
+
         /*
         |--------------------------------------------------------------------------
-        | STEP 2
+        | CONTENT IMPORT
         |--------------------------------------------------------------------------
         */
 
-        $parsedData =
-            $this->hierarchyParserService->parse(
-                $cleanHtml
+        if (
+
+            in_array(
+
+                $import->type,
+
+                [
+                    'content',
+                    'all',
+                    'both',
+                ]
+
+            )
+        ) {
+
+            $parsedData =
+                $this->hierarchyParserService->parse(
+                    $cleanHtml
+                );
+
+            logger()->info(
+                'CONTENT PARSED',
+                [
+
+                    'modules' => count(
+                        $parsedData['modules']
+                            ?? []
+                    ),
+                ]
             );
 
+            if (
+                ! empty(
+                    $parsedData['modules']
+                        ?? []
+                )
+            ) {
+
+                $this->topicImporterService->import(
+
+                    $parsedData,
+
+                    $import->program_id,
+
+                    $import->level_id,
+
+                    $import->created_by
+                );
+            }
+        }
+
         /*
         |--------------------------------------------------------------------------
-        | STEP 3
+        | ASSESSMENT IMPORT
         |--------------------------------------------------------------------------
-        | IMPORT MODULE/CHAPTER/TOPIC/CONTENTS
         */
 
-        $this->topicImporterService->import(
+        if (
 
-            $parsedData,
+            in_array(
 
-            $import->program_id,
+                $import->type,
 
-            $import->level_id,
+                [
+                    'quiz',
+                    'exam',
+                    'all',
+                    'both',
+                ]
 
-            $import->created_by
-        );
+            )
+        ) {
 
-        /*
-        |--------------------------------------------------------------------------
-        | STEP 4
-        |--------------------------------------------------------------------------
-        | PARSE ASSESSMENTS
-        */
+            $assessmentData =
+                $this->assessmentParserService->parse(
+                    $cleanHtml
+                );
 
-        $assessmentData =
-            $this->assessmentParserService->parse(
-                $cleanHtml
+            logger()->info(
+                'ASSESSMENT PARSED',
+                [
+
+                    'questions_count' => count(
+                        $assessmentData['questions']
+                            ?? []
+                    ),
+
+                    'checklists_count' => count(
+                        $assessmentData['checklists']
+                            ?? []
+                    ),
+
+                    'sample_question' => $assessmentData['questions'][0]
+                        ?? null,
+                ]
             );
 
-        logger()->info('ASSESSMENT PARSED', [
-            'questions_count' =>
-                count($assessmentData['questions'] ?? []),
+            $hasAssessments =
 
-            'checklists_count' =>
-                count($assessmentData['checklists'] ?? []),
+                ! empty(
+                    $assessmentData['questions']
+                        ?? []
+                )
 
-            'sample' =>
-                $assessmentData['questions'][0] ?? null,
-        ]);
+                ||
 
-        /*
-        |--------------------------------------------------------------------------
-        | STEP 5
-        |--------------------------------------------------------------------------
-        | IMPORT ASSESSMENTS
-        */
+                ! empty(
+                    $assessmentData['checklists']
+                        ?? []
+                );
 
-        $this->assessmentImporterService->import(
-            $assessmentData
-        );
+            if ($hasAssessments) {
+
+                $this->assessmentImporterService->import(
+                    $assessmentData
+                );
+            }
+        }
     }
 }

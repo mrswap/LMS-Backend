@@ -7,8 +7,8 @@ use App\Models\ImportLog;
 use App\Modules\Admin\Import\Jobs\ProcessHtmlImportJob;
 use App\Modules\Admin\Import\Requests\ImportContentRequest;
 use Illuminate\Http\JsonResponse;
-use Throwable;
 use Illuminate\Http\Request;
+use Throwable;
 
 class ImportController extends Controller
 {
@@ -33,6 +33,8 @@ class ImportController extends Controller
             $import = ImportLog::create([
 
                 'program_id' => $request->getProgramId(),
+
+                'type' => $request->getType(),
 
                 'level_id' => $request->getLevelId(),
 
@@ -68,7 +70,7 @@ class ImportController extends Controller
                 'data' => [
                     'import_id' => $import->id,
                     'status' => $import->status,
-                ]
+                ],
             ]);
         } catch (Throwable $e) {
 
@@ -82,13 +84,10 @@ class ImportController extends Controller
 
                 'error' => app()->environment('local')
                     ? $e->getMessage()
-                    : 'Something went wrong.'
+                    : 'Something went wrong.',
             ], 500);
         }
     }
-
-
-
 
     /*
     |--------------------------------------------------------------------------
@@ -103,7 +102,7 @@ class ImportController extends Controller
             ->with([
                 'program:id,title',
                 'level:id,title',
-                'creator:id,name'
+                'creator:id,name',
             ]);
 
         /*
@@ -116,7 +115,7 @@ class ImportController extends Controller
 
             $query->where(
                 'level_id',
-                $request->level_id
+                (int) $request->level_id
             );
         }
 
@@ -130,7 +129,21 @@ class ImportController extends Controller
 
             $query->where(
                 'status',
-                $request->status
+                strtolower(trim($request->status))
+            );
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | FILTER : TYPE
+        |--------------------------------------------------------------------------
+        */
+
+        if ($request->filled('type')) {
+
+            $query->where(
+                'type',
+                strtolower(trim($request->type))
             );
         }
 
@@ -165,13 +178,19 @@ class ImportController extends Controller
                     })
 
                     ->orWhere(
+                        'type',
+                        'LIKE',
+                        "%{$search}%"
+                    )
+
+                    ->orWhere(
                         'status',
                         'LIKE',
                         "%{$search}%"
                     )
 
                     ->orWhere(
-                        'error_message',
+                        'error',
                         'LIKE',
                         "%{$search}%"
                     );
@@ -198,12 +217,17 @@ class ImportController extends Controller
         $allowedSorts = [
 
             'id',
+
+            'type',
+
             'status',
+
             'created_at',
+
             'updated_at',
         ];
 
-        if (!in_array($sortBy, $allowedSorts)) {
+        if (! in_array($sortBy, $allowedSorts)) {
 
             $sortBy = 'created_at';
         }
@@ -239,6 +263,8 @@ class ImportController extends Controller
 
                 'id' => $log->id,
 
+                'type' => $log->type,
+
                 'program' => $log->program
                     ? [
                         'id' => $log->program->id,
@@ -255,7 +281,7 @@ class ImportController extends Controller
 
                 'status' => $log->status,
 
-                'error_message' => $log->error_message,
+                'error' => $log->error,
 
                 'meta' => $log->meta,
 
@@ -276,7 +302,7 @@ class ImportController extends Controller
 
             'success' => true,
 
-            'data' => $logs
+            'data' => $logs,
         ]);
     }
 }

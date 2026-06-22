@@ -33,6 +33,12 @@ class ImportContentRequest extends FormRequest
                 'exists:levels,id',
             ],
 
+            'type' => [
+                'required',
+                'string',
+                'in:all,content,quiz,exam,both',
+            ],
+
             'html' => [
                 'required',
                 'string',
@@ -49,20 +55,20 @@ class ImportContentRequest extends FormRequest
         return [
 
             'program_id.required' => 'Program is required.',
-            'program_id.integer'  => 'Program must be valid.',
-            'program_id.exists'   => 'Program does not exist.',
+            'program_id.integer' => 'Program must be valid.',
+            'program_id.exists' => 'Program does not exist.',
 
             'level_id.required' => 'Level is required.',
-            'level_id.integer'  => 'Level must be valid.',
-            'level_id.exists'   => 'Level does not exist.',
+            'level_id.integer' => 'Level must be valid.',
+            'level_id.exists' => 'Level does not exist.',
 
             'html.required' => 'HTML content is required.',
-            'html.string'   => 'HTML content must be valid.',
-            'html.min'      => 'Content is too short.',
+            'html.string' => 'HTML content must be valid.',
+            'html.min' => 'Content is too short.',
 
             'type.required' => 'Import type is required.',
-            'type.string'   => 'Import type must be valid.',
-            'type.in'       => 'Invalid import type selected.',
+            'type.string' => 'Import type must be valid.',
+            'type.in' => 'Invalid import type selected.',
 
         ];
     }
@@ -82,11 +88,9 @@ class ImportContentRequest extends FormRequest
                 ? (int) $this->level_id
                 : null,
 
-            'type' => [
-                'required',
-                'string',
-                'in:all,content,quiz,exam,both',
-            ],
+            'type' => is_string($this->type)
+                ? strtolower(trim($this->type))
+                : 'all',
 
             'html' => is_string($this->html)
                 ? trim($this->html)
