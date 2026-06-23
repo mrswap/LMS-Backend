@@ -541,7 +541,7 @@ class HierarchyParserService
 
             if (
                 preg_match(
-                    '/(\d+\.\d+\.\d+)\.(H\d+)\s+(.*)/i',
+                    '/(\d+\.\d+\.\d+)\.(H\d+)\s*(.*)/i',
                     $text,
                     $matches
                 )
@@ -558,7 +558,13 @@ class HierarchyParserService
                 $topicCode = trim($matches[1]);
                 $headingCode = strtoupper(trim($matches[2]));
                 $title = trim($matches[3]);
+                $title = preg_replace(
+                    '/\s+Feature\s+.*/i',
+                    '',
+                    $title
+                );
 
+                $title = trim($title);
                 $modules[$currentModuleIndex]['chapters'][$currentChapterIndex]['topics'][$currentTopicIndex]['contents'][] = [
                     'topic_code' => $topicCode,
                     'heading_code' => $headingCode,
@@ -593,13 +599,39 @@ class HierarchyParserService
 
             if (
                 preg_match(
-                    '/(\d+\.\d+\.\d+)\.(C\d+)/i',
-                    $text
+                    '/(\d+\.\d+\.\d+)\.(C\d+)\s*(.*)/i',
+                    $text,
+                    $matches
                 )
             ) {
 
                 // Exit assessment mode — a Cx marker is always structural content.
                 $inAssessmentBlock = false;
+
+                if ($currentContentIndex === null) {
+
+                    $title = trim($matches[3] ?? '');
+
+                    $modules[$currentModuleIndex]['chapters'][$currentChapterIndex]['topics'][$currentTopicIndex]['contents'][] = [
+
+                        'topic_code' => $matches[1],
+
+                        'heading_code' => $matches[2],
+
+                        'heading_level' => strtolower($matches[2]),
+
+                        'type' => 'text',
+
+                        'title' => $title ?: 'Content',
+
+                        'content' => '',
+                    ];
+
+                    $currentContentIndex =
+                    count(
+                        $modules[$currentModuleIndex]['chapters'][$currentChapterIndex]['topics'][$currentTopicIndex]['contents']
+                    ) - 1;
+                }
 
                 /*
                 | Strip the Cx marker from the raw HTML before storing.
@@ -675,7 +707,7 @@ class HierarchyParserService
         foreach ($node->childNodes as $child) {
 
             if (
-                ! in_array(
+                in_array(
                     strtolower($child->nodeName),
                     [
                         'p',
@@ -688,10 +720,15 @@ class HierarchyParserService
                     ]
                 )
             ) {
-                continue;
+                $nodes[] = $child;
             }
 
-            $nodes[] = $child;
+            if ($child->hasChildNodes()) {
+                $this->flattenNodes(
+                    $child,
+                    $nodes
+                );
+            }
         }
     }
 }
