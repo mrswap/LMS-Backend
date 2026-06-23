@@ -110,18 +110,6 @@ class HierarchyParserService
 
         $currentDescriptionTarget = null;
 
-        /*
-        |--------------------------------------------------------------------------
-        | ASSESSMENT BLOCK FLAG
-        |--------------------------------------------------------------------------
-        |
-        | Raised as soon as any assessment marker or title is encountered.
-        | Prevents ANY node from being appended into TopicContent.content
-        | until a new structural element (Module / Chapter / Topic / Heading /
-        | Content marker) explicitly resets it.
-        |
-        */
-
         $inAssessmentBlock = false;
 
         /*
@@ -262,7 +250,7 @@ class HierarchyParserService
 
             if (
                 preg_match(
-                    '/Topic\s+\d+\.\d+\.\d+\s*:/i',
+                    '/^Topic\s+\d+\.\d+\.\d+\s*:/i',
                     $text
                 )
             ) {
@@ -287,6 +275,9 @@ class HierarchyParserService
                 ) - 1;
 
                 $currentContentIndex = null;
+
+                $currentDescriptionTarget = null;
+
                 $inAssessmentBlock = false;
 
                 continue;
@@ -380,7 +371,7 @@ class HierarchyParserService
                 if (
                     preg_match('/^Module\s+\d+\s*:/i', $text) ||
                     preg_match('/^Chapter\s+\d+(\.\d+)?\s*:/i', $text) ||
-                    preg_match('/Topic\s+\d+\.\d+\.\d+\s*:/i', $text) ||
+                    preg_match('/^Topic\s+\d+\.\d+\.\d+\s*:/i', $text) ||
                     preg_match('/^\d+\.\d+\.\d+\.(H\d+)/i', $text) ||
                     preg_match('/^\d+\.\d+\.\d+\.(C\d+)/i', $text)
                 ) {
@@ -524,10 +515,15 @@ class HierarchyParserService
                 $modules[$currentModuleIndex]['chapters'][$currentChapterIndex]['topics'][$currentTopicIndex]['contents'][] = [
 
                     'topic_code' => null,
+
                     'heading_code' => 'H0',
+
                     'heading_level' => 'h0',
+
                     'type' => 'text',
+
                     'title' => 'Learning Objectives',
+
                     'content' => '',
                 ];
 
@@ -547,8 +543,10 @@ class HierarchyParserService
                 )
             ) {
 
-                Log::info('HEADING FOUND', [
-                    'text' => $text,
+                $isTableHeading =
+                stripos($rawHtml, '<table') !== false || stripos($text, 'Feature') !== false || stripos($text, 'Wall Thickness')
+                    !== false;
+                Log::info('HEADING FOUND', ['text' => $text,
                 ]);
 
                 if ($currentTopicIndex === null) {
@@ -558,21 +556,46 @@ class HierarchyParserService
                 $topicCode = trim($matches[1]);
                 $headingCode = strtoupper(trim($matches[2]));
                 $title = trim($matches[3]);
-                $title = preg_replace(
-                    '/\s+Feature\s+.*/i',
-                    '',
-                    $title
-                );
 
-                $title = trim($title);
+                if ($isTableHeading) {
+
+                    $title = preg_replace(
+                        '/[●•▪◦◆►].*/u',
+                        '',
+                        $title
+                    );
+
+                    $title = trim($title);
+                }
+
                 $modules[$currentModuleIndex]['chapters'][$currentChapterIndex]['topics'][$currentTopicIndex]['contents'][] = [
+
                     'topic_code' => $topicCode,
+
                     'heading_code' => $headingCode,
+
                     'heading_level' => strtolower($headingCode),
+
                     'type' => 'text',
+
                     'title' => $title,
+
                     'content' => '',
                 ];
+
+                if ($isTableHeading) {
+
+                    $currentContentIndex = count(
+                        $modules[$currentModuleIndex]['chapters'][$currentChapterIndex]['topics'][$currentTopicIndex]['contents']
+                    ) - 1;
+
+                    $modules[$currentModuleIndex]['chapters'][$currentChapterIndex]['topics'][$currentTopicIndex]['contents'][$currentContentIndex]['content']
+                    .= $rawHtml;
+
+                    $inAssessmentBlock = false;
+
+                    continue;
+                }
 
                 $currentContentIndex =
                 count(
@@ -622,7 +645,7 @@ class HierarchyParserService
 
                         'type' => 'text',
 
-                        'title' => $title ?: 'Content',
+                        'title' => 'Content',
 
                         'content' => '',
                     ];
