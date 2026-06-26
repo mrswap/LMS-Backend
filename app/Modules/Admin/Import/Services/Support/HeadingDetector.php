@@ -4,11 +4,15 @@ namespace App\Modules\Admin\Import\Services\Support;
 
 class HeadingDetector
 {
-    protected array $knownHeadings = [
+    protected const MAX_HEADING_LENGTH = 150;
+
+    protected const KNOWN_HEADINGS = [
 
         'Topic Overview',
         'Overview',
         'Introduction',
+        'Chapter Overview',
+        'Section Overview',
 
         'Learning Objectives',
 
@@ -51,12 +55,24 @@ class HeadingDetector
         'Lead Measurement Terms',
     ];
 
+    protected array $headingMap = [];
+
+    public function __construct()
+    {
+        $this->headingMap = array_flip(
+            array_map(
+                fn ($item) => mb_strtolower(trim($item)),
+                self::KNOWN_HEADINGS
+            )
+        );
+    }
+
     public function isHeading(
         string $rawHtml,
         string $text
     ): bool {
 
-        $text = trim($text);
+        $text = trim(strip_tags($text));
 
         if ($text === '') {
             return false;
@@ -64,51 +80,40 @@ class HeadingDetector
 
         /*
         |--------------------------------------------------------------------------
-        | Ignore Structure
+        | Ignore Module / Chapter / Topic
         |--------------------------------------------------------------------------
         */
 
-        if (
-            preg_match('/Module\s+\d+/i', $text)
-            ||
-            preg_match('/Chapter\s+\d+/i', $text)
-            ||
-            preg_match('/Topic\s+\d+/i', $text)
-        ) {
+        if ($this->isStructureTitle($text)) {
             return false;
         }
 
         /*
         |--------------------------------------------------------------------------
-        | H Marker
+        | Explicit H Marker
         |--------------------------------------------------------------------------
         */
 
         if (
-            preg_match(
-                '/\d+\.\d+\.\d+\.H\d+/i',
-                $text
-            )
+            preg_match('/^\d+(\.\d+)*\.H\d+\b/i', $text)
         ) {
             return true;
         }
 
         /*
         |--------------------------------------------------------------------------
-        | Known Headings
+        | Known Heading
         |--------------------------------------------------------------------------
         */
 
-        foreach ($this->knownHeadings as $heading) {
-
-            if (
-                strcasecmp(
-                    trim($text),
-                    $heading
-                ) === 0
-            ) {
-                return true;
-            }
+        if (
+            isset(
+                $this->headingMap[
+                    mb_strtolower($text)
+                ]
+            )
+        ) {
+            return true;
         }
 
         /*
@@ -118,13 +123,62 @@ class HeadingDetector
         */
 
         if (
-            preg_match('/<(strong|b)/i', $rawHtml)
+            preg_match('/<(strong|b)\b/i', $rawHtml)
             &&
-            mb_strlen($text) < 150
+            mb_strlen($text) <= self::MAX_HEADING_LENGTH
+            &&
+            !$this->looksLikeSentence($text)
+        ) {
+            return true;
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | Standalone Short Heading
+        |--------------------------------------------------------------------------
+        */
+
+        if (
+            mb_strlen($text) <= 60
+            &&
+            !$this->looksLikeSentence($text)
+            &&
+            !$this->looksLikeList($text)
         ) {
             return true;
         }
 
         return false;
+    }
+
+    protected function isStructureTitle(string $text): bool
+    {
+        return
+            preg_match('/^Module\s+\d+/i', $text)
+            ||
+            preg_match('/^Chapter\s+\d+/i', $text)
+            ||
+            preg_match('/^Topic\s+\d+/i', $text);
+    }
+
+    protected function looksLikeSentence(string $text): bool
+    {
+        if (preg_match('/[.!?]$/', $text)) {
+            return true;
+        }
+
+        return str_word_count($text) > 18;
+    }
+
+    protected function looksLikeList(string $text): bool
+    {
+        return
+            preg_match('/^\d+\./', $text)
+            ||
+            preg_match('/^[A-Z]\./', $text)
+            ||
+            preg_match('/^[•●▪◦]/u', $text)
+            ||
+            preg_match('/^-/', $text);
     }
 }

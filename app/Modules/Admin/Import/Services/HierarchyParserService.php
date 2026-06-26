@@ -3,754 +3,286 @@
 namespace App\Modules\Admin\Import\Services;
 
 use Illuminate\Support\Facades\Log;
+use App\Modules\Admin\Import\Services\Support\HeadingDetector;
 
-class HierarchyParserService
-{
-    /*
-|--------------------------------------------------------------------------
-| Parse HTML Hierarchy
-|--------------------------------------------------------------------------
-*/
+class HierarchyParserService {
+    // Regex patterns for module/chapter/topic detection (case-insensitive, flexible formats)
+    protected const PATTERN_MODULE  = '/^Module\s*(?:No\.?\s*)?\d+/i';
+    protected const PATTERN_CHAPTER = '/^Chapter\s*(?:No\.?\s*)?\d+(\.\d+)*\b/i';
+    protected const PATTERN_TOPIC   = '/^Topic\s*(?:No\.?\s*)?\d+(\.\d+)*\b/i';
 
-    public function parse(string $html): array
-    {
-        /*
-|--------------------------------------------------------------------------
-| Preserve Structure Breaks
-|--------------------------------------------------------------------------
-*/
+    // Regex for detecting assessment start
+    protected const PATTERN_ASSESSMENT_START = '/\b(assessment|quiz|mcq|self[-\s]assessment)\b/i';
+    // Regex for detecting a question line (e.g. "Q1", "Question 1")
+    protected const PATTERN_QUESTION = '/^\s*Q\d+/i';
 
-        $html = preg_replace(
-            '/<\/p>/i',
-            "</p>\n",
-            $html
-        );
+    protected HeadingDetector $headingDetector;
 
-        $html = preg_replace(
-            '/<\/div>/i',
-            "</div>\n",
-            $html
-        );
+    public function __construct(HeadingDetector $headingDetector) {
+        $this->headingDetector = $headingDetector;
+    }
 
-        $html = preg_replace(
-            '/<\/table>/i',
-            "</table>\n",
-            $html
-        );
+    /**
+     * Parse the given HTML and build a structured hierarchy of modules, chapters, topics, and contents.
+     *
+     * @param string $html Raw HTML content from the Word export.
+     * @return array Structured array: ['modules' => [ ... ] ].
+     * @throws \Exception If no modules are found in the document.
+     */
+    public function parse(string $html): array {
+        // ------------------------------
+        // 1. Normalize HTML (preserve structure)
+        // ------------------------------
 
-        $html = preg_replace(
-            '/<br\s*\/?>/i',
-            "\n",
-            $html
-        );
-
-        /*
-        |--------------------------------------------------------------------------
-        | DOM LOAD
-        |--------------------------------------------------------------------------
-        */
-
+        // Convert to UTF-8 and suppress parsing errors
         libxml_use_internal_errors(true);
-
-        $dom = new \DOMDocument;
-
-        $dom->loadHTML(
-            mb_convert_encoding(
-                $html,
-                'HTML-ENTITIES',
-                'UTF-8'
-            )
-        );
-
+        $dom = new \DOMDocument();
+        $dom->loadHTML(mb_convert_encoding($html, 'HTML-ENTITIES', 'UTF-8'));
         libxml_clear_errors();
 
-        /*
-        |--------------------------------------------------------------------------
-        | BODY
-        |--------------------------------------------------------------------------
-        */
-
-        $body = $dom
-            ->getElementsByTagName('body')
-            ->item(0);
-
+        // Get the <body> element
+        $body = $dom->getElementsByTagName('body')->item(0);
         if (! $body) {
-            throw new \Exception(
-                'Invalid HTML body.'
-            );
+            throw new \Exception('Invalid HTML: <body> tag not found.');
         }
-        /*
-        |--------------------------------------------------------------------------
-        | FLATTEN DOM
-        |--------------------------------------------------------------------------
-        */
+
+        // ------------------------------
+        // 2. Flatten DOM into a sequence of block nodes
+        // ------------------------------
 
         $nodes = [];
+        $this->flattenNodes($body, $nodes);
 
-        $this->flattenNodes(
-            $body,
-            $nodes
-        );
-
-        /*
-        |--------------------------------------------------------------------------
-        | STORAGE
-        |--------------------------------------------------------------------------
-        */
-
+        // ------------------------------
+        // 3. Initialize parser state
+        // ------------------------------
         $modules = [];
-
-        $currentModuleIndex = null;
-
+        $currentModuleIndex  = null;
         $currentChapterIndex = null;
-
-        $currentTopicIndex = null;
-
+        $currentTopicIndex   = null;
         $currentContentIndex = null;
+        $inAssessmentMode    = false;
+        $topicDescriptionMode = false; // true if we are collecting topic description (before first heading)
 
-        $currentDescriptionTarget = null;
-
-        $inAssessmentBlock = false;
-
-        /*
-        |--------------------------------------------------------------------------
-        | LOOP NODES
-        |--------------------------------------------------------------------------
-        */
+        // ------------------------------
+        // 4. Iterate through blocks
+        // ------------------------------
 
         foreach ($nodes as $node) {
+            // Convert node to HTML and text
+            $rawHtml = trim($dom->saveHTML($node));
+            $text = trim(preg_replace('/\s+/', ' ', strip_tags($rawHtml)));
 
-            /*
-            |--------------------------------------------------------------------------
-            | RAW HTML
-            |--------------------------------------------------------------------------
-            */
+            // Skip empty or whitespace-only nodes
+            if ($text === '' && $rawHtml === '') {
+                continue;
+            }
 
-            $rawHtml = trim(
-                $dom->saveHTML($node)
-            );
-
-            /*
-            |--------------------------------------------------------------------------
-            | TEXT
-            |--------------------------------------------------------------------------
-            */
-
-            $text = trim(
-                preg_replace(
-                    '/\s+/',
-                    ' ',
-                    strip_tags($rawHtml)
-                )
-            );
-
-            /*
-            |--------------------------------------------------------------------------
-            | Remove Word Bullets
-            |--------------------------------------------------------------------------
-            */
-
-            $text = preg_replace(
-                '/^[●•▪◦◆►]+\s*/u',
-                '',
-                $text
-            );
-
+            // Remove common Word bullets from the text
+            $text = preg_replace('/^[●•▪◦◆►]+\s*/u', '', $text);
             $text = trim($text);
-
-            if (
-                empty($text)
-                &&
-                empty($rawHtml)
-            ) {
+            if ($text === '') {
                 continue;
             }
 
-            /*
-            |--------------------------------------------------------------------------
-            | Ignore separators
-            |--------------------------------------------------------------------------
-            */
-
-            if (
-                preg_match(
-                    '/^[_\-]{3,}$/',
-                    $text
-                )
-            ) {
+            // Skip horizontal separators like "-----"
+            if (preg_match('/^[_\-]{3,}$/', $text)) {
                 continue;
             }
 
-            /*
-            |--------------------------------------------------------------------------
-            | MODULE
-            |--------------------------------------------------------------------------
-            */
-
-            if (
-                preg_match(
-                    '/^Module\s+\d+\s*:/i',
-                    $text
-                )
-            ) {
-
+            // ------------------------------
+            // 5. Module Detection
+            // ------------------------------
+            if (preg_match(self::PATTERN_MODULE, $text)) {
                 $modules[] = [
-                    'title' => $text,
-                    'description' => null,
-                    'chapters' => [],
+                    'title'       => $text,
+                    'description' => '',
+                    'chapters'    => [],
                 ];
-
                 $currentModuleIndex = count($modules) - 1;
                 $currentChapterIndex = null;
                 $currentTopicIndex = null;
                 $currentContentIndex = null;
-                $inAssessmentBlock = false;
-
+                $inAssessmentMode = false;
+                Log::info('Module detected: ' . $text);
                 continue;
             }
 
-            /*
-            |--------------------------------------------------------------------------
-            | CHAPTER
-            |--------------------------------------------------------------------------
-            */
-
-            if (
-                preg_match(
-                    '/^Chapter\s+\d+(\.\d+)?\s*:/i',
-                    $text
-                )
-            ) {
-
+            // ------------------------------
+            // 6. Chapter Detection
+            // ------------------------------
+            if (preg_match(self::PATTERN_CHAPTER, $text)) {
                 if ($currentModuleIndex === null) {
+                    // Chapter before any module: skip
                     continue;
                 }
-
                 $modules[$currentModuleIndex]['chapters'][] = [
-                    'title' => $text,
-                    'topics' => [],
-                    'description' => null,
+                    'title'       => $text,
+                    'description' => '',
+                    'topics'      => [],
                 ];
-
-                $currentChapterIndex =
-                count($modules[$currentModuleIndex]['chapters']) - 1;
-
+                $currentChapterIndex = count($modules[$currentModuleIndex]['chapters']) - 1;
                 $currentTopicIndex = null;
                 $currentContentIndex = null;
-                $inAssessmentBlock = false;
-
+                $inAssessmentMode = false;
+                Log::info('Chapter detected: ' . $text);
                 continue;
             }
 
-            /*
-            |--------------------------------------------------------------------------
-            | TOPIC
-            |--------------------------------------------------------------------------
-            */
-
-            if (
-                preg_match(
-                    '/^Topic\s+\d+\.\d+\.\d+\s*:/i',
-                    $text
-                )
-            ) {
-
-                Log::info('TOPIC FOUND', [
-                    'text' => $text,
-                ]);
-
+            // ------------------------------
+            // 7. Topic Detection
+            // ------------------------------
+            if (preg_match(self::PATTERN_TOPIC, $text)) {
                 if ($currentChapterIndex === null) {
+                    // Topic before any chapter: skip
                     continue;
                 }
-
                 $modules[$currentModuleIndex]['chapters'][$currentChapterIndex]['topics'][] = [
-                    'title' => $text,
-                    'description' => null,
-                    'contents' => [],
+                    'title'       => $text,
+                    'description' => '',
+                    'contents'    => [],
                 ];
-
-                $currentTopicIndex =
-                count(
+                $currentTopicIndex = count(
                     $modules[$currentModuleIndex]['chapters'][$currentChapterIndex]['topics']
                 ) - 1;
-
                 $currentContentIndex = null;
-
-                $currentDescriptionTarget = null;
-
-                $inAssessmentBlock = false;
-
+                $topicDescriptionMode = true; // start collecting description
+                $inAssessmentMode = false;
+                Log::info('Topic detected: ' . $text);
                 continue;
             }
 
-            /*
-            |--------------------------------------------------------------------------
-            | DESCRIPTION MARKERS
-            |--------------------------------------------------------------------------
-            |
-            | 1.D
-            | 1.1.D
-            | 1.1.1.D
-            |
-            */
-
-            if (
-                preg_match(
-                    '/^(\d+(?:\.\d+){0,2})\.D\s*(.*)$/i',
-                    $text,
-                    $matches
-                )
-            ) {
-
-                $code = trim($matches[1]);
-                $inlineDescription = trim($matches[2] ?? '');
-
-                /*
-                | MODULE
-                */
-                if (preg_match('/^\d+$/', $code)) {
-
-                    $currentDescriptionTarget = [
-                        'type' => 'module',
-                        'module' => $currentModuleIndex,
-                    ];
-
-                    if ($inlineDescription !== '') {
-                        $modules[$currentModuleIndex]['description'] = $inlineDescription;
-                    }
-
-                    /*
-                    | CHAPTER
-                    */
-                } elseif (preg_match('/^\d+\.\d+$/', $code)) {
-
-                    $currentDescriptionTarget = [
-                        'type' => 'chapter',
-                        'module' => $currentModuleIndex,
-                        'chapter' => $currentChapterIndex,
-                    ];
-
-                    if ($inlineDescription !== '') {
-                        $modules[$currentModuleIndex]['chapters'][$currentChapterIndex]['description']
-                        = $inlineDescription;
-                    }
-
-                    /*
-                    | TOPIC
-                    */
-                } elseif (preg_match('/^\d+\.\d+\.\d+$/', $code)) {
-
-                    $currentDescriptionTarget = [
-                        'type' => 'topic',
-                        'module' => $currentModuleIndex,
-                        'chapter' => $currentChapterIndex,
-                        'topic' => $currentTopicIndex,
-                    ];
-
-                    if ($inlineDescription !== '') {
-                        $modules[$currentModuleIndex]['chapters'][$currentChapterIndex]['topics'][$currentTopicIndex]['description']
-                        = $inlineDescription;
-                    }
-                }
-
-                continue;
-            }
-
-            /*
-            |--------------------------------------------------------------------------
-            | DESCRIPTION CONTENT
-            |--------------------------------------------------------------------------
-            */
-
-            if ($currentDescriptionTarget !== null) {
-
-                /*
-                | Stop description accumulation on any new structural marker
-                */
-
-                if (
-                    preg_match('/^Module\s+\d+\s*:/i', $text) ||
-                    preg_match('/^Chapter\s+\d+(\.\d+)?\s*:/i', $text) ||
-                    preg_match('/^Topic\s+\d+\.\d+\.\d+\s*:/i', $text) ||
-                    preg_match('/^\d+\.\d+\.\d+\.(H\d+)/i', $text) ||
-                    preg_match('/^\d+\.\d+\.\d+\.(C\d+)/i', $text)
-                ) {
-
-                    $currentDescriptionTarget = null;
-
-                    // Fall through — let the node be processed by subsequent blocks.
-
-                } else {
-
-                    switch ($currentDescriptionTarget['type']) {
-
-                        case 'module':
-                            $existing =
-                            $modules[$currentDescriptionTarget['module']]['description'] ?? '';
-
-                            $modules[$currentDescriptionTarget['module']]['description'] =
-                            trim($existing."\n".$text);
-                            break;
-
-                        case 'chapter':
-                            $existing =
-                            $modules[$currentDescriptionTarget['module']]['chapters'][$currentDescriptionTarget['chapter']]['description'] ?? '';
-
-                            $modules[$currentDescriptionTarget['module']]['chapters'][$currentDescriptionTarget['chapter']]['description'] =
-                            trim($existing."\n".$text);
-                            break;
-
-                        case 'topic':
-                            $existing =
-                            $modules[$currentDescriptionTarget['module']]['chapters'][$currentDescriptionTarget['chapter']]['topics'][$currentDescriptionTarget['topic']]['description']
-                            ?? '';
-
-                            $modules[$currentDescriptionTarget['module']]['chapters'][$currentDescriptionTarget['chapter']]['topics'][$currentDescriptionTarget['topic']]['description']
-                            =
-                            trim($existing."\n".$text);
-                            break;
-                    }
-
-                    continue;
-                }
-            }
-
-            /*
-            |--------------------------------------------------------------------------
-            | ASSESSMENT TITLE GUARD
-            |--------------------------------------------------------------------------
-            |
-            | Matches human-readable section headers such as:
-            | "Topic Assessment → 5 MCQs"
-            | "Assessment"
-            | "MCQs"
-            |
-            | Raises $inAssessmentBlock and clears $currentContentIndex so that
-            | nothing after this header is written into TopicContent.
-            |
-            */
-
-            if (
-                preg_match(
-                    '/assessment|mcqs?/i',
-                    $text
-                )
-            ) {
+            // ------------------------------
+            // 8. Assessment Start Detection
+            // ------------------------------
+            if (preg_match(self::PATTERN_ASSESSMENT_START, $text)) {
+                // Enter assessment mode: subsequent content is part of assessment, not normal sections
                 $currentContentIndex = null;
-                $inAssessmentBlock = true;
-
+                $inAssessmentMode = true;
+                Log::info('Assessment section starts: ' . $text);
                 continue;
             }
-
-            /*
-            |--------------------------------------------------------------------------
-            | ASSESSMENT QUESTION GUARD (1.1.1.Q1 ...)
-            |--------------------------------------------------------------------------
-            |
-            | Matches the question stem line. Sets the flag and discards the node.
-            |
-            */
-
-            if (
-                preg_match(
-                    '/^\d+\.\d+\.\d+\.Q\d+/i',
-                    $text
-                )
-            ) {
+            // (Optional) Detect question patterns
+            if (preg_match(self::PATTERN_QUESTION, $text)) {
                 $currentContentIndex = null;
-                $inAssessmentBlock = true;
-
+                $inAssessmentMode = true;
+                Log::info('Question detected, entering assessment mode: ' . $text);
+                continue;
+            }
+            // If already in assessment mode, skip normal content
+            if ($inAssessmentMode) {
                 continue;
             }
 
-            /*
-            |--------------------------------------------------------------------------
-            | ASSESSMENT OPTIONS & ANSWERS GUARD (1.1.1.Q1.O1 / 1.1.1.Q1.A)
-            |--------------------------------------------------------------------------
-            |
-            | Matches option and answer lines. Flag should already be raised, but we
-            | guard explicitly here as a safety net.
-            |
-            */
-
-            if (
-                preg_match(
-                    '/^\d+\.\d+\.\d+\.Q\d+\.(O\d+|A)/i',
-                    $text
-                )
-            ) {
-                $inAssessmentBlock = true;
-
-                continue;
-            }
-
-            /*
-            |--------------------------------------------------------------------------
-            | HEADING
-            |--------------------------------------------------------------------------
-            |
-            | 1.1.1.H1 Heading Title
-            |
-            | A new heading always exits assessment mode and opens a fresh content slot.
-            |
-            */
-
-            /*
-            |--------------------------------------------------------------------------
-            | Learning Objectives Fallback
-            |--------------------------------------------------------------------------
-            */
-
-            if (
-                strcasecmp(
-                    trim($text),
-                    'Learning Objectives'
-                ) === 0
-            ) {
-
-                if ($currentTopicIndex === null) {
-                    continue;
+            // ------------------------------
+            // 9. Section (Heading) Detection
+            // ------------------------------
+            if ($currentTopicIndex !== null && $this->headingDetector->isHeading($rawHtml, $text)) {
+                // New section heading within the current topic
+                // Close topic description mode if it was on
+                if ($topicDescriptionMode) {
+                    $topicDescriptionMode = false;
                 }
-
-                $modules[$currentModuleIndex]['chapters'][$currentChapterIndex]['topics'][$currentTopicIndex]['contents'][] = [
-
-                    'topic_code' => null,
-
-                    'heading_code' => 'H0',
-
-                    'heading_level' => 'h0',
-
-                    'type' => 'text',
-
-                    'title' => 'Learning Objectives',
-
-                    'content' => '',
+                // Create a new content block
+                $section = [
+                    'topic_code'   => null,    // No explicit topic code without H-marker
+                    'heading_code' => null,    // No explicit heading code without H-marker
+                    'heading_level' => null,    // No heading level code
+                    'type'         => 'text',
+                    'title'        => $text,
+                    'content'      => '',
                 ];
-
-                $currentContentIndex =
-                count(
-                    $modules[$currentModuleIndex]['chapters'][$currentChapterIndex]['topics'][$currentTopicIndex]['contents']
-                ) - 1;
-
+                // Append to topic's contents
+                $contents = &$modules[$currentModuleIndex]['chapters'][$currentChapterIndex]['topics'][$currentTopicIndex]['contents'];
+                $contents[] = $section;
+                $currentContentIndex = count($contents) - 1;
+                Log::info('Section heading detected: ' . $text);
                 continue;
             }
 
-            if (
-                preg_match(
-                    '/(\d+\.\d+\.\d+)\.(H\d+)\s*(.*)/i',
-                    $text,
-                    $matches
-                )
-            ) {
-
-                $isTableHeading =
-                stripos($rawHtml, '<table') !== false || stripos($text, 'Feature') !== false || stripos($text, 'Wall Thickness')
-                    !== false;
-                Log::info('HEADING FOUND', ['text' => $text,
-                ]);
-
-                if ($currentTopicIndex === null) {
+            // ------------------------------
+            // 10. Description vs Content
+            // ------------------------------
+            if ($currentTopicIndex !== null) {
+                // We have an open topic
+                $topicData = &$modules[$currentModuleIndex]['chapters'][$currentChapterIndex]['topics'][$currentTopicIndex];
+                if ($topicDescriptionMode) {
+                    $topicData['description'] .= $rawHtml;
                     continue;
                 }
-
-                $topicCode = trim($matches[1]);
-                $headingCode = strtoupper(trim($matches[2]));
-                $title = trim($matches[3]);
-
-                if ($isTableHeading) {
-
-                    $title = preg_replace(
-                        '/[●•▪◦◆►].*/u',
-                        '',
-                        $title
-                    );
-
-                    $title = trim($title);
-                }
-
-                $modules[$currentModuleIndex]['chapters'][$currentChapterIndex]['topics'][$currentTopicIndex]['contents'][] = [
-
-                    'topic_code' => $topicCode,
-
-                    'heading_code' => $headingCode,
-
-                    'heading_level' => strtolower($headingCode),
-
-                    'type' => 'text',
-
-                    'title' => $title,
-
-                    'content' => '',
-                ];
-
-                if ($isTableHeading) {
-
-                    $currentContentIndex = count(
-                        $modules[$currentModuleIndex]['chapters'][$currentChapterIndex]['topics'][$currentTopicIndex]['contents']
-                    ) - 1;
-
-                    $modules[$currentModuleIndex]['chapters'][$currentChapterIndex]['topics'][$currentTopicIndex]['contents'][$currentContentIndex]['content']
-                    .= $rawHtml;
-
-                    $inAssessmentBlock = false;
-
-                    continue;
-                }
-
-                $currentContentIndex =
-                count(
-                    $modules[$currentModuleIndex]['chapters'][$currentChapterIndex]['topics'][$currentTopicIndex]['contents']
-                ) - 1;
-
-                // A heading always exits assessment mode.
-                $inAssessmentBlock = false;
-
-                continue;
-            }
-
-            /*
-            |--------------------------------------------------------------------------
-            | CONTENT MARKER
-            |--------------------------------------------------------------------------
-            |
-            | 1.1.1.C1
-            |
-            | Appends inline content to the currently open heading slot.
-            | A Cx marker always exits assessment mode.
-            |
-            */
-
-            if (
-                preg_match(
-                    '/(\d+\.\d+\.\d+)\.(C\d+)\s*(.*)/i',
-                    $text,
-                    $matches
-                )
-            ) {
-
-                // Exit assessment mode — a Cx marker is always structural content.
-                $inAssessmentBlock = false;
-
+                // After first section: ensure we have a content block to append to
                 if ($currentContentIndex === null) {
-
-                    $title = trim($matches[3] ?? '');
-
-                    $modules[$currentModuleIndex]['chapters'][$currentChapterIndex]['topics'][$currentTopicIndex]['contents'][] = [
-
-                        'topic_code' => $matches[1],
-
-                        'heading_code' => $matches[2],
-
-                        'heading_level' => strtolower($matches[2]),
-
-                        'type' => 'text',
-
-                        'title' => 'Content',
-
-                        'content' => '',
+                    // Create a fallback "Content" section if none exists
+                    $section = [
+                        'topic_code'   => null,
+                        'heading_code' => null,
+                        'heading_level' => null,
+                        'type'         => 'text',
+                        'title'        => 'Content',
+                        'content'      => '',
                     ];
-
-                    $currentContentIndex =
-                    count(
-                        $modules[$currentModuleIndex]['chapters'][$currentChapterIndex]['topics'][$currentTopicIndex]['contents']
-                    ) - 1;
+                    $contents = &$modules[$currentModuleIndex]['chapters'][$currentChapterIndex]['topics'][$currentTopicIndex]['contents'];
+                    $contents[] = $section;
+                    $currentContentIndex = count($contents) - 1;
+                    Log::info('Started fallback Content section.');
                 }
-
-                /*
-                | Strip the Cx marker from the raw HTML before storing.
-                */
-
-                $cleanHtml = preg_replace(
-                    '/^\s*<[^>]+>\s*\d+\.\d+\.\d+\.(C\d+)\s*/i',
-                    '',
-                    $rawHtml
-                );
-
-                $cleanHtml = preg_replace(
-                    '/^\s*\d+\.\d+\.\d+\.(C\d+)\s*/i',
-                    '',
-                    $cleanHtml
-                );
-
-                if ($currentContentIndex !== null) {
-                    $modules[$currentModuleIndex]['chapters'][$currentChapterIndex]['topics'][$currentTopicIndex]['contents'][$currentContentIndex]['content']
-                    .= $cleanHtml;
-                }
-
+                // Append HTML of this block to the current content
+                $modules[$currentModuleIndex]['chapters'][$currentChapterIndex]['topics'][$currentTopicIndex]['contents'][$currentContentIndex]['content']
+                    .= $rawHtml;
                 continue;
             }
 
-            /*
-            |--------------------------------------------------------------------------
-            | NORMAL CONTENT
-            |--------------------------------------------------------------------------
-            |
-            | Only reached when:
-            | - $currentContentIndex points to an open heading slot AND
-            | - $inAssessmentBlock is FALSE
-            |
-            | The assessment flag is the definitive gate — even if $currentContentIndex
-            | somehow remained non-null after an assessment block, the flag prevents
-            | any assessment text from leaking into TopicContent.
-            |
-            */
-
-            if (
-                $currentContentIndex !== null
-                &&
-                ! $inAssessmentBlock
-            ) {
-                $modules[$currentModuleIndex]['chapters'][$currentChapterIndex]['topics'][$currentTopicIndex]['contents'][$currentContentIndex]['content']
-                .= $rawHtml;
-            }
+            // If no current topic, and none of the above conditions match, we ignore the content
+            // (Or you could log it for diagnostics)
         }
 
-        /*
-        |--------------------------------------------------------------------------
-        | VALIDATION
-        |--------------------------------------------------------------------------
-        */
-
+        // ------------------------------
+        // 11. Post-Processing & Validation
+        // ------------------------------
         if (empty($modules)) {
-            throw new \Exception(
-                'No modules detected.'
-            );
+            throw new \Exception('No modules detected in the document.');
         }
 
-        return [
-            'modules' => $modules,
-        ];
+        return ['modules' => $modules];
     }
 
-    protected function flattenNodes(
-        \DOMNode $node,
-        array &$nodes
-    ): void {
-
+    /**
+     * Recursively traverse the DOM to collect block-level elements.
+     * Adds <p>, <table>, <ul>, <ol>, <figure>, <img> (and standalone text-in-div) to $nodes.
+     *
+     * @param \DOMNode $node
+     * @param array    $nodes
+     */
+    protected function flattenNodes(\DOMNode $node, array &$nodes): void {
         foreach ($node->childNodes as $child) {
+            $name = strtolower($child->nodeName);
 
-            if (
-                in_array(
-                    strtolower($child->nodeName),
-                    [
-                        'p',
-                        'div',
-                        'table',
-                        'img',
-                        'ul',
-                        'ol',
-                        'figure',
-                    ]
-                )
-            ) {
-                $nodes[] = $child;
+            // Determine if child has any block-like descendants
+            $hasBlockChild = false;
+            if ($child->hasChildNodes()) {
+                foreach ($child->childNodes as $grandChild) {
+                    if (in_array(strtolower($grandChild->nodeName), ['p', 'table', 'ul', 'ol', 'figure', 'img'])) {
+                        $hasBlockChild = true;
+                        break;
+                    }
+                }
             }
 
+            // If this node is a significant block element, add it
+            if (in_array($name, ['p', 'table', 'ul', 'ol', 'figure', 'img'])) {
+                $nodes[] = $child;
+            }
+            // If it's a <div> with no block children but with text, treat as a paragraph
+            elseif ($name === 'div' && ! $hasBlockChild) {
+                $text = trim(preg_replace('/\s+/', ' ', strip_tags($child->textContent)));
+                if ($text !== '') {
+                    $nodes[] = $child;
+                }
+            }
+
+            // Recurse into children
             if ($child->hasChildNodes()) {
-                $this->flattenNodes(
-                    $child,
-                    $nodes
-                );
+                $this->flattenNodes($child, $nodes);
             }
         }
     }
