@@ -1,6 +1,7 @@
 <?php
 
 namespace App\Modules\Admin\Import\Services\Support;
+use Illuminate\Support\Facades\Log;
 
 class HeadingDetector {
     protected const MAX_HEADING_LENGTH = 150;
@@ -89,6 +90,9 @@ class HeadingDetector {
         */
 
         if ($this->hasHCHeadingPattern($text)) {
+            Log::info('RETURN TRUE => HC PATTERN', [
+                'text' => $text
+            ]);
             return true;
         }
 
@@ -126,6 +130,9 @@ class HeadingDetector {
         if (
             preg_match('/^\d+(?:\.\d+)*\.H\d+\b/i', $text)
         ) {
+            Log::info('RETURN TRUE => HC PATTERN', [
+                'text' => $text
+            ]);
             return true;
         }
 
@@ -194,12 +201,18 @@ class HeadingDetector {
             ENT_QUOTES | ENT_HTML5,
             'UTF-8'
         );
+        $text = str_replace(
+            ["\\", "\r", "\n", "\t"],
+            " ",
+            $text
+        );
 
+        $text = preg_replace('/\s+/u', ' ', $text);
         /*
-    |--------------------------------------------------------------------------
-    | Remove leading bullets / dots / symbols
-    |--------------------------------------------------------------------------
-    */
+        |--------------------------------------------------------------------------
+        | Remove leading bullets / dots / symbols
+        |--------------------------------------------------------------------------
+        */
 
         $text = preg_replace(
             '/^[\s\p{Z}\x{2022}●▪◦◆►▶•·\-*]+/u',
@@ -267,14 +280,28 @@ class HeadingDetector {
 
     protected function isStructureTitle(string $text): bool {
         return
-            preg_match('/^Module\s*(?:No\.?)?\s*\d+\s*:?/i', $text)
+
+            preg_match(
+                '/^Module\s*(?:No\.?)?\s*\d+.*$/i',
+                $text
+            )
+
             ||
-            preg_match('/^Chapter\s*(?:No\.?)?\s*\d+(\.\d+)*\s*:?/i', $text)
+
+            preg_match(
+                '/^Chapter\s*(?:No\.?)?\s*\d+(?:\.\d+)*.*$/i',
+                $text
+            )
+
             ||
-            preg_match('/^(?:Topic\s*)?\d+\.\d+\.\d+\s*:?|^Topic\s*(?:No\.?)?\s*\d+(\.\d+)*/i', $text);
+
+            preg_match(
+                '/^Topic\s*(?:No\.?)?\s*\d+(?:\.\d+)*.*$/i',
+                $text
+            );
     }
 
-    protected function looksLikeSentence(string $text): bool {
+    public function looksLikeSentence(string $text): bool {
         $text = trim($text);
 
         if (preg_match('/[.!?:;]$/', $text)) {
@@ -315,21 +342,44 @@ class HeadingDetector {
         ) === 1;
     }
 
-    protected function looksLikeContent(string $text): bool {
+    public  function looksLikeContent(string $text): bool {
+        $text = html_entity_decode(
+            $text,
+            ENT_QUOTES | ENT_HTML5,
+            'UTF-8'
+        );
+
+        $text = str_replace(
+            ["\\", "\r", "\n", "\t"],
+            " ",
+            $text
+        );
+
+        $text = preg_replace('/\s+/u', ' ', $text);
+
         $text = trim($text);
 
+
         // Medical values
-        if (preg_match('/(<|>|≤|≥|=|±|%|\/)/u', $text)) {
+        if (preg_match('/[<>≤≥=±%\/×]/u', $text)) {
             return true;
         }
 
         // Units
-        if (preg_match('/\b(bpm|mmhg|mm|cm|kg|mg|ml|hr|hrs|min|sec|ms)\b/i', $text)) {
+        // Medical Units / Formula
+
+        if (
+            preg_match(
+                '/\b(bpm|mmhg|mmhg|mm|cm|kg|mg|ml|hr|hrs|min|sec|ms|mv|ma|hz)\b/i',
+                $text
+            )
+        ) {
             return true;
         }
-
         // Multiple numbers
-        if (preg_match_all('/\d+/', $text) >= 2) {
+        preg_match_all('/\d+/', $text, $matches);
+
+        if (count($matches[0]) >= 2) {
             return true;
         }
 
@@ -342,7 +392,17 @@ class HeadingDetector {
         ) {
             return true;
         }
-        
+        // Mixed formula/value
+
+        if (
+            preg_match('/[A-Za-z]/', $text)
+            &&
+            preg_match('/\d/', $text)
+            &&
+            preg_match('/[<>=%×\/]/', $text)
+        ) {
+            return true;
+        }
         return false;
     }
 }

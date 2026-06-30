@@ -30,7 +30,7 @@ class HierarchyParserService {
     '/^\s*Chapter\s*(?:No\.?)?\s*\d+(?:\.\d+)*\s*:?\s*/i';
 
     protected const PATTERN_TOPIC =
-    '/^\s*Topic\s*(?:No\.?)?\s*\d+(?:\.\d+)*\s*:?\s*/i';
+    '/^\s*Topic\s*(?:No\.?)?\s*(\d+(?:\.\d+)*)\s*:?\s*(.+)?$/i';
 
     // Regex for detecting assessment start
     protected const PATTERN_ASSESSMENT_START = '/\b(assessment|quiz|mcq|self[-\s]assessment)\b/i';
@@ -209,12 +209,19 @@ class HierarchyParserService {
                 $text
             );
 
+            $topicTitle = null;
+
             if (
                 preg_match(
                     self::PATTERN_TOPIC,
-                    $normalizedTopicText
+                    $normalizedTopicText,
+                    $matches
                 )
             ) {
+
+                $topicCode = trim($matches[1]);
+
+                $topicTitle = trim($matches[2] ?? '');
 
                 $text = $normalizedTopicText;
             }
@@ -228,12 +235,19 @@ class HierarchyParserService {
                     $normalizedTopicText
                 )
             ) {
+
+                Log::info('TOPIC MATCH', [
+                    'normalized' => $normalizedTopicText,
+                    'matches' => $matches,
+                ]);
                 if ($currentChapterIndex === null) {
                     // Topic before any chapter: skip
                     continue;
                 }
                 $modules[$currentModuleIndex]['chapters'][$currentChapterIndex]['topics'][] = [
-                    'title' => $normalizedTopicText,
+                    'title' => $topicTitle !== ''
+                        ? $topicTitle
+                        : $normalizedTopicText,
                     'description' => '',
                     'contents'    => [],
                 ];
@@ -312,7 +326,15 @@ class HierarchyParserService {
 
                 $currentHCTopic = $hc['topic_code'];
             }
-            // ------------------------------
+
+            $result = $this->headingDetector->isHeading($rawHtml, $text);
+
+            Log::info('Heading Debug', [
+                'text'      => $text,
+                'isHeading' => $result,
+                'content'   => $this->headingDetector->looksLikeContent($text),
+                'sentence'  => $this->headingDetector->looksLikeSentence($text),
+            ]);       // ------------------------------
             // 9. Section (Heading) Detection
             // ------------------------------
             if ($currentTopicIndex !== null && $this->headingDetector->isHeading($rawHtml, $text)) {
