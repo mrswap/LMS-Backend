@@ -7,9 +7,30 @@ use App\Modules\Admin\Import\Services\Support\HeadingDetector;
 
 class HierarchyParserService {
     // Regex patterns for module/chapter/topic detection (case-insensitive, flexible formats)
-    protected const PATTERN_MODULE  = '/^Module\s*(?:No\.?\s*)?\d+/i';
-    protected const PATTERN_CHAPTER = '/^Chapter\s*(?:No\.?\s*)?\d+(\.\d+)*\b/i';
-    protected const PATTERN_TOPIC   = '/^Topic\s*(?:No\.?\s*)?\d+(\.\d+)*\b/i';
+    /*
+        |--------------------------------------------------------------------------
+        | Structure Detection Patterns (V4)
+        |--------------------------------------------------------------------------
+        |
+        | Supports:
+        | Module 1
+        | Module 1:
+        | Module No. 1
+        | Chapter 1.1
+        | Chapter 1.1:
+        | Topic 1.1.1
+        | Topic 1.1.1:
+        |
+        */
+
+    protected const PATTERN_MODULE =
+    '/^\s*Module\s*(?:No\.?)?\s*\d+\s*:?\s*/i';
+
+    protected const PATTERN_CHAPTER =
+    '/^\s*Chapter\s*(?:No\.?)?\s*\d+(?:\.\d+)*\s*:?\s*/i';
+
+    protected const PATTERN_TOPIC =
+    '/^\s*Topic\s*(?:No\.?)?\s*\d+(?:\.\d+)*\s*:?\s*/i';
 
     // Regex for detecting assessment start
     protected const PATTERN_ASSESSMENT_START = '/\b(assessment|quiz|mcq|self[-\s]assessment)\b/i';
@@ -63,6 +84,8 @@ class HierarchyParserService {
         $currentContentIndex = null;
         $inAssessmentMode    = false;
         $topicDescriptionMode = false; // true if we are collecting topic description (before first heading)
+        $currentHCHeading = null;
+        $currentHCTopic = null;
 
         // ------------------------------
         // 4. Iterate through blocks
@@ -72,6 +95,43 @@ class HierarchyParserService {
             // Convert node to HTML and text
             $rawHtml = trim($dom->saveHTML($node));
             $text = trim(preg_replace('/\s+/', ' ', strip_tags($rawHtml)));
+
+
+            $text = html_entity_decode($text);
+
+            $text = preg_replace(
+                '/^[\s•●·▪◦◆►▶\-*]+/u',
+                '',
+                $text
+            );
+
+            $text = trim($text);
+
+            /*
+            |--------------------------------------------------------------------------
+            | Preserve Image Blocks
+            |--------------------------------------------------------------------------
+            |
+            | Images are never parsed as headings.
+            | They always remain inside the currently open TopicContent.
+            |
+            */
+
+            if (
+                stripos($rawHtml, '<img') !== false
+                ||
+                stripos($rawHtml, '<figure') !== false
+            ) {
+
+                if ($currentContentIndex !== null) {
+
+                    $modules[$currentModuleIndex]['chapters'][$currentChapterIndex]['topics'][$currentTopicIndex]['contents'][$currentContentIndex]['content']
+                        .= $rawHtml;
+                }
+
+                continue;
+            }
+
 
             // Skip empty or whitespace-only nodes
             if ($text === '' && $rawHtml === '') {
@@ -129,16 +189,51 @@ class HierarchyParserService {
                 continue;
             }
 
+
+            /*
+            |--------------------------------------------------------------------------
+            | Legacy Topic Detection
+            |--------------------------------------------------------------------------
+            |
+            | Handles:
+            |
+            | • Topic 5.1.2:
+            | •Topic 5.1.2:
+            | Topic 5.1.2:
+            |
+            */
+
+            $normalizedTopicText = preg_replace(
+                '/^[\s•●·▪◦◆►▶\-*]+/u',
+                '',
+                $text
+            );
+
+            if (
+                preg_match(
+                    self::PATTERN_TOPIC,
+                    $normalizedTopicText
+                )
+            ) {
+
+                $text = $normalizedTopicText;
+            }
+
             // ------------------------------
             // 7. Topic Detection
             // ------------------------------
-            if (preg_match(self::PATTERN_TOPIC, $text)) {
+            if (
+                preg_match(
+                    self::PATTERN_TOPIC,
+                    $normalizedTopicText
+                )
+            ) {
                 if ($currentChapterIndex === null) {
                     // Topic before any chapter: skip
                     continue;
                 }
                 $modules[$currentModuleIndex]['chapters'][$currentChapterIndex]['topics'][] = [
-                    'title'       => $text,
+                    'title' => $normalizedTopicText,
                     'description' => '',
                     'contents'    => [],
                 ];
@@ -174,10 +269,70 @@ class HierarchyParserService {
                 continue;
             }
 
+            /*
+            |--------------------------------------------------------------------------
+            | HC Heading Mode (Highest Priority)
+            |--------------------------------------------------------------------------
+            */
+
+            if ($this->headingDetector->hasHCHeadingPattern($text)) {
+
+                $hc = $this->headingDetector->extractHCHeading($text);
+
+                $text = $hc['title'];
+
+                /*
+                |--------------------------------------------------------------
+                | Same Heading (H1C2, H1C3...)
+                |--------------------------------------------------------------
+                */
+
+                if (
+                    $currentHCHeading === $hc['heading_no']
+                    &&
+                    $currentHCTopic === $hc['topic_code']
+                ) {
+
+                    if ($currentContentIndex !== null) {
+
+                        $modules[$currentModuleIndex]['chapters'][$currentChapterIndex]['topics'][$currentTopicIndex]['contents'][$currentContentIndex]['content']
+                            .= '<p><strong>' . $text . '</strong></p>';
+                    }
+
+                    continue;
+                }
+
+                /*
+                |--------------------------------------------------------------
+                | New Heading
+                |--------------------------------------------------------------
+                */
+
+                $currentHCHeading = $hc['heading_no'];
+
+                $currentHCTopic = $hc['topic_code'];
+            }
             // ------------------------------
             // 9. Section (Heading) Detection
             // ------------------------------
             if ($currentTopicIndex !== null && $this->headingDetector->isHeading($rawHtml, $text)) {
+
+
+                if (
+                    $currentContentIndex !== null
+                    &&
+                    trim(
+                        $modules[$currentModuleIndex]['chapters'][$currentChapterIndex]['topics'][$currentTopicIndex]['contents'][$currentContentIndex]['content']
+                    ) === ''
+                ) {
+                    if (
+                        $this->looksLikeIntroLine($text)
+                    ) {
+                        $modules[$currentModuleIndex]['chapters'][$currentChapterIndex]['topics'][$currentTopicIndex]['contents'][$currentContentIndex]['content']
+                            .= $rawHtml;
+                        continue;
+                    }
+                }
                 // New section heading within the current topic
                 // Close topic description mode if it was on
                 if ($topicDescriptionMode) {
@@ -261,7 +416,21 @@ class HierarchyParserService {
             $hasBlockChild = false;
             if ($child->hasChildNodes()) {
                 foreach ($child->childNodes as $grandChild) {
-                    if (in_array(strtolower($grandChild->nodeName), ['p', 'table', 'ul', 'ol', 'figure', 'img'])) {
+                    if (in_array(strtolower($grandChild->nodeName), [
+                        'h1',
+                        'h2',
+                        'h3',
+                        'h4',
+                        'h5',
+                        'h6',
+                        'p',
+                        'div',
+                        'table',
+                        'ul',
+                        'ol',
+                        'figure',
+                        'img'
+                    ])) {
                         $hasBlockChild = true;
                         break;
                     }
@@ -269,21 +438,106 @@ class HierarchyParserService {
             }
 
             // If this node is a significant block element, add it
-            if (in_array($name, ['p', 'table', 'ul', 'ol', 'figure', 'img'])) {
+            // If this node is a significant block element
+
+            if (in_array($name, [
+                'h1',
+                'h2',
+                'h3',
+                'h4',
+                'h5',
+                'h6',
+                'p',
+                'div',
+                'table',
+                'ul',
+                'ol',
+                'figure',
+                'img'
+            ])) {
+
+                $text = trim(
+                    preg_replace(
+                        '/\s+/',
+                        ' ',
+                        strip_tags($child->textContent)
+                    )
+                );
+
+                /*
+                |--------------------------------------------------------------------------
+                | Ignore Word Header / Footer
+                |--------------------------------------------------------------------------
+                */
+
+                if (
+                    preg_match(
+                        '/^Level\s+\d+\s*\|\s*Module\s+\d+\s*:/i',
+                        $text
+                    )
+                ) {
+                    continue;
+                }
+
                 $nodes[] = $child;
             }
             // If it's a <div> with no block children but with text, treat as a paragraph
             elseif ($name === 'div' && ! $hasBlockChild) {
-                $text = trim(preg_replace('/\s+/', ' ', strip_tags($child->textContent)));
+
+                $text = trim(
+                    preg_replace(
+                        '/\s+/',
+                        ' ',
+                        strip_tags($child->textContent)
+                    )
+                );
+
+                /*
+                |--------------------------------------------------------------------------
+                | Ignore Word Header / Footer
+                |--------------------------------------------------------------------------
+                */
+
+                if (
+                    preg_match(
+                        '/^Level\s+\d+\s*\|\s*Module\s+\d+\s*:/i',
+                        $text
+                    )
+                ) {
+                    continue;
+                }
+
                 if ($text !== '') {
                     $nodes[] = $child;
                 }
             }
 
             // Recurse into children
+            if (in_array(
+                $name,
+                ['table', 'img', 'figure']
+            )) {
+                continue;
+            }
+
             if ($child->hasChildNodes()) {
-                $this->flattenNodes($child, $nodes);
+                $this->flattenNodes(
+                    $child,
+                    $nodes
+                );
             }
         }
+    }
+
+    protected function looksLikeIntroLine(string $text): bool {
+        $text = trim($text);
+
+        return preg_match(
+
+            '/^(After|By|Before|Upon|During|This|These|The|In Simple Terms|In medicine|Meaning|Overview|Objectives)/i',
+
+            $text
+
+        ) === 1;
     }
 }

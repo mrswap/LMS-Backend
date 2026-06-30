@@ -2,8 +2,7 @@
 
 namespace App\Modules\Admin\Import\Services\Support;
 
-class HeadingDetector
-{
+class HeadingDetector {
     protected const MAX_HEADING_LENGTH = 150;
 
     protected const KNOWN_HEADINGS = [
@@ -55,13 +54,16 @@ class HeadingDetector
         'Lead Measurement Terms',
     ];
 
+
+    protected const HC_PATTERN =
+    '/^(\d+(?:\.\d+)*)\.H(\d+)C(\d+)\s*/i';
+
     protected array $headingMap = [];
 
-    public function __construct()
-    {
+    public function __construct() {
         $this->headingMap = array_flip(
             array_map(
-                fn ($item) => mb_strtolower(trim($item)),
+                fn($item) => mb_strtolower(trim($item)),
                 self::KNOWN_HEADINGS
             )
         );
@@ -74,13 +76,26 @@ class HeadingDetector
 
         $text = trim(strip_tags($text));
 
+        $text = $this->normalizeHeadingText($text);
+
         if ($text === '') {
             return false;
         }
 
         /*
         |--------------------------------------------------------------------------
-        | Ignore Module / Chapter / Topic
+        | HC Pattern = Always Heading
+        |--------------------------------------------------------------------------
+        */
+
+        if ($this->hasHCHeadingPattern($text)) {
+            return true;
+        }
+
+
+        /*
+        |--------------------------------------------------------------------------
+        | Ignore Module / Chapter / Topic Titles
         |--------------------------------------------------------------------------
         */
 
@@ -90,27 +105,39 @@ class HeadingDetector
 
         /*
         |--------------------------------------------------------------------------
-        | Explicit H Marker
+        | Bullet / List items are NEVER headings
         |--------------------------------------------------------------------------
         */
 
         if (
-            preg_match('/^\d+(\.\d+)*\.H\d+\b/i', $text)
+            $this->isBulletHtml($rawHtml)
+            ||
+            $this->looksLikeList($text)
+        ) {
+            return false;
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | Explicit Heading Marker
+        |--------------------------------------------------------------------------
+        */
+
+        if (
+            preg_match('/^\d+(?:\.\d+)*\.H\d+\b/i', $text)
         ) {
             return true;
         }
 
         /*
         |--------------------------------------------------------------------------
-        | Known Heading
+        | Known Headings
         |--------------------------------------------------------------------------
         */
 
         if (
             isset(
-                $this->headingMap[
-                    mb_strtolower($text)
-                ]
+                $this->headingMap[mb_strtolower($text)]
             )
         ) {
             return true;
@@ -127,7 +154,9 @@ class HeadingDetector
             &&
             mb_strlen($text) <= self::MAX_HEADING_LENGTH
             &&
-            !$this->looksLikeSentence($text)
+            ! $this->looksLikeSentence($text)
+            &&
+            ! $this->looksLikeContent($text)
         ) {
             return true;
         }
@@ -141,9 +170,9 @@ class HeadingDetector
         if (
             mb_strlen($text) <= 60
             &&
-            !$this->looksLikeSentence($text)
+            ! $this->looksLikeSentence($text)
             &&
-            !$this->looksLikeList($text)
+            ! $this->looksLikeContent($text)
         ) {
             return true;
         }
@@ -151,34 +180,169 @@ class HeadingDetector
         return false;
     }
 
-    protected function isStructureTitle(string $text): bool
-    {
-        return
-            preg_match('/^Module\s+\d+/i', $text)
-            ||
-            preg_match('/^Chapter\s+\d+/i', $text)
-            ||
-            preg_match('/^Topic\s+\d+/i', $text);
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | Normalize Heading Text
+    |--------------------------------------------------------------------------
+    */
+
+    protected function normalizeHeadingText(string $text): string {
+        $text = html_entity_decode(
+            $text,
+            ENT_QUOTES | ENT_HTML5,
+            'UTF-8'
+        );
+
+        /*
+    |--------------------------------------------------------------------------
+    | Remove leading bullets / dots / symbols
+    |--------------------------------------------------------------------------
+    */
+
+        $text = preg_replace(
+            '/^[\s\p{Z}\x{2022}●▪◦◆►▶•·\-*]+/u',
+            '',
+            trim($text)
+        );
+
+        return trim($text);
     }
 
-    protected function looksLikeSentence(string $text): bool
-    {
-        if (preg_match('/[.!?]$/', $text)) {
+
+    /*
+    |--------------------------------------------------------------------------
+    | HC Heading Pattern
+    |--------------------------------------------------------------------------
+    */
+
+    public function hasHCHeadingPattern(string $text): bool {
+        $text = $this->normalizeHeadingText($text);
+
+        return preg_match(
+            self::HC_PATTERN,
+            $text
+        ) === 1;
+    }
+
+    public function stripHCHeadingPattern(string $text): string {
+        $text = $this->normalizeHeadingText($text);
+
+        return trim(
+            preg_replace(
+                self::HC_PATTERN,
+                '',
+                $text
+            )
+        );
+    }
+
+    public function extractHCHeading(string $text): ?array {
+
+        $text = $this->normalizeHeadingText($text);
+        if (
+            !preg_match(
+                self::HC_PATTERN,
+                trim($text),
+                $matches
+            )
+        ) {
+            return null;
+        }
+
+        return [
+
+            'topic_code'   => $matches[1],
+
+            'heading_no'   => (int)$matches[2],
+
+            'content_no'   => (int)$matches[3],
+
+            'title' => $this->stripHCHeadingPattern($text),
+        ];
+    }
+
+
+
+    protected function isStructureTitle(string $text): bool {
+        return
+            preg_match('/^Module\s*(?:No\.?)?\s*\d+\s*:?/i', $text)
+            ||
+            preg_match('/^Chapter\s*(?:No\.?)?\s*\d+(\.\d+)*\s*:?/i', $text)
+            ||
+            preg_match('/^(?:Topic\s*)?\d+\.\d+\.\d+\s*:?|^Topic\s*(?:No\.?)?\s*\d+(\.\d+)*/i', $text);
+    }
+
+    protected function looksLikeSentence(string $text): bool {
+        $text = trim($text);
+
+        if (preg_match('/[.!?:;]$/', $text)) {
             return true;
         }
 
-        return str_word_count($text) > 18;
+        if (
+            preg_match(
+                '/^(after|before|by|under|during|once|when|where|this|these|those|the|in|on|at)\b/i',
+                $text
+            )
+        ) {
+            return true;
+        }
+
+        return str_word_count($text) > 12;
     }
 
-    protected function looksLikeList(string $text): bool
-    {
+    protected function looksLikeList(string $text): bool {
+        $text = trim($text);
+
         return
-            preg_match('/^\d+\./', $text)
+            preg_match('/^\d+[\.\)]\s*/', $text)
             ||
-            preg_match('/^[A-Z]\./', $text)
+            preg_match('/^[A-Z][\.\)]\s*/', $text)
             ||
-            preg_match('/^[•●▪◦]/u', $text)
+            preg_match('/^[\x{2022}●▪◦◆►•]+\s*/u', $text)
             ||
-            preg_match('/^-/', $text);
+            preg_match('/^[-–—]\s*/u', $text);
+    }
+
+    protected function isBulletHtml(string $html): bool {
+        $text = trim(strip_tags($html));
+
+        return preg_match(
+            '/^[\x{2022}●▪◦◆►•]+\s*/u',
+            $text
+        ) === 1;
+    }
+
+    protected function looksLikeContent(string $text): bool {
+        $text = trim($text);
+
+        // Medical values
+        if (preg_match('/(<|>|≤|≥|=|±|%|\/)/u', $text)) {
+            return true;
+        }
+
+        // Units
+        if (preg_match('/\b(bpm|mmhg|mm|cm|kg|mg|ml|hr|hrs|min|sec|ms)\b/i', $text)) {
+            return true;
+        }
+
+        // Multiple numbers
+        if (preg_match_all('/\d+/', $text) >= 2) {
+            return true;
+        }
+
+        // Mathematical / Medical Expression
+        if (
+            preg_match(
+                '/(<|>|≤|≥|=|±|×|\/|\d+\s*(bpm|mmhg|kg|mg|ml))/i',
+                $text
+            )
+        ) {
+            return true;
+        }
+        
+        return false;
     }
 }

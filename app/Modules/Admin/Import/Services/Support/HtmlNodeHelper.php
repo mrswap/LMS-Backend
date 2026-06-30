@@ -2,16 +2,59 @@
 
 namespace App\Modules\Admin\Import\Services\Support;
 
-class HtmlNodeHelper
-{
+class HtmlNodeHelper {
+
+    protected const HC_PATTERN =
+    '/^(\d+(?:\.\d+)*)\.H(\d+)C(\d+)\s*/i';
+
+    public function hasHCHeading(string $text): bool {
+        return preg_match(
+            self::HC_PATTERN,
+            trim($text)
+        ) === 1;
+    }
+
+    public function stripHCHeading(string $text): string {
+        return trim(
+            preg_replace(
+                self::HC_PATTERN,
+                '',
+                trim($text)
+            )
+        );
+    }
+
+    public function extractHCHeading(string $text): ?array {
+        if (
+            !preg_match(
+                self::HC_PATTERN,
+                trim($text),
+                $matches
+            )
+        ) {
+            return null;
+        }
+
+        return [
+
+            'topic_code' => $matches[1],
+
+            'heading' => $matches[2],
+
+            'content' => $matches[3],
+
+            'title' => $this->stripHCHeading($text)
+
+        ];
+    }
+
     /*
     |--------------------------------------------------------------------------
     | Get Clean Text
     |--------------------------------------------------------------------------
     */
 
-    public function getText(string $html): string
-    {
+    public function getText(string $html): string {
         $text = html_entity_decode(
             strip_tags($html),
             ENT_QUOTES | ENT_HTML5,
@@ -41,8 +84,7 @@ class HtmlNodeHelper
     |--------------------------------------------------------------------------
     */
 
-    public function isModule(string $text): bool
-    {
+    public function isModule(string $text): bool {
         return preg_match(
             '/^Module\s+(No\.?\s*)?\d+(\s*:)?/i',
             trim($text)
@@ -55,8 +97,7 @@ class HtmlNodeHelper
     |--------------------------------------------------------------------------
     */
 
-    public function isChapter(string $text): bool
-    {
+    public function isChapter(string $text): bool {
         return preg_match(
             '/^Chapter\s+\d+(\.\d+)?(\s*:)?/i',
             trim($text)
@@ -69,8 +110,7 @@ class HtmlNodeHelper
     |--------------------------------------------------------------------------
     */
 
-    public function isTopic(string $text): bool
-    {
+    public function isTopic(string $text): bool {
         return preg_match(
             '/^Topic\s+\d+(\.\d+){0,2}(\s*:)?/i',
             trim($text)
@@ -83,8 +123,7 @@ class HtmlNodeHelper
     |--------------------------------------------------------------------------
     */
 
-    public function isHeaderFooter(string $text): bool
-    {
+    public function isHeaderFooter(string $text): bool {
         $text = trim($text);
 
         if ($text === '') {
@@ -159,8 +198,7 @@ class HtmlNodeHelper
     |--------------------------------------------------------------------------
     */
 
-    public function isAssessmentHeading(string $text): bool
-    {
+    public function isAssessmentHeading(string $text): bool {
         return preg_match(
 
             '/^(Assessment|Topic Assessment|Quiz|MCQs?|Knowledge Check|Review Questions)$/i',
@@ -176,8 +214,7 @@ class HtmlNodeHelper
     |--------------------------------------------------------------------------
     */
 
-    public function isQuestion(string $text): bool
-    {
+    public function isQuestion(string $text): bool {
         return preg_match(
 
             '/^(Q\s*\d+|Question\s*\d+|\d+\.)/i',
@@ -193,8 +230,7 @@ class HtmlNodeHelper
     |--------------------------------------------------------------------------
     */
 
-    public function isOption(string $text): bool
-    {
+    public function isOption(string $text): bool {
         return preg_match(
 
             '/^(A|B|C|D)[\.\)]/i',
@@ -210,8 +246,7 @@ class HtmlNodeHelper
     |--------------------------------------------------------------------------
     */
 
-    public function isAnswer(string $text): bool
-    {
+    public function isAnswer(string $text): bool {
         return preg_match(
 
             '/^(Correct\s*Answer|Answer)\s*:/i',
@@ -238,8 +273,7 @@ class HtmlNodeHelper
     |--------------------------------------------------------------------------
     */
 
-    public function stripIdentifiers(string $text): string
-    {
+    public function stripIdentifiers(string $text): string {
         return trim(
 
             preg_replace(
