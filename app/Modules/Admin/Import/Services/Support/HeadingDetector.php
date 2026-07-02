@@ -1,6 +1,7 @@
 <?php
 
 namespace App\Modules\Admin\Import\Services\Support;
+
 use Illuminate\Support\Facades\Log;
 
 class HeadingDetector {
@@ -74,7 +75,7 @@ class HeadingDetector {
         string $rawHtml,
         string $text
     ): bool {
-
+        
         $text = trim(strip_tags($text));
 
         $text = $this->normalizeHeadingText($text);
