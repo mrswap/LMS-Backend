@@ -75,7 +75,10 @@ class HeadingDetector {
         string $rawHtml,
         string $text
     ): bool {
-        
+        Log::info('==== NEW HEADING DETECTOR EXECUTED ====');
+        Log::info('RETURN TRUE => HC PATTERN', [
+            'text' => $text
+        ]);
         $text = trim(strip_tags($text));
 
         $text = $this->normalizeHeadingText($text);
