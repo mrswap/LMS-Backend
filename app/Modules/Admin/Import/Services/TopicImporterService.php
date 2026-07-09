@@ -9,7 +9,7 @@ use App\Models\Module;
 use App\Models\Topic;
 use App\Models\TopicContent;
 use Illuminate\Support\Facades\Log;
-
+use App\Modules\Admin\Import\Jobs\CleanupEmptyTopicContentsJob;
 
 class TopicImporterService {
 
@@ -230,7 +230,7 @@ class TopicImporterService {
                 }
             }
         });
-
+        CleanupEmptyTopicContentsJob::dispatch();
         Log::info(
             '[Importer] Import Completed Successfully'
         );
