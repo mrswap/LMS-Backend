@@ -10,6 +10,7 @@ use App\Models\Topic;
 use App\Models\TopicContent;
 use Illuminate\Support\Facades\Log;
 use App\Modules\Admin\Import\Jobs\CleanupEmptyTopicContentsJob;
+use App\Modules\Admin\Import\Services\AssessmentSyncService;
 
 class TopicImporterService {
 
@@ -17,14 +18,19 @@ class TopicImporterService {
 
     protected TopicPaginatorService $topicPaginator;
 
+    protected AssessmentSyncService $assessmentSyncService;
+
     public function __construct(
         TopicContentAnalyzerService $topicAnalyzer,
-        TopicPaginatorService $topicPaginator
+        TopicPaginatorService $topicPaginator,
+        AssessmentSyncService $assessmentSyncService
     ) {
 
         $this->topicAnalyzer = $topicAnalyzer;
 
         $this->topicPaginator = $topicPaginator;
+
+        $this->assessmentSyncService = $assessmentSyncService;
     }
     /*
     |--------------------------------------------------------------------------
@@ -60,6 +66,8 @@ class TopicImporterService {
                         'created_by'     => $createdBy,
                     ]
                 );
+
+                $this->assessmentSyncService->syncModule($module, $createdBy);
 
                 foreach ($moduleData['chapters'] as $chapterData) {
 
@@ -101,6 +109,9 @@ class TopicImporterService {
                                 'created_by'      => $createdBy,
                             ]
                         );
+
+                        $this->assessmentSyncService->syncTopic($topic, $createdBy);
+
 
                         /*
                     |--------------------------------------------------------------------------
