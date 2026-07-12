@@ -77,6 +77,7 @@ Route::prefix('v1/admin')->group(function () {
         */
 
         Route::get('/dashboard', [DashboardController::class, 'index']);
+        Route::get('/dashboard/content-health', [DashboardController::class, 'contentHealth']);
 
         /*
         |--------------------------------------------------------------------------
