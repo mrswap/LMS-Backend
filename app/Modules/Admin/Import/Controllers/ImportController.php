@@ -10,8 +10,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Throwable;
 
-class ImportController extends Controller
-{
+class ImportController extends Controller {
     /*
     |--------------------------------------------------------------------------
     | Import HTML Content
@@ -43,6 +42,8 @@ class ImportController extends Controller
                 'status' => 'pending',
 
                 'meta' => [
+                    'module_id' => $request->getModuleId(),
+
                     'source' => 'word_html_paste',
                     'ip' => request()->ip(),
                     'user_agent' => request()->userAgent(),
@@ -95,8 +96,7 @@ class ImportController extends Controller
     |--------------------------------------------------------------------------
     */
 
-    public function logs(Request $request)
-    {
+    public function logs(Request $request) {
         $query = ImportLog::query()
 
             ->with([

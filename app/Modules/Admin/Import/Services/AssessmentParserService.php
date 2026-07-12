@@ -2,8 +2,9 @@
 
 namespace App\Modules\Admin\Import\Services;
 
-class AssessmentParserService
-{
+use App\Modules\Admin\Import\DTO\AssessmentImportDTO;
+
+class AssessmentParserService {
     /*
     |--------------------------------------------------------------------------
     | Parse Assessments
@@ -12,8 +13,10 @@ class AssessmentParserService
 
     public function parse(
         string $html
-    ): array {
+    ): AssessmentImportDTO {
 
+
+        logger()->info('AssessmentParserService Started');
         /*
         |--------------------------------------------------------------------------
         | PRESERVE BREAKS
@@ -568,11 +571,64 @@ class AssessmentParserService
                 $currentQuestion;
         }
 
-        return [
+        /*
+        |--------------------------------------------------------------------------
+        | BUILD DTO
+        |--------------------------------------------------------------------------
+        */
 
-            'questions' => $questions,
+        $moduleAssessment = [];
 
-            'checklists' => $checklists,
-        ];
+        $topicAssessments = [];
+
+        foreach ($questions as $question) {
+
+            /*
+            |--------------------------------------------------------------------------
+            | MODULE EXAM
+            |--------------------------------------------------------------------------
+            */
+
+            if ($question['assessment_type'] === 'module') {
+
+                $moduleAssessment['questions'][] = $question;
+
+                continue;
+            }
+
+            /*
+            |--------------------------------------------------------------------------
+            | TOPIC QUIZ
+            |--------------------------------------------------------------------------
+            */
+
+            $topicCode = $question['topic_code'];
+
+            if (! isset($topicAssessments[$topicCode])) {
+
+                $topicAssessments[$topicCode] = [
+
+                    'topic_code' => $topicCode,
+
+                    'questions' => [],
+                ];
+            }
+
+            $topicAssessments[$topicCode]['questions'][] = $question;
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | RETURN DTO
+        |--------------------------------------------------------------------------
+        */
+
+        return new AssessmentImportDTO(
+
+            moduleAssessment: $moduleAssessment,
+
+            topicAssessments: array_values($topicAssessments)
+
+        );
     }
 }

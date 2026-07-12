@@ -4,6 +4,7 @@ namespace App\Modules\Admin\Import\Services;
 
 use App\Models\ImportLog;
 use Exception;
+use App\Modules\Admin\Import\DTO\AssessmentImportDTO;
 
 class HtmlImportService {
     public function __construct(
@@ -14,9 +15,11 @@ class HtmlImportService {
 
         protected TopicImporterService $topicImporterService,
 
-        protected AssessmentParserService $assessmentParserService,
+        protected OpenAIAssessmentParserService $openAIAssessmentParserService,
 
         protected AssessmentImporterService $assessmentImporterService,
+
+        protected AssessmentMatchingService $assessmentMatchingService
     ) {
     }
 
@@ -76,7 +79,6 @@ class HtmlImportService {
                 [
                     'content',
                     'all',
-                    'both',
                 ]
 
             )
@@ -149,7 +151,6 @@ class HtmlImportService {
                 [
                     'quiz',
                     'exam',
-                    'all',
                     'both',
                 ]
 
@@ -162,32 +163,40 @@ class HtmlImportService {
             );
 
             $assessmentData =
+                $this->openAIAssessmentParserService
+                ->parse(
+                    html: $cleanHtml,
+                    importId: $import->id
+                );
 
-                $this->assessmentParserService
-                ->parse($cleanHtml);
+
 
             logger()->info(
                 '[Assessment] Parsing Completed',
                 [
 
-                    'questions' => count(
-                        $assessmentData['questions'] ?? []
-                    ),
+                    'module_questions' =>
+                    $assessmentData->totalModuleQuestions(),
 
-                    'checklists' => count(
-                        $assessmentData['checklists'] ?? []
-                    ),
+                    'topic_questions' =>
+                    $assessmentData->totalTopicQuestions(),
+
+                    'topics' =>
+                    $assessmentData->totalTopics(),
+
+                    'total_questions' =>
+                    $assessmentData->totalQuestions(),
 
                 ]
             );
 
             $hasAssessments =
 
-                !empty($assessmentData['questions'] ?? [])
+                $assessmentData->hasModuleAssessment()
 
                 ||
 
-                !empty($assessmentData['checklists'] ?? []);
+                $assessmentData->hasTopicAssessments();
 
             if ($hasAssessments) {
 
@@ -195,10 +204,23 @@ class HtmlImportService {
                     '[Assessment] Database Import Started'
                 );
 
-                $this->assessmentImporterService
-                    ->import(
-                        $assessmentData
-                    );
+                $this->assessmentImporterService->import(
+
+                    dto: $assessmentData,
+
+                    programId: $import->program_id,
+
+                    levelId: $import->level_id,
+
+                    moduleId: (int) data_get(
+                        $import->meta,
+                        'module_id',
+                        0
+                    ),
+
+                    createdBy: $import->created_by
+
+                );
 
                 logger()->info(
                     '[Assessment] Database Import Completed'
