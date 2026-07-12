@@ -18,8 +18,8 @@ use App\Services\HierarchyVisibilityService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
-class DashboardService
-{
+
+class DashboardService {
     protected $visibilityService;
 
     public function __construct(
@@ -28,8 +28,7 @@ class DashboardService
         $this->visibilityService = $visibilityService;
     }
 
-    public function getDashboard()
-    {
+    public function getDashboard() {
         return [
 
             /*
@@ -112,8 +111,7 @@ class DashboardService
     |--------------------------------------------------------------------------
     */
 
-    private function getOverview()
-    {
+    private function getOverview() {
         return [
 
             /*
@@ -214,8 +212,7 @@ class DashboardService
     |--------------------------------------------------------------------------
     */
 
-    private function getLearningFunnel()
-    {
+    private function getLearningFunnel() {
         return [
 
             'not_started_users' => User::whereDoesntHave(
@@ -278,8 +275,7 @@ class DashboardService
     |--------------------------------------------------------------------------
     */
 
-    private function getEngagementAnalytics()
-    {
+    private function getEngagementAnalytics() {
         return [
 
             'daily_active_users' => UserProgress::whereDate(
@@ -341,8 +337,7 @@ class DashboardService
     |--------------------------------------------------------------------------
     */
 
-    private function getPublishingPipeline()
-    {
+    private function getPublishingPipeline() {
         return [
 
             'programs' => $this->getPublishStats(
@@ -377,8 +372,7 @@ class DashboardService
     |--------------------------------------------------------------------------
     */
 
-    private function getAssessmentAnalytics()
-    {
+    private function getAssessmentAnalytics() {
         $totalAttempts = AssessmentAttempt::whereHas(
             'assessment',
             function ($q) {
@@ -583,8 +577,7 @@ class DashboardService
     |--------------------------------------------------------------------------
     */
 
-    private function getCertificationAnalytics()
-    {
+    private function getCertificationAnalytics() {
         return [
 
             'total_certificates' => Certification::where(
@@ -656,8 +649,7 @@ class DashboardService
     |--------------------------------------------------------------------------
     */
 
-    private function getProgramAnalytics()
-    {
+    private function getProgramAnalytics() {
         return Program::with([
 
             'levels.modules.chapters.topics.contents',
@@ -811,11 +803,11 @@ class DashboardService
                                         'program_id',
                                         $program->id
                                     )
-                                        ->where(
-                                            'is_completed',
-                                            true
-                                        )
-                                        ->count()
+                                    ->where(
+                                        'is_completed',
+                                        true
+                                    )
+                                    ->count()
                                     / $topicIds->count()
                                 ) * 100,
                                 2
@@ -895,8 +887,7 @@ class DashboardService
     |--------------------------------------------------------------------------
     */
 
-    private function getRiskIndicators()
-    {
+    private function getRiskIndicators() {
         return [
 
             /*
@@ -991,8 +982,7 @@ class DashboardService
     |--------------------------------------------------------------------------
     */
 
-    private function getTopPerformers()
-    {
+    private function getTopPerformers() {
         return AssessmentAttempt::whereHas(
             'assessment',
             function ($q) {
@@ -1028,8 +1018,7 @@ class DashboardService
     |--------------------------------------------------------------------------
     */
 
-    private function getPublishStats($model)
-    {
+    private function getPublishStats($model) {
         $instance = new $model;
 
         $table = $instance->getTable();
@@ -1090,6 +1079,235 @@ class DashboardService
             )
                 ->whereNull('deleted_at')
                 ->count(),
+        ];
+    }
+
+
+    public function contentHealth() {
+        /*
+    |--------------------------------------------------------------------------
+    | TOPICS WITHOUT CONTENT
+    |--------------------------------------------------------------------------
+    */
+
+        $topicsWithoutContent = Topic::select('id', 'title')
+            ->doesntHave('contents')
+            ->orderBy('id')
+            ->get()
+            ->map(function ($topic) {
+                return [
+                    'type'  => 'topic_content_missing',
+                    'id'    => $topic->id,
+                    'title' => $topic->title,
+                ];
+            });
+
+        /*
+    |--------------------------------------------------------------------------
+    | TOPICS WITHOUT QUIZ
+    |--------------------------------------------------------------------------
+    */
+
+        $topicQuizMissing = Topic::select('id', 'title')
+            ->whereDoesntHave('assessments', function ($q) {
+                $q->where('type', 'topic');
+            })
+            ->orderBy('id')
+            ->get()
+            ->map(function ($topic) {
+                return [
+                    'type'  => 'topic_quiz_missing',
+                    'id'    => $topic->id,
+                    'title' => $topic->title,
+                ];
+            });
+
+        /*
+    |--------------------------------------------------------------------------
+    | TOPIC QUIZ WITHOUT QUESTIONS
+    |--------------------------------------------------------------------------
+    */
+
+        $topicQuizWithoutQuestions = Assessment::with('assessmentable:id,title')
+            ->where('assessmentable_type', Topic::class)
+            ->where('type', 'topic')
+            ->doesntHave('questions')
+            ->orderBy('id')
+            ->get()
+            ->map(function ($assessment) {
+
+                return [
+                    'type'             => 'topic_quiz_without_questions',
+                    'assessment_id'    => $assessment->id,
+                    'assessment_title' => $assessment->title,
+                    'topic_id'         => optional($assessment->assessmentable)->id,
+                    'topic_title'      => optional($assessment->assessmentable)->title,
+                ];
+            });
+
+        /*
+    |--------------------------------------------------------------------------
+    | TOPIC QUESTIONS WITHOUT OPTIONS
+    |--------------------------------------------------------------------------
+    */
+
+        $topicQuestionsWithoutOptions = Assessment::with([
+            'assessmentable:id,title',
+            'questions' => function ($q) {
+                $q->doesntHave('options');
+            }
+        ])
+            ->where('assessmentable_type', Topic::class)
+            ->where('type', 'topic')
+            ->whereHas('questions', function ($q) {
+                $q->doesntHave('options');
+            })
+            ->get()
+            ->flatMap(function ($assessment) {
+
+                return $assessment->questions->map(function ($question) use ($assessment) {
+
+                    return [
+                        'type'             => 'topic_question_without_options',
+                        'assessment_id'    => $assessment->id,
+                        'assessment_title' => $assessment->title,
+
+                        'topic_id'         => optional($assessment->assessmentable)->id,
+                        'topic_title'      => optional($assessment->assessmentable)->title,
+
+                        'question_id'      => $question->id,
+                        'question'         => $question->question_text,
+                    ];
+                });
+            })
+            ->values();
+
+        /*
+    |--------------------------------------------------------------------------
+    | MODULES WITHOUT EXAM
+    |--------------------------------------------------------------------------
+    */
+
+        $moduleExamMissing = Module::select('id', 'title')
+            ->whereDoesntHave('assessments', function ($q) {
+                $q->where('type', 'module');
+            })
+            ->orderBy('id')
+            ->get()
+            ->map(function ($module) {
+
+                return [
+                    'type'  => 'module_exam_missing',
+                    'id'    => $module->id,
+                    'title' => $module->title,
+                ];
+            });
+
+        /*
+    |--------------------------------------------------------------------------
+    | MODULE EXAM WITHOUT QUESTIONS
+    |--------------------------------------------------------------------------
+    */
+
+        $moduleExamWithoutQuestions = Assessment::with('assessmentable:id,title')
+            ->where('assessmentable_type', Module::class)
+            ->where('type', 'module')
+            ->doesntHave('questions')
+            ->orderBy('id')
+            ->get()
+            ->map(function ($assessment) {
+
+                return [
+                    'type'             => 'module_exam_without_questions',
+                    'assessment_id'    => $assessment->id,
+                    'assessment_title' => $assessment->title,
+
+                    'module_id'        => optional($assessment->assessmentable)->id,
+                    'module_title'     => optional($assessment->assessmentable)->title,
+                ];
+            });
+
+        /*
+    |--------------------------------------------------------------------------
+    | MODULE QUESTIONS WITHOUT OPTIONS
+    |--------------------------------------------------------------------------
+    */
+
+        $moduleQuestionsWithoutOptions = Assessment::with([
+            'assessmentable:id,title',
+            'questions' => function ($q) {
+                $q->doesntHave('options');
+            }
+        ])
+            ->where('assessmentable_type', Module::class)
+            ->where('type', 'module')
+            ->whereHas('questions', function ($q) {
+                $q->doesntHave('options');
+            })
+            ->get()
+            ->flatMap(function ($assessment) {
+
+                return $assessment->questions->map(function ($question) use ($assessment) {
+
+                    return [
+                        'type'             => 'module_question_without_options',
+                        'assessment_id'    => $assessment->id,
+                        'assessment_title' => $assessment->title,
+
+                        'module_id'        => optional($assessment->assessmentable)->id,
+                        'module_title'     => optional($assessment->assessmentable)->title,
+
+                        'question_id'      => $question->id,
+                        'question'         => $question->question_text,
+                    ];
+                });
+            })
+            ->values();
+
+        /*
+    |--------------------------------------------------------------------------
+    | RESPONSE
+    |--------------------------------------------------------------------------
+    */
+
+        return [
+
+            'summary' => [
+
+                'topics_without_content' => $topicsWithoutContent->count(),
+
+                'topic_quiz_missing' => $topicQuizMissing->count(),
+
+                'topic_quiz_without_questions' => $topicQuizWithoutQuestions->count(),
+
+                'topic_questions_without_options' => $topicQuestionsWithoutOptions->count(),
+
+                'module_exam_missing' => $moduleExamMissing->count(),
+
+                'module_exam_without_questions' => $moduleExamWithoutQuestions->count(),
+
+                'module_questions_without_options' => $moduleQuestionsWithoutOptions->count(),
+            ],
+
+            'topics' => [
+
+                'without_content' => $topicsWithoutContent,
+
+                'quiz_missing' => $topicQuizMissing,
+
+                'quiz_without_questions' => $topicQuizWithoutQuestions,
+
+                'questions_without_options' => $topicQuestionsWithoutOptions,
+            ],
+
+            'modules' => [
+
+                'exam_missing' => $moduleExamMissing,
+
+                'exam_without_questions' => $moduleExamWithoutQuestions,
+
+                'questions_without_options' => $moduleQuestionsWithoutOptions,
+            ],
         ];
     }
 }

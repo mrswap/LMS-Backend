@@ -5,8 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Builder;
 use App\Models\Traits\HasPublishStatus;
 
-class Module extends BaseModel
-{
+class Module extends BaseModel {
     use HasPublishStatus;
 
     protected $hasPublishStatus = true;
@@ -37,34 +36,35 @@ class Module extends BaseModel
     |--------------------------------------------------------------------------
     */
 
-    public function program()
-    {
+    public function program() {
         return $this->belongsTo(Program::class)->withTrashed();
     }
 
-    public function level()
-    {
+    public function level() {
         return $this->belongsTo(Level::class)->withTrashed();
     }
 
-    public function chapters()
-    {
+    public function chapters() {
         return $this->hasMany(Chapter::class);
     }
 
-    public function faqs()
-    {
+    public function faqs() {
         return $this->morphMany(\App\Models\Faq::class, 'faqable');
     }
 
-    public function creator()
-    {
+    public function creator() {
         return $this->belongsTo(User::class, 'created_by')->withTrashed();
     }
 
-    public function translations()
-    {
+    public function translations() {
         return $this->hasMany(ModuleTranslation::class);
+    }
+
+    public function assessments() {
+        return $this->morphMany(
+            \App\Models\Assessment::class,
+            'assessmentable'
+        );
     }
 
     /*
@@ -73,13 +73,11 @@ class Module extends BaseModel
     |--------------------------------------------------------------------------
     */
 
-    public function scopeActive(Builder $query)
-    {
+    public function scopeActive(Builder $query) {
         return $query->where('status', true);
     }
 
-    public function scopePublished(Builder $query)
-    {
+    public function scopePublished(Builder $query) {
         return $query->where(
             'publish_status',
             self::PUBLISH_PUBLISHED
@@ -92,8 +90,7 @@ class Module extends BaseModel
     |--------------------------------------------------------------------------
     */
 
-    public function getThumbnailAttribute($value)
-    {
+    public function getThumbnailAttribute($value) {
         if (empty($value)) {
             return url('public/uploads/logo.png');
         }
@@ -118,8 +115,7 @@ class Module extends BaseModel
 |--------------------------------------------------------------------------
 */
 
-    public function cascadeSoftDelete()
-    {
+    public function cascadeSoftDelete() {
         $this->chapters()->cursor()->each(function ($chapter) {
             $chapter->delete();
         });
@@ -138,8 +134,7 @@ class Module extends BaseModel
 |--------------------------------------------------------------------------
 */
 
-    public function cascadeRestore()
-    {
+    public function cascadeRestore() {
         $this->chapters()
             ->withTrashed()
             ->cursor()
@@ -164,8 +159,7 @@ class Module extends BaseModel
     |--------------------------------------------------------------------------
     */
 
-    protected static function boot()
-    {
+    protected static function boot() {
         parent::boot();
 
         static::updated(function ($module) {
@@ -190,18 +184,15 @@ class Module extends BaseModel
             }
         });
     }
-    public function isPublished(): bool
-    {
+    public function isPublished(): bool {
         return $this->publish_status === self::PUBLISH_PUBLISHED;
     }
 
-    public function isDraft(): bool
-    {
+    public function isDraft(): bool {
         return $this->publish_status === self::PUBLISH_DRAFT;
     }
 
-    public function isUnpublished(): bool
-    {
+    public function isUnpublished(): bool {
         return $this->publish_status === self::PUBLISH_UNPUBLISHED;
     }
 }
