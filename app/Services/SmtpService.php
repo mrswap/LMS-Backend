@@ -1,13 +1,13 @@
 <?php
+
 namespace App\Services;
 
 use App\Models\SmtpSetting;
 use Illuminate\Support\Facades\Config;
+use Illuminate\Support\Facades\Mail;
 
-class SmtpService
-{
-    public function get()
-    {
+class SmtpService {
+    public function get() {
         $smtp = SmtpSetting::first();
 
         if (!$smtp) {
@@ -26,8 +26,7 @@ class SmtpService
         return $smtp;
     }
 
-    public function update(array $data)
-    {
+    public function update(array $data) {
         $smtp = SmtpSetting::first();
 
         if (!$smtp) {
@@ -47,8 +46,7 @@ class SmtpService
         return $smtp;
     }
 
-    public function applyConfig($smtp)
-    {
+    public function applyConfig($smtp) {
         Config::set('mail.default', $smtp->mailer);
 
         Config::set('mail.mailers.smtp.host', $smtp->host);
@@ -57,8 +55,14 @@ class SmtpService
         Config::set('mail.mailers.smtp.password', decrypt($smtp->password));
         Config::set('mail.mailers.smtp.encryption', $smtp->encryption);
 
-        
+
         Config::set('mail.from.address', $smtp->from_address);
         Config::set('mail.from.name', $smtp->from_name);
+        Mail::purge();
+
+
+        // VERY IMPORTANT
+        app()->forgetInstance('mail.manager');
+        app()->forgetInstance('mailer');
     }
 }

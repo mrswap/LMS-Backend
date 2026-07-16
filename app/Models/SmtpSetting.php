@@ -2,8 +2,7 @@
 
 namespace App\Models;
 
-class SmtpSetting extends BaseModel
-{
+class SmtpSetting extends BaseModel {
     protected $fillable = [
         'mailer',
         'host',
@@ -19,17 +18,11 @@ class SmtpSetting extends BaseModel
         'port' => 'integer',
     ];
 
-    /*
-    |--------------------------------------------------------------------------
-    | Accessors (Security)
-    |--------------------------------------------------------------------------
-    */
 
-    public function getPasswordAttribute($value)
-    {
-        // ❗ Optional: mask in API response
-        return $value ? '********' : null;
-    }
+    protected $hidden = [
+        'password'
+    ];
+
 
     /*
     |--------------------------------------------------------------------------
@@ -37,8 +30,7 @@ class SmtpSetting extends BaseModel
     |--------------------------------------------------------------------------
     */
 
-    protected static function booted()
-    {
+    protected static function booted() {
         parent::booted();
 
         static::creating(function ($model) {
@@ -56,13 +48,11 @@ class SmtpSetting extends BaseModel
     |--------------------------------------------------------------------------
     */
 
-    public function cascadeSoftDelete()
-    {
+    public function cascadeSoftDelete() {
         // ❗ DO NOTHING
     }
 
-    public function cascadeRestore()
-    {
+    public function cascadeRestore() {
         // nothing required
     }
 }

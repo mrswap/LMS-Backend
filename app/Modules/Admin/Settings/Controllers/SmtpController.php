@@ -1,31 +1,33 @@
 <?php
+
 namespace App\Modules\Admin\Settings\Controllers;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Services\SmtpService;
 use Illuminate\Support\Facades\Mail;
+use App\Services\MailService;
 
-class SmtpController extends Controller
-{
+class SmtpController extends Controller {
     protected $service;
+    protected $mailService;
 
-    public function __construct(SmtpService $service)
-    {
+    public function __construct(
+        SmtpService $service,
+        MailService $mailService
+    ) {
         $this->service = $service;
+        $this->mailService = $mailService;
     }
-
     // GET
-    public function get()
-    {
+    public function get() {
         return response()->json([
             'data' => $this->service->get()
         ]);
     }
 
     // UPDATE
-    public function update(Request $request)
-    {
+    public function update(Request $request) {
         $request->validate([
             'host' => 'required',
             'port' => 'required',
@@ -43,20 +45,19 @@ class SmtpController extends Controller
         ]);
     }
 
-    // TEST MAIL
-    public function test(Request $request)
-    {
+    public function test(Request $request) {
         $request->validate([
-            'email' => 'required|email'
+            'email' => 'required|email',
         ]);
 
-        Mail::raw('SMTP Test Successful', function ($message) use ($request) {
-            $message->to($request->email)   
-                    ->subject('SMTP Test');
-        });
+        $this->mailService->send($request->email, [
+            'subject' => 'SMTP Test',
+            'title' => 'SMTP Test',
+            'message' => 'SMTP Test Successful',
+        ]);
 
         return response()->json([
-            'message' => 'Test email sent'
+            'message' => 'Test email sent',
         ]);
     }
 }
