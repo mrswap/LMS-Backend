@@ -541,14 +541,47 @@ class UserController extends Controller {
     public function resetDevice($id) {
         $user = User::findOrFail($id);
 
+        /*
+        |--------------------------------------------------------------------------
+        | Reset User Device
+        |--------------------------------------------------------------------------
+        */
+
         $user->device_id = null;
         $user->device_name = null;
         $user->save();
 
-        audit_log(auth()->id(), 'reset_device', "Admin reset device for user {$user->id}");
+        /*
+        |--------------------------------------------------------------------------
+        | Remove All Registered Devices
+        |--------------------------------------------------------------------------
+        */
+
+        $user->devices()->delete();
+
+        /*
+        |--------------------------------------------------------------------------
+        | Revoke All Login Tokens
+        |--------------------------------------------------------------------------
+        */
+
+        $user->tokens()->delete();
+
+        /*
+        |--------------------------------------------------------------------------
+        | Audit Log
+        |--------------------------------------------------------------------------
+        */
+
+        audit_log(
+            auth()->id(),
+            'reset_device',
+            "Admin reset device for user {$user->id}"
+        );
 
         return response()->json([
-            'message' => 'Device reset successfully'
+            'status'  => true,
+            'message' => 'Device reset successfully.'
         ]);
     }
 }

@@ -13,6 +13,7 @@ class UserDevice extends Model
         'fcm_token',
         'device_type',
         'last_used_at',
+        'device_name'
     ];
 
     protected $casts = [

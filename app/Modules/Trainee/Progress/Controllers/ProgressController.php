@@ -444,6 +444,8 @@ class ProgressController extends Controller
                 'id' => $topic->id,
                 'title' => $topic->title,
 
+                'description' => $topic->description,
+
                 'is_unlocked' => $p?->is_unlocked ?? false,
                 'is_completed' => $p?->is_completed ?? false,
 
@@ -711,11 +713,13 @@ class ProgressController extends Controller
                             'program' => [
                                 'id' => $module->program?->id,
                                 'title' => $module->program?->title,
+                                'description' => $module->program?->description,
                             ],
 
                             'level' => [
                                 'id' => $module->level?->id,
                                 'title' => $module->level?->title,
+                                'description' => $module->level?->description,
                             ]
                         ]
                     ]
@@ -778,16 +782,19 @@ class ProgressController extends Controller
                             'program' => [
                                 'id' => $chapter->program?->id,
                                 'title' => $chapter->program?->title,
+                                'description' => $chapter->program?->description,
                             ],
 
                             'level' => [
                                 'id' => $chapter->level?->id,
                                 'title' => $chapter->level?->title,
+                                'description' => $chapter->level?->description,
                             ],
 
                             'module' => [
                                 'id' => $chapter->module?->id,
                                 'title' => $chapter->module?->title,
+                                'description' => $chapter->module?->description,
                             ]
                         ]
                     ]
@@ -853,21 +860,25 @@ class ProgressController extends Controller
                             'program' => [
                                 'id' => $topic->program?->id,
                                 'title' => $topic->program?->title,
+                                'description' => $topic->program?->description,
                             ],
 
                             'level' => [
                                 'id' => $topic->level?->id,
                                 'title' => $topic->level?->title,
+                                'description' => $topic->level?->description,
                             ],
 
                             'module' => [
                                 'id' => $topic->module?->id,
                                 'title' => $topic->module?->title,
+                                'description' => $topic->module?->description,
                             ],
 
                             'chapter' => [
                                 'id' => $topic->chapter?->id,
                                 'title' => $topic->chapter?->title,
+                                'description' => $topic->chapter?->description,
                             ]
                         ]
                     ]

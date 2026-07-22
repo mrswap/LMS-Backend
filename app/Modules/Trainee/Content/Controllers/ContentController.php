@@ -9,12 +9,11 @@ use App\Models\TopicContent;
 use App\Services\AuditService;
 use App\Models\Assessment;
 use App\Models\AssessmentAttempt;
+use App\Models\Topic;
+use App\Models\UserContentProgress;
 
-
-class ContentController extends Controller
-{
-    private function resolveLanguage(Request $request)
-    {
+class ContentController extends Controller {
+    private function resolveLanguage(Request $request) {
         return $request->query('lang')
             ?? $request->header('Accept-Language')
             ?? 'en';
@@ -26,8 +25,7 @@ class ContentController extends Controller
     |--------------------------------------------------------------------------
     */
 
-    public function index(Request $request, $topic_id)
-    {
+    public function index(Request $request, $topic_id) {
         $userId = auth()->id();
         $lang = $this->resolveLanguage($request);
 
@@ -288,8 +286,7 @@ class ContentController extends Controller
         ]);
     }
 
-    public function single(Request $request, $topic_id, $content_id)
-    {
+    public function single(Request $request, $topic_id, $content_id) {
         AuditService::log(
             'content_viewed',
             'User viewed a content item',
@@ -506,8 +503,206 @@ class ContentController extends Controller
                     'next_content_id' => $next?->id,
                     'has_previous' => $previous !== null,
                     'has_next' => $next !== null,
-                ]
+                ],
+                'learning_navigation' => $this->getLearningNavigation($topic, $userId, $lang, $content_id),
             ]
         ]);
+    }
+
+    private function getLearningNavigation(
+        Topic $topic,
+        int $userId,
+        string $lang = 'en',
+        ?int $currentContentId = null
+    ) {
+        // Current topic contents
+        $contents = TopicContent::where('topic_id', $topic->id)
+            ->where('status', true)
+            ->where('publish_status', 'published')
+            ->orderBy('order')
+            ->get();
+
+        $contentProgress = UserContentProgress::where('user_id', $userId)
+            ->whereIn('topic_content_id', $contents->pluck('id'))
+            ->get()
+            ->keyBy('topic_content_id');
+
+
+        $currentTopicContents = $contents->map(function ($content) use (
+            $contentProgress,
+            $lang,
+            $currentContentId
+        ) {
+
+            $translation = $lang !== 'en'
+                ? $content->translations
+                ->where('language_code', $lang)
+                ->first()
+                : null;
+
+            return [
+
+                'id' => $content->id,
+
+                'title' => $translation->title ?? $content->title,
+
+                'type' => $content->type,
+
+                'order' => $content->order,
+
+                'is_active' => $content->id == $currentContentId,
+
+                'is_read' => $contentProgress[$content->id]->is_read ?? false,
+
+                'read_at' => $contentProgress[$content->id]->read_at ?? null,
+
+                'last_updated_at' => $contentProgress[$content->id]->updated_at ?? null,
+
+
+            ];
+        });
+
+        /*
+    |--------------------------------------------------------------------------
+    | Chapter Topics
+    |--------------------------------------------------------------------------
+    */
+
+        $chapterTopics = Topic::where('chapter_id', $topic->chapter_id)
+            ->where('status', true)
+            ->orderBy('id')
+            ->get();
+
+        $topicProgress = UserProgress::where('user_id', $userId)
+            ->whereIn('topic_id', $chapterTopics->pluck('id'))
+            ->get()
+            ->keyBy('topic_id');
+
+        $chapterTopics = $chapterTopics->map(function ($item) use (
+            $topic,
+            $topicProgress,
+            $lang
+        ) {
+
+            $translation = method_exists($item, 'getTranslation')
+                ? $item->getTranslation($lang)
+                : null;
+
+            $progress = $topicProgress[$item->id] ?? null;
+
+            return [
+
+                'id' => $item->id,
+
+                'title' => $translation->title ?? $item->title,
+
+                'description' => $translation->description ?? $item->description,
+
+                'thumbnail' => $item->thumbnail,
+
+                'estimated_duration' => $item->estimated_duration,
+
+                'is_current' => $item->id == $topic->id,
+
+                'is_unlocked' => $progress?->is_unlocked ?? false,
+
+                'is_completed' => $progress?->is_completed ?? false,
+
+            ];
+        });
+
+        /*
+    |--------------------------------------------------------------------------
+    | Topic Assessment
+    |--------------------------------------------------------------------------
+    */
+
+        $assessment = Assessment::where(
+            'assessmentable_type',
+            Topic::class
+        )
+            ->where('assessmentable_id', $topic->id)
+            ->first();
+
+        $assessmentData = null;
+
+        if ($assessment) {
+
+            $lastAttempt = AssessmentAttempt::where(
+                'assessment_id',
+                $assessment->id
+            )
+                ->where('user_id', $userId)
+                ->latest()
+                ->first();
+
+            $readCount = $contentProgress
+                ->where('is_read', true)
+                ->count();
+
+            $totalContent = $contents->count();
+
+            $status = 'learning';
+
+            if ($readCount >= $totalContent) {
+
+                $status = 'ready';
+
+                if ($lastAttempt) {
+
+                    $status = $lastAttempt->status;
+                }
+            }
+
+            $assessmentData = [
+
+                'available' => $readCount >= $totalContent,
+
+                'status' => $status,
+
+                'id' => $assessment->id,
+
+                'title' => $assessment->title,
+
+                'description' => $assessment->description,
+
+                'thumbnail' => $assessment->file,
+
+                'duration' => $assessment->duration,
+
+                'total_marks' => $assessment->total_marks,
+
+                'passing_score' => $assessment->passing_score,
+
+                'last_attempt' => $lastAttempt ? [
+
+                    'id' => $lastAttempt->id,
+
+                    'status' => $lastAttempt->status,
+
+                    'score' => $lastAttempt->score,
+
+                    'total_score' => $assessment->total_marks,
+
+                    'percentage' => $lastAttempt->percentage,
+
+                    'submitted_at' => $lastAttempt->submitted_at,
+
+                    'time_taken' => $lastAttempt->time_taken,
+
+                ] : null,
+
+            ];
+        }
+
+        return [
+
+            'current_topic_contents' => $currentTopicContents,
+
+            'chapter_topics' => $chapterTopics,
+
+            'assessment' => $assessmentData,
+
+        ];
     }
 }

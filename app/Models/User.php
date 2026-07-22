@@ -8,8 +8,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
 
-class User extends Authenticatable
-{
+class User extends Authenticatable {
     use HasApiTokens, HasFactory, Notifiable, SoftDeletes;
 
     protected $fillable = [
@@ -26,6 +25,10 @@ class User extends Authenticatable
         'profile_image',
         'is_active',
         'created_by',
+        // Add these
+        'device_id',
+        'device_name',
+        'last_login_at',
     ];
 
     protected $hidden = [
@@ -35,8 +38,7 @@ class User extends Authenticatable
 
     protected $appends = ['status'];
 
-    protected function casts(): array
-    {
+    protected function casts(): array {
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
@@ -54,8 +56,7 @@ class User extends Authenticatable
     |--------------------------------------------------------------------------
     */
 
-    protected static function booted()
-    {
+    protected static function booted() {
         parent::booted();
 
         static::deleting(function ($user) {
@@ -87,29 +88,24 @@ class User extends Authenticatable
     |--------------------------------------------------------------------------
     */
 
-    public function role()
-    {
+    public function role() {
         return $this->belongsTo(Role::class)->withTrashed();
     }
 
-    public function designation()
-    {
+    public function designation() {
         return $this->belongsTo(Designation::class)->withTrashed();
     }
 
-    public function creator()
-    {
+    public function creator() {
         return $this->belongsTo(User::class, 'created_by')->withTrashed();
     }
 
     // Self reference (optional hierarchy)
-    public function parentUser()
-    {
+    public function parentUser() {
         return $this->belongsTo(User::class, 'created_by')->withTrashed();
     }
 
-    public function hasPermission($permission): bool
-    {
+    public function hasPermission($permission): bool {
         if ($this->isSuperAdmin()) {
             return true;
         }
@@ -120,13 +116,11 @@ class User extends Authenticatable
             ->exists();
     }
 
-    public function supportThreads()
-    {
+    public function supportThreads() {
         return $this->hasMany(SupportThread::class);
     }
 
-    public function supportMessages()
-    {
+    public function supportMessages() {
         return $this->hasMany(
             SupportMessage::class,
             'sender_id'
@@ -138,38 +132,31 @@ class User extends Authenticatable
     |--------------------------------------------------------------------------
     */
 
-    public function isSuperAdmin(): bool
-    {
+    public function isSuperAdmin(): bool {
         return $this->role?->name === self::ROLE_SUPERADMIN;
     }
 
-    public function isStaff(): bool
-    {
+    public function isStaff(): bool {
         return $this->role?->name === self::ROLE_STAFF;
     }
 
-    public function isSales(): bool
-    {
+    public function isSales(): bool {
         return $this->role?->name === self::ROLE_SALES;
     }
 
-    public function devices()
-    {
+    public function devices() {
         return $this->hasMany(UserDevice::class);
     }
 
-    public function notifications()
-    {
+    public function notifications() {
         return $this->hasMany(Notification::class);
     }
 
-    public function getStatusAttribute()
-    {
+    public function getStatusAttribute() {
         return $this->is_active;
     }
 
-    public function isSystemUser(): bool
-    {
+    public function isSystemUser(): bool {
         return Role::where(
             'id',
             $this->role_id
@@ -181,8 +168,7 @@ class User extends Authenticatable
     |--------------------------------------------------------------------------
     */
 
-    public function getProfileImageAttribute($value)
-    {
+    public function getProfileImageAttribute($value) {
         if (empty($value)) {
             return url('public/uploads/logo.png');
         }
@@ -194,24 +180,20 @@ class User extends Authenticatable
 
         return url('public/' . ltrim($value, '/'));
     }
-    
-    public function progress()
-    {
+
+    public function progress() {
         return $this->hasMany(UserProgress::class);
     }
 
-    public function contentProgress()
-    {
+    public function contentProgress() {
         return $this->hasMany(UserContentProgress::class);
     }
 
-    public function assessmentAttempts()
-    {
+    public function assessmentAttempts() {
         return $this->hasMany(AssessmentAttempt::class);
     }
 
-    public function certifications()
-    {
+    public function certifications() {
         return $this->hasMany(Certification::class);
     }
 }

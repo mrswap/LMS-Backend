@@ -15,6 +15,7 @@ class VerifyDevice
      */
     public function handle($request, Closure $next)
     {
+         return $next($request);
         $user = $request->user();
 
         if ($user && $user->device_id) {

@@ -71,6 +71,7 @@ Route::prefix('v1/trainee')->group(function () {
             Route::get('/assessment-report', [AssessmentReportController::class, 'index']);
             Route::get('/certifications', [CertificationReportController::class, 'index']);
             Route::get('/certificate/{attempt_id}', [CertificationReportController::class, 'show']);
+            Route::get('/module-learning-status', [CertificationReportController::class, 'moduleLearningStatus']);
         });
 
         Route::prefix('notifications')->group(function () {
