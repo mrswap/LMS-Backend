@@ -17,10 +17,8 @@ use App\Models\TopicContent;
 use App\Models\UserContentProgress;
 
 
-class ProgressController extends Controller
-{
-    public function resolveLanguage(Request $request)
-    {
+class ProgressController extends Controller {
+    public function resolveLanguage(Request $request) {
         return $request->query('lang')
             ?? $request->header('Accept-Language')
             ?? 'en';
@@ -31,8 +29,7 @@ class ProgressController extends Controller
     | INDEX
     |--------------------------------------------------------------------------
     */
-    public function index(Request $request)
-    {
+    public function index(Request $request) {
         $userId = auth()->id();
         $lang = $this->resolveLanguage($request);
 
@@ -165,8 +162,7 @@ class ProgressController extends Controller
     | MAPPERS
     |--------------------------------------------------------------------------
     */
-    public function mapLevel($level, $progress, $lang)
-    {
+    public function mapLevel($level, $progress, $lang) {
         $userId = auth()->id();
 
         $t = $this->getTranslated($level, $lang);
@@ -226,8 +222,7 @@ class ProgressController extends Controller
         ];
     }
 
-    public function mapModule($module, $progress, $lang)
-    {
+    public function mapModule($module, $progress, $lang) {
         $userId = auth()->id();
 
         $t = $this->getTranslated($module, $lang);
@@ -369,8 +364,7 @@ class ProgressController extends Controller
         ];
     }
 
-    public function mapChapter($chapter, $progress, $lang)
-    {
+    public function mapChapter($chapter, $progress, $lang) {
         $t = $this->getTranslated($chapter, $lang);
         $status = $this->getChapterStatus($chapter, $progress);
         $userId = auth()->id();
@@ -395,12 +389,15 @@ class ProgressController extends Controller
 
             $p = $progress[$topic->id] ?? null;
 
-            $contents = $topic->contents ?? collect();
+            $contentIds = $topic->contents()
+                ->where('status', true)
+                ->where('publish_status', 'published')
+                ->pluck('id');
 
-            $totalContents = $contents->count();
+            $totalContents = $contentIds->count();
 
-            $readContents = \App\Models\UserContentProgress::where('user_id', $userId)
-                ->whereIn('topic_content_id', $contents->pluck('id'))
+            $readContents = UserContentProgress::where('user_id', $userId)
+                ->whereIn('topic_content_id', $contentIds)
                 ->where('is_read', true)
                 ->count();
 
@@ -492,8 +489,7 @@ class ProgressController extends Controller
         ];
     }
 
-    public function mapTopic($topic, $progress, $lang)
-    {
+    public function mapTopic($topic, $progress, $lang) {
         $p = $progress[$topic->id] ?? null;
         $userId = auth()->id();
 
@@ -506,10 +502,15 @@ class ProgressController extends Controller
         | 🔹 CONTENT PROGRESS
         |------------------------------------------------------------------
         */
-        $totalContents = $topic->contents->count();
+        $contentIds = $topic->contents()
+            ->where('status', true)
+            ->where('publish_status', 'published')
+            ->pluck('id');
 
-        $readContents = \App\Models\UserContentProgress::where('user_id', $userId)
-            ->whereIn('topic_content_id', $topic->contents->pluck('id'))
+        $totalContents = $contentIds->count();
+
+        $readContents = UserContentProgress::where('user_id', $userId)
+            ->whereIn('topic_content_id', $contentIds)
             ->where('is_read', true)
             ->count();
 
@@ -536,8 +537,7 @@ class ProgressController extends Controller
         ];
     }
 
-    public function getModuleStatus($module, $progress)
-    {
+    public function getModuleStatus($module, $progress) {
         $topics = $module->chapters->flatMap->topics;
 
         return [
@@ -546,8 +546,7 @@ class ProgressController extends Controller
         ];
     }
 
-    public function getChapterStatus($chapter, $progress)
-    {
+    public function getChapterStatus($chapter, $progress) {
         return [
             'is_unlocked' => $chapter->topics->contains(fn($t) => $progress[$t->id]->is_unlocked ?? false),
             'is_completed' => $chapter->topics->every(fn($t) => $progress[$t->id]->is_completed ?? false),
@@ -560,8 +559,7 @@ class ProgressController extends Controller
     |--------------------------------------------------------------------------
     */
 
-    public function getTranslated($model, $lang)
-    {
+    public function getTranslated($model, $lang) {
         $translation = method_exists($model, 'getTranslation')
             ? $model->getTranslation($lang)
             : null;
@@ -572,8 +570,7 @@ class ProgressController extends Controller
         ];
     }
 
-    public function single(Request $request, $type, $id)
-    {
+    public function single(Request $request, $type, $id) {
         $lang = $this->resolveLanguage($request);
 
         $user = auth()->user();
@@ -898,8 +895,7 @@ class ProgressController extends Controller
         }
     }
 
-    public function hierarchy(Request $request)
-    {
+    public function hierarchy(Request $request) {
         $userId = auth()->id();
 
         $lang = $this->resolveLanguage($request);
@@ -1539,22 +1535,25 @@ class ProgressController extends Controller
     }
 
 
-    public function isTopicContentCompleted($topic, $userId)
-    {
-        $total = $topic->contents()->count();
+    public function isTopicContentCompleted($topic, $userId) {
+        $contentIds = $topic->contents()
+            ->where('status', true)
+            ->where('publish_status', 'published')
+            ->pluck('id');
 
-        if ($total === 0) return true; // optional logic
+        if ($contentIds->isEmpty()) {
+            return true;
+        }
 
-        $read = \App\Models\UserContentProgress::where('user_id', $userId)
-            ->whereIn('topic_content_id', $topic->contents->pluck('id'))
+        $read = UserContentProgress::where('user_id', $userId)
+            ->whereIn('topic_content_id', $contentIds)
             ->where('is_read', true)
             ->count();
 
-        return $total === $read;
+        return $read === $contentIds->count();
     }
 
-    public function getLevelStats($level, $progress, $userId)
-    {
+    public function getLevelStats($level, $progress, $userId) {
         $topics = $level->modules
             ->flatMap->chapters
             ->flatMap->topics;
