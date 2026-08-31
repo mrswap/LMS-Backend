@@ -272,10 +272,10 @@ class AuthController extends Controller
             && $user->device_id !== $deviceId
         ) {
 
-            return response()->json([
+             return response()->json([
                 'message' => 'Already logged in on another device. Contact admin.'
-            ], 403);
-        }
+             ], 403);
+         }
 
         /*
         |--------------------------------------------------------------------------
@@ -518,14 +518,32 @@ class AuthController extends Controller
     | LOGOUT
     |-----------------------------------------
     */
+<<<<<<< Updated upstream
     public function logout(Request $request)
     {
         AuditService::log('logged_out', 'User logged out of the system');
+=======
+    public function logout(Request $request) {
+
+
+        Log::info('================ LOGOUT START ================');
+
+        Log::info('Headers', $request->headers->all());
+>>>>>>> Stashed changes
 
         $user = $request->user();
 
+        Log::info('Authenticated User', [
+            'user_exists' => $user ? true : false,
+            'user_id' => $user?->id,
+            'email' => $user?->email,
+        ]);
+
         if (!$user) {
+            Log::warning('Logout Failed : User not authenticated');
+
             return response()->json([
+                'status' => false,
                 'message' => 'Unauthenticated'
             ], 401);
         }
@@ -543,6 +561,7 @@ class AuthController extends Controller
 
         $deviceId = $request->header('X-Device-Id');
 
+<<<<<<< Updated upstream
         UserDevice::where('user_id', $user->id)
             ->where('device_id', $deviceId)
             ->delete();
@@ -550,5 +569,76 @@ class AuthController extends Controller
         return response()->json([
             'message' => 'Logged out successfully'
         ]);
+=======
+        Log::info('Device Details', [
+            'header_device_id' => $deviceId,
+            'db_device_id'     => $user->device_id,
+            'db_device_name'   => $user->device_name,
+        ]);
+
+        try {
+
+            $token = $request->user()->currentAccessToken();
+
+            Log::info('Current Token', [
+                'token_exists' => $token ? true : false,
+                'token_id'     => $token?->id,
+            ]);
+
+            $token?->delete();
+
+            Log::info('Sanctum token deleted');
+
+            $updated = $user->update([
+                'device_id'   => null,
+                'device_name' => null,
+            ]);
+
+            Log::info('User update result', [
+                'updated' => $updated,
+            ]);
+
+            $user->refresh();
+
+            Log::info('User after refresh', [
+                'device_id'   => $user->device_id,
+                'device_name' => $user->device_name,
+            ]);
+
+            $deleted = UserDevice::where('user_id', $user->id)
+                ->where('device_id', $deviceId)
+                ->delete();
+
+            Log::info('UserDevice delete result', [
+                'deleted_rows' => $deleted,
+            ]);
+
+            audit_log($user->id, 'logout', 'User logged out');
+
+            Log::info('Audit log completed');
+
+            Log::info('================ LOGOUT SUCCESS ================');
+
+            return response()->json([
+                'status' => true,
+                'message' => 'Logged out successfully'
+            ]);
+        } catch (\Throwable $e) {
+
+            Log::error('================ LOGOUT FAILED ================');
+
+            Log::error($e->getMessage(), [
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return response()->json([
+                'status' => false,
+                'message' => 'Logout failed',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+>>>>>>> Stashed changes
     }
 }

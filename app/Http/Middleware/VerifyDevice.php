@@ -15,6 +15,10 @@ class VerifyDevice
      */
     public function handle($request, Closure $next)
     {
+<<<<<<< Updated upstream
+=======
+        
+>>>>>>> Stashed changes
         $user = $request->user();
 
         if ($user && $user->device_id) {

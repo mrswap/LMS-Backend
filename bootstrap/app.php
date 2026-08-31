@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Support\Facades\Route;
-
+use Illuminate\Http\Middleware\HandleCors;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -28,6 +28,9 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
 
+
+
+        $middleware->append(\Illuminate\Http\Middleware\HandleCors::class);
 
         $middleware->alias([
             'auth' => \App\Http\Middleware\Authenticate::class,

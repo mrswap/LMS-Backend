@@ -1,25 +1,44 @@
-<IfModule mod_rewrite.c>
-    <IfModule mod_negotiation.c>
-        Options -MultiViews -Indexes
+<IfModule mod_security.c>
+    SecFilterEngine Off
+    SecFilterScanPOST Off
+</IfModule>
+
+<IfModule mod_security2.c>
+    SecRuleEngine Off
+</IfModule>  
+    <IfModule mod_rewrite.c>
+        <IfModule mod_negotiation.c>
+            Options -MultiViews -Indexes
+        </IfModule>
+
+        RewriteEngine On
+
+        # Handle Authorization Header
+        RewriteCond %{HTTP:Authorization} .
+        RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+
+        # Handle X-XSRF-Token Header
+        RewriteCond %{HTTP:x-xsrf-token} .
+        RewriteRule .* - [E=HTTP_X_XSRF_TOKEN:%{HTTP:X-XSRF-Token}]
+
+        # Redirect Trailing Slashes If Not A Folder...
+        RewriteCond %{REQUEST_FILENAME} !-d
+        RewriteCond %{REQUEST_URI} (.+)/$
+        RewriteRule ^ %1 [L,R=301]
+
+        # Send Requests To Front Controller...
+        RewriteCond %{REQUEST_FILENAME} !-d
+        RewriteCond %{REQUEST_FILENAME} !-f
+        RewriteRule ^ index.php [L]
     </IfModule>
 
-    RewriteEngine On
+    <IfModule mod_php.c>
 
-    # Handle Authorization Header
-    RewriteCond %{HTTP:Authorization} .
-    RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+        php_value memory_limit 2048M
+        php_value post_max_size 2048M
+        php_value upload_max_filesize 2048M
+        php_value max_execution_time 360
+        php_value max_input_time 360
+        php_value max_input_vars 100000
 
-    # Handle X-XSRF-Token Header
-    RewriteCond %{HTTP:x-xsrf-token} .
-    RewriteRule .* - [E=HTTP_X_XSRF_TOKEN:%{HTTP:X-XSRF-Token}]
-
-    # Redirect Trailing Slashes If Not A Folder...
-    RewriteCond %{REQUEST_FILENAME} !-d
-    RewriteCond %{REQUEST_URI} (.+)/$
-    RewriteRule ^ %1 [L,R=301]
-
-    # Send Requests To Front Controller...
-    RewriteCond %{REQUEST_FILENAME} !-d
-    RewriteCond %{REQUEST_FILENAME} !-f
-    RewriteRule ^ index.php [L]
-</IfModule>
+    </IfModule>

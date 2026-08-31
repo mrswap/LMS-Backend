@@ -6,11 +6,11 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Models\User;
 use Illuminate\Support\Facades\Hash;
+use App\Models\UserDevice;
 
-class AuthController extends Controller
-{
-    public function login(Request $request)
-    {
+
+class AuthController extends Controller {
+    public function login(Request $request) {
         $request->validate([
             'email' => ['required', 'email'],
             'password' => ['required']
@@ -44,23 +44,38 @@ class AuthController extends Controller
         ]);
     }
 
-    public function logout(Request $request)
-    {
+    public function logout(Request $request) {
+        
         $user = $request->user();
 
         if (!$user) {
             return response()->json([
+                'status' => false,
                 'message' => 'Unauthenticated'
             ], 401);
         }
 
-        $token = $user->currentAccessToken();
+        $deviceId = $request->header('X-Device-Id');
 
-        if ($token) {
-            $token->delete();
-        }
+        // Delete current Sanctum token
+        $request->user()->currentAccessToken()?->delete();
+
+        // Clear device binding
+        $user->update([
+            'device_id'   => null,
+            'device_name' => null,
+        ]);
+
+        // Remove device record
+        UserDevice::where('user_id', $user->id)
+            ->where('device_id', $deviceId)
+            ->delete();
+
+        // Audit log
+        audit_log($user->id, 'logout', 'User logged out');
 
         return response()->json([
+            'status' => true,
             'message' => 'Logged out successfully'
         ]);
     }
