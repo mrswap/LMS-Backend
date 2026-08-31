@@ -25,21 +25,18 @@ use Carbon\Carbon;
 use DB;
 use Illuminate\Http\Request;
 
-class AttemptController extends Controller
-{
+class AttemptController extends Controller {
     protected $service;
 
     protected $certificationService;
 
-    public function __construct(AssessmentService $service)
-    {
+    public function __construct(AssessmentService $service) {
         $this->service = $service;
     }
 
     // 🔹 START
 
-    public function start($id)
-    {
+    public function start($id) {
         AuditService::log(
             'assessment_started',
             'User started an assessment',
@@ -418,8 +415,8 @@ class AttemptController extends Controller
 
                 'expires_at' => $assessment->duration
                     ? $activeAttempt->started_at
-                        ->copy()
-                        ->addMinutes($assessment->duration)
+                    ->copy()
+                    ->addMinutes($assessment->duration)
                     : null,
 
                 'total_attempts_allowed' => $maxAttempts,
@@ -659,8 +656,8 @@ class AttemptController extends Controller
 
             'expires_at' => $assessment->duration
                 ? $attempt->started_at
-                    ->copy()
-                    ->addMinutes($assessment->duration)
+                ->copy()
+                ->addMinutes($assessment->duration)
                 : null,
 
             'question_count' => count(
@@ -676,8 +673,7 @@ class AttemptController extends Controller
     }
 
     // 🔹 QUESTIONS
-    public function questions($id, Request $request)
-    {
+    public function questions($id, Request $request) {
         $attemptId = $request->attempt_id;
 
         /*
@@ -748,7 +744,7 @@ class AttemptController extends Controller
                     |--------------------------------------------------------------------------
                     */
 
-                    'options' => $q->options->map(fn ($opt) => [
+                    'options' => $q->options->map(fn($opt) => [
 
                         'id' => $opt->id,
 
@@ -974,8 +970,8 @@ class AttemptController extends Controller
 
             'expires_at' => $assessment->duration
                 ? $attempt->started_at
-                    ->copy()
-                    ->addMinutes($assessment->duration)
+                ->copy()
+                ->addMinutes($assessment->duration)
                 : null,
 
             /*
@@ -1009,8 +1005,7 @@ class AttemptController extends Controller
     }
 
     // 🔹 ANSWER
-    public function answer(Request $request)
-    {
+    public function answer(Request $request) {
         $request->validate([
 
             'attempt_id' => 'required|exists:assessment_attempts,id',
@@ -1130,7 +1125,7 @@ class AttemptController extends Controller
         */
 
         $options = $question->options
-            ->map(fn ($opt) => [
+            ->map(fn($opt) => [
 
                 'id' => $opt->id,
 
@@ -1176,8 +1171,7 @@ class AttemptController extends Controller
     }
 
     // 🔹 RESUME
-    public function resume($id)
-    {
+    public function resume($id) {
         $userId = auth()->id();
 
         /*
@@ -1226,8 +1220,8 @@ class AttemptController extends Controller
 
         $expiresAt = $duration
             ? $attempt->started_at
-                ->copy()
-                ->addMinutes($duration)
+            ->copy()
+            ->addMinutes($duration)
             : null;
 
         /*
@@ -1278,7 +1272,7 @@ class AttemptController extends Controller
                     |--------------------------------------------------------------------------
                     */
 
-                    'options' => $q->options->map(fn ($opt) => [
+                    'options' => $q->options->map(fn($opt) => [
 
                         'id' => $opt->id,
 
@@ -1580,8 +1574,7 @@ class AttemptController extends Controller
         ]);
     }
 
-    public function submit($id, Request $request)
-    {
+    public function submit($id, Request $request) {
         AuditService::log(
             'assessment_submitted',
             'User submitted an assessment',
@@ -1923,8 +1916,8 @@ class AttemptController extends Controller
 
             $passingPercentage = (float) $assessment->passing_score;
 
-            $isPassed = $percentage >= $passingPercentage;
-
+            //$isPassed = $percentage >= $passingPercentage;
+            $isPassed = $result['marks'] >= (float) $assessment->passing_score;
             /*
             |--------------------------------------------------
             | 💾 UPDATE ATTEMPT

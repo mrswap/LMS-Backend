@@ -1,7 +1,8 @@
 <?php
-
 namespace App\Jobs;
 
+use App\Models\TopicContent;
+use App\Services\AI\TextToSpeechService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -34,23 +35,28 @@ class GenerateTopicContentAudioJob implements ShouldQueue
 
     public int $contentId;
 
+    public string $languageCode;
+
+    public ?int $translationId;
+
     /*
     |--------------------------------------------------------------------------
     | CONSTRUCTOR
     |--------------------------------------------------------------------------
     */
 
-    public function __construct(int $contentId)
-    {
+    public function __construct(
+        int $contentId,
+        string $languageCode = 'en',
+        ?int $translationId = null
+    ) {
         $this->contentId = $contentId;
 
-        /*
-        |--------------------------------------------------------------------------
-        | OPTIONAL QUEUE NAME
-        |--------------------------------------------------------------------------
-        */
+        $this->languageCode = strtolower(
+            trim($languageCode)
+        );
 
-        //$this->onQueue('audio');
+        $this->translationId = $translationId;
     }
 
     /*
@@ -59,126 +65,442 @@ class GenerateTopicContentAudioJob implements ShouldQueue
     |--------------------------------------------------------------------------
     */
 
-    public function handle(): void
-    {
-        Log::info('AUDIO JOB STARTED', [
-            'content_id' => $this->contentId
-        ]);
+    public function handle(
+        TextToSpeechService $ttsService
+    ): void {
+
+        Log::channel('ai')->info(
+            'TTS JOB STARTED',
+            [
+                'content_id' =>
+                    $this->contentId,
+
+                'language' =>
+                    $this->languageCode,
+
+                'translation_id' =>
+                    $this->translationId,
+            ]
+        );
 
         try {
 
-            $content = \App\Models\TopicContent::find($this->contentId);
+            /*
+            |--------------------------------------------------------------------------
+            | LOAD CONTENT
+            |--------------------------------------------------------------------------
+            */
 
-            if (!$content) {
-
-                Log::error('CONTENT NOT FOUND');
-
-                return;
-            }
-
-            Log::info('CONTENT FOUND', [
-                'id' => $content->id,
-                'title' => $content->title,
-            ]);
-
-            $plainText = trim(strip_tags($content->content));
-
-            if (empty($plainText)) {
-
-                Log::error('EMPTY CONTENT');
-
-                return;
-            }
-
-            Log::info('TEXT EXTRACTED', [
-                'length' => strlen($plainText)
-            ]);
-
-            $client = \OpenAI::client(
-                env('OPENAI_API_KEY')
+            $content = TopicContent::find(
+                $this->contentId
             );
 
-            Log::info('OPENAI CLIENT CREATED');
+            if (! $content) {
 
-            $response = $client->audio()->speech([
-                'model' => env('OPENAI_TTS_MODEL', 'gpt-4o-mini-tts'),
-                'voice' => env('OPENAI_TTS_VOICE', 'alloy'),
-                'input' => substr($plainText, 0, 4000),
-            ]);
+                Log::channel('ai')->error(
+                    'TTS CONTENT NOT FOUND',
+                    [
+                        'content_id' =>
+                            $this->contentId,
+                    ]
+                );
 
-            Log::info('OPENAI RESPONSE RECEIVED');
+                return;
+            }
 
             /*
-        |--------------------------------------------------------------------------
-        | RESPONSE PARSE
-        |--------------------------------------------------------------------------
-        */
+            |--------------------------------------------------------------------------
+            | RESOLVE TEXT
+            |--------------------------------------------------------------------------
+            */
 
-            $audioBinary = null;
+            $plainText = null;
 
-            if (is_string($response)) {
+            /*
+            |--------------------------------------------------------------------------
+            | ENGLISH
+            |--------------------------------------------------------------------------
+            |
+            | English content lives directly on TopicContent.
+            |
+            */
 
-                $audioBinary = $response;
+            if ($this->languageCode === 'en') {
 
-                Log::info('RESPONSE TYPE STRING');
-            } elseif (method_exists($response, 'getBody')) {
+                if (
+                    $content->type !== 'text'
+                    || empty($content->content)
+                ) {
 
-                $audioBinary = $response
-                    ->getBody()
-                    ->getContents();
+                    Log::channel('ai')->warning(
+                        'TTS ENGLISH CONTENT EMPTY OR INVALID',
+                        [
+                            'content_id' =>
+                                $content->id,
 
-                Log::info('RESPONSE TYPE STREAM');
-            } elseif (method_exists($response, 'toString')) {
+                            'type' =>
+                                $content->type,
+                        ]
+                    );
 
-                $audioBinary = $response->toString();
+                    return;
+                }
 
-                Log::info('RESPONSE TYPE TO STRING');
+                $plainText = trim(
+                    strip_tags(
+                        $content->content
+                    )
+                );
             }
 
-            if (!$audioBinary) {
+            /*
+            |--------------------------------------------------------------------------
+            | TRANSLATED LANGUAGE
+            |--------------------------------------------------------------------------
+            |
+            | Hindi / Punjabi etc. content lives in
+            | TopicContentTranslation.
+            |
+            */
 
-                Log::error('AUDIO BINARY EMPTY');
+            else {
+
+                $translation = null;
+
+                if ($this->translationId) {
+
+                    $translation =
+                        $content->translations()
+                            ->where(
+                                'id',
+                                $this->translationId
+                            )
+                            ->where(
+                                'language_code',
+                                $this->languageCode
+                            )
+                            ->first();
+
+                }
+
+                /*
+                |------------------------------------------------------------------
+                | FALLBACK: FIND BY LANGUAGE
+                |------------------------------------------------------------------
+                */
+
+                if (! $translation) {
+
+                    $translation =
+                        $content->translations()
+                            ->where(
+                                'language_code',
+                                $this->languageCode
+                            )
+                            ->first();
+                }
+
+                if (! $translation) {
+
+                    Log::channel('ai')->warning(
+                        'TTS TRANSLATION NOT FOUND',
+                        [
+                            'content_id' =>
+                                $content->id,
+
+                            'language' =>
+                                $this->languageCode,
+
+                            'translation_id' =>
+                                $this->translationId,
+                        ]
+                    );
+
+                    return;
+                }
+
+                if (
+                    $content->type !== 'text'
+                    || empty($translation->content)
+                ) {
+
+                    Log::channel('ai')->warning(
+                        'TTS TRANSLATION CONTENT EMPTY OR INVALID',
+                        [
+                            'content_id' =>
+                                $content->id,
+
+                            'language' =>
+                                $this->languageCode,
+
+                            'translation_id' =>
+                                $translation->id,
+
+                            'type' =>
+                                $content->type,
+                        ]
+                    );
+
+                    return;
+                }
+
+                $plainText = trim(
+                    strip_tags(
+                        $translation->content
+                    )
+                );
+            }
+
+            /*
+            |--------------------------------------------------------------------------
+            | EMPTY TEXT CHECK
+            |--------------------------------------------------------------------------
+            */
+
+            if (! $plainText) {
+
+                Log::channel('ai')->warning(
+                    'TTS TEXT EMPTY',
+                    [
+                        'content_id' =>
+                            $content->id,
+
+                        'language' =>
+                            $this->languageCode,
+
+                        'translation_id' =>
+                            $this->translationId,
+                    ]
+                );
 
                 return;
             }
 
-            $directory = public_path(
-                'uploads/content-management/media'
+            /*
+            |--------------------------------------------------------------------------
+            | TEXT READY
+            |--------------------------------------------------------------------------
+            */
+
+            Log::channel('ai')->info(
+                'TTS TEXT READY',
+                [
+                    'content_id' =>
+                        $content->id,
+
+                    'language' =>
+                        $this->languageCode,
+
+                    'translation_id' =>
+                        $this->translationId,
+
+                    'length' =>
+                        strlen($plainText),
+                ]
             );
 
-            if (!file_exists($directory)) {
+            /*
+            |--------------------------------------------------------------------------
+            | FILE NAME
+            |--------------------------------------------------------------------------
+            */
 
-                mkdir($directory, 0777, true);
+            $fileName =
+                'content_' .
+                $content->id .
+                '_' .
+                $this->languageCode .
+                '_' .
+                uniqid();
+
+            /*
+            |--------------------------------------------------------------------------
+            | GENERATE AUDIO
+            |--------------------------------------------------------------------------
+            */
+
+            $audioPath =
+                $ttsService->generate(
+                    $plainText,
+                    $fileName,
+                    $content->topic_id,
+                    $this->languageCode
+                );
+
+            /*
+            |--------------------------------------------------------------------------
+            | SAVE AUDIO
+            |--------------------------------------------------------------------------
+            */
+
+            /*
+            |----------------------------------------------------------------------
+            | ENGLISH
+            |----------------------------------------------------------------------
+            */
+
+            if ($this->languageCode === 'en') {
+
+                $content->update([
+                    'audio_path' =>
+                        $audioPath,
+
+                    'audio_generated_at' =>
+                        now(),
+
+                    'audio_provider' =>
+                        'openai',
+                ]);
+
+                Log::channel('ai')->info(
+                    'ENGLISH TTS DATABASE UPDATED',
+                    [
+                        'content_id' =>
+                            $content->id,
+
+                        'audio_path' =>
+                            $audioPath,
+                    ]
+                );
             }
 
-            $filename = uniqid() . '.mp3';
+            /*
+            |----------------------------------------------------------------------
+            | TRANSLATED LANGUAGE
+            |----------------------------------------------------------------------
+            */
 
-            $relativePath =
-                'uploads/content-management/media/' . $filename;
+            else {
 
-            $fullPath = public_path($relativePath);
+                $translation = null;
 
-            file_put_contents($fullPath, $audioBinary);
+                if ($this->translationId) {
 
-            Log::info('AUDIO FILE SAVED', [
-                'path' => $fullPath
-            ]);
+                    $translation =
+                        $content->translations()
+                            ->where(
+                                'id',
+                                $this->translationId
+                            )
+                            ->where(
+                                'language_code',
+                                $this->languageCode
+                            )
+                            ->first();
+                }
 
-            $content->update([
-                'audio_path' => $relativePath,
-                'audio_generated_at' => now(),
-                'audio_provider' => 'openai',
-            ]);
+                if (! $translation) {
 
-            Log::info('DATABASE UPDATED');
+                    $translation =
+                        $content->translations()
+                            ->where(
+                                'language_code',
+                                $this->languageCode
+                            )
+                            ->first();
+                }
+
+                if (! $translation) {
+
+                    Log::channel('ai')->error(
+                        'TTS TRANSLATION DISAPPEARED BEFORE SAVE',
+                        [
+                            'content_id' =>
+                                $content->id,
+
+                            'language' =>
+                                $this->languageCode,
+
+                            'translation_id' =>
+                                $this->translationId,
+                        ]
+                    );
+
+                    return;
+                }
+
+                $translation->update([
+                    'audio_path' =>
+                        $audioPath,
+
+                    'audio_generated_at' =>
+                        now(),
+
+                    'audio_provider' =>
+                        'openai',
+                ]);
+
+                Log::channel('ai')->info(
+                    'TRANSLATION TTS DATABASE UPDATED',
+                    [
+                        'content_id' =>
+                            $content->id,
+
+                        'translation_id' =>
+                            $translation->id,
+
+                        'language' =>
+                            $this->languageCode,
+
+                        'audio_path' =>
+                            $audioPath,
+                    ]
+                );
+            }
+
+            /*
+            |--------------------------------------------------------------------------
+            | COMPLETE
+            |--------------------------------------------------------------------------
+            */
+
+            Log::channel('ai')->info(
+                'TTS JOB COMPLETED',
+                [
+                    'content_id' =>
+                        $content->id,
+
+                    'language' =>
+                        $this->languageCode,
+
+                    'translation_id' =>
+                        $this->translationId,
+
+                    'audio_path' =>
+                        $audioPath,
+                ]
+            );
+
         } catch (\Throwable $e) {
 
-            Log::error('TTS GENERATION FAILED', [
-                'message' => $e->getMessage(),
-                'line' => $e->getLine(),
-                'file' => $e->getFile(),
-                'trace' => $e->getTraceAsString(),
-            ]);
+            Log::channel('ai')->error(
+                'TTS JOB FAILED',
+                [
+                    'content_id' =>
+                        $this->contentId,
+
+                    'language' =>
+                        $this->languageCode,
+
+                    'translation_id' =>
+                        $this->translationId,
+
+                    'message' =>
+                        $e->getMessage(),
+
+                    'line' =>
+                        $e->getLine(),
+
+                    'file' =>
+                        $e->getFile(),
+
+                    'trace' =>
+                        $e->getTraceAsString(),
+                ]
+            );
+
+            throw $e;
         }
     }
 }
+

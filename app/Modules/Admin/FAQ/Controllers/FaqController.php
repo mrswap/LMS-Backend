@@ -11,19 +11,16 @@ use App\Models\Chapter;
 use App\Models\Topic;
 use Illuminate\Support\Str;
 
-class FaqController extends Controller
-{
+class FaqController extends Controller {
     protected $uploadPath = 'uploads/curriculum/faq/';
 
-    private function resolveLanguage(Request $request)
-    {
+    private function resolveLanguage(Request $request) {
         return $request->query('lang')
             ?? $request->header('Accept-Language')
             ?? 'en';
     }
 
-    private function resolveModel($type)
-    {
+    private function resolveModel($type) {
         return [
             'level'   => Level::class,
             'module'  => Module::class,
@@ -37,8 +34,7 @@ class FaqController extends Controller
     | INDEX
     |-------------------------------------------------------------
     */
-    public function index(Request $request)
-    {
+    public function index(Request $request) {
         $lang = $this->resolveLanguage($request);
 
         $request->validate([
@@ -174,8 +170,7 @@ class FaqController extends Controller
     | STORE
     |-------------------------------------------------------------
     */
-    public function store(Request $request)
-    {
+    public function store(Request $request) {
         $lang = $this->resolveLanguage($request);
 
         $validated = $request->validate([
@@ -231,8 +226,7 @@ class FaqController extends Controller
     | UPDATE
     |-------------------------------------------------------------
     */
-    public function update(Request $request, $id)
-    {
+    public function update(Request $request, $id) {
         $lang = $this->resolveLanguage($request);
 
         $faq = Faq::with('translations')->findOrFail($id);
@@ -240,11 +234,30 @@ class FaqController extends Controller
         $validated = $request->validate([
             'question' => 'required|string',
             'answer'   => 'required|string',
+            'type'     => 'required|in:program,level,module,chapter,topic',
+            'type_id'  => 'required|integer',
             'image'    => 'nullable|image|mimes:jpg,jpeg,png|max:2048',
             'status'   => 'nullable|boolean',
         ]);
 
-        // 🔥 Upload new image
+        /*
+    |--------------------------------------------------------------------------
+    | Type Mapping
+    |--------------------------------------------------------------------------
+    */
+        $typeMap = [
+            'program' => \App\Models\Program::class,
+            'level'   => \App\Models\Level::class,
+            'module'  => \App\Models\Module::class,
+            'chapter' => \App\Models\Chapter::class,
+            'topic'   => \App\Models\Topic::class,
+        ];
+
+        /*
+    |--------------------------------------------------------------------------
+    | Image Upload
+    |--------------------------------------------------------------------------
+    */
         if ($request->hasFile('image')) {
 
             if (!file_exists(public_path($this->uploadPath))) {
@@ -255,14 +268,30 @@ class FaqController extends Controller
             $filename = time() . '_' . Str::random(10) . '.' . $file->getClientOriginalExtension();
             $file->move(public_path($this->uploadPath), $filename);
 
-            $validated['image'] = $this->uploadPath . $filename;
+            // Raw path save करो
+            $image = $this->uploadPath . $filename;
+        } else {
+            // Existing raw value use करो
+            $image = $faq->getRawOriginal('image');
         }
 
+        /*
+        |--------------------------------------------------------------------------
+        | Update FAQ
+        |--------------------------------------------------------------------------
+        */
         $faq->update([
-            'image'  => $validated['image'] ?? $faq->image,
-            'status' => $validated['status'] ?? $faq->status,
+            'faqable_type' => $typeMap[$validated['type']],
+            'faqable_id'   => $validated['type_id'],
+            'image'        => $image,
+            'status'       => $validated['status'] ?? $faq->status,
         ]);
 
+        /*
+        |--------------------------------------------------------------------------
+        | Update Translation
+        |--------------------------------------------------------------------------
+        */
         $faq->translations()->updateOrCreate(
             ['language_code' => $lang],
             [
@@ -273,17 +302,16 @@ class FaqController extends Controller
 
         return response()->json([
             'success' => true,
-            'data' => $faq->load('translations')
+            'message' => 'FAQ updated successfully.',
+            'data'    => $faq->fresh()->load('translations'),
         ]);
     }
-
     /*
     |-------------------------------------------------------------
     | DELETE
     |-------------------------------------------------------------
     */
-    public function destroy($id)
-    {
+    public function destroy($id) {
         Faq::findOrFail($id)->delete();
 
         return response()->json(['success' => true]);
@@ -294,8 +322,7 @@ class FaqController extends Controller
     | TOGGLE STATUS
     |-------------------------------------------------------------
     */
-    public function toggleStatus($id)
-    {
+    public function toggleStatus($id) {
         $faq = Faq::findOrFail($id);
 
         $faq->update(['status' => !$faq->status]);
@@ -309,8 +336,7 @@ class FaqController extends Controller
     | SHOW
     |-------------------------------------------------------------
     */
-    public function show(Request $request, $id)
-    {
+    public function show(Request $request, $id) {
         $lang = $this->resolveLanguage($request);
 
         $faq = Faq::with(['translations', 'faqable'])->findOrFail($id);

@@ -7,8 +7,7 @@ use App\Models\Traits\HasPublishStatus;
 use App\Services\AI\TopicContextService;
 use App\Jobs\GenerateTopicContentAudioJob;
 
-class TopicContent extends BaseModel
-{
+class TopicContent extends BaseModel {
     use HasPublishStatus;
 
     /*
@@ -35,6 +34,8 @@ class TopicContent extends BaseModel
     */
 
     protected bool $shouldGenerateAudio = false;
+
+    protected string $audioLanguage = 'en';
 
     /*
     |--------------------------------------------------------------------------
@@ -88,30 +89,48 @@ class TopicContent extends BaseModel
     |--------------------------------------------------------------------------
     */
 
-    protected static function booted()
-    {
-
+    protected static function booted() {
         parent::booted();
 
         /*
-    |--------------------------------------------------------------------------
+    |----------------------------------------------------------------------
     | CREATE
-    |--------------------------------------------------------------------------
+    |----------------------------------------------------------------------
     */
 
         static::creating(function ($content) {
 
+            /*
+        |------------------------------------------------------------------
+        | English / Base Content TTS
+        |------------------------------------------------------------------
+        |
+        | Only TopicContent itself generates English audio.
+        | Other languages are handled by TopicContentTranslation.
+        |
+        */
+
             $content->shouldGenerateAudio =
                 $content->type === 'text';
+
+            if ($content->shouldGenerateAudio) {
+                $content->audioLanguage = 'en';
+            }
         });
 
         /*
-    |--------------------------------------------------------------------------
+    |----------------------------------------------------------------------
     | UPDATE
-    |--------------------------------------------------------------------------
+    |----------------------------------------------------------------------
     */
 
         static::updating(function ($content) {
+
+            /*
+        |------------------------------------------------------------------
+        | Only regenerate English audio when English content changes.
+        |------------------------------------------------------------------
+        */
 
             $content->shouldGenerateAudio =
                 $content->type === 'text'
@@ -120,22 +139,34 @@ class TopicContent extends BaseModel
                     || $content->isDirty('title')
                 );
 
+            if ($content->shouldGenerateAudio) {
+                $content->audioLanguage = 'en';
+            }
+
             Log::info('UPDATE AUDIO CHECK', [
+                'content_id' => $content->id,
                 'isDirtyContent' => $content->isDirty('content'),
                 'isDirtyTitle' => $content->isDirty('title'),
                 'shouldGenerateAudio' => $content->shouldGenerateAudio,
+                'language' => $content->audioLanguage,
             ]);
         });
 
         /*
-    |--------------------------------------------------------------------------
+    |----------------------------------------------------------------------
     | SAVED
-    |--------------------------------------------------------------------------
+    |----------------------------------------------------------------------
     */
 
         static::saved(function ($content) {
 
             try {
+
+                /*
+            |------------------------------------------------------------------
+            | AI TOPIC CONTEXT
+            |------------------------------------------------------------------
+            */
 
                 if ($content->topic) {
 
@@ -151,33 +182,56 @@ class TopicContent extends BaseModel
                     );
                 }
 
+                /*
+            |------------------------------------------------------------------
+            | ENGLISH TTS
+            |------------------------------------------------------------------
+            |
+            | Only TopicContent handles English audio.
+            | Hindi/Punjabi/etc. are handled by
+            | TopicContentTranslation model.
+            |
+            */
+
                 if (
                     env('OPENAI_TTS_ENABLED', true)
                     && $content->shouldGenerateAudio
+                    && $content->audioLanguage === 'en'
                 ) {
 
-                    Log::info('DISPATCHING AUDIO JOB', [
-                        'content_id' => $content->id
-                    ]);
+                    Log::channel('ai')->info(
+                        'DISPATCHING ENGLISH AUDIO JOB',
+                        [
+                            'content_id' => $content->id,
+                            'topic_id' => $content->topic_id,
+                            'language' => 'en',
+                        ]
+                    );
 
                     GenerateTopicContentAudioJob::dispatch(
-                        $content->id
+                        $content->id,
+                        'en'
                     );
 
                     Log::channel('ai')->info(
-                        'Topic Content TTS Job Dispatched',
+                        'English Topic Content TTS Job Dispatched',
                         [
                             'topic_id' => $content->topic_id,
                             'content_id' => $content->id,
+                            'language' => 'en',
                         ]
                     );
                 }
             } catch (\Throwable $e) {
 
-                Log::error(
+                Log::channel('ai')->error(
                     'AI Context / TTS Sync Failed',
                     [
+                        'topic_id' => $content->topic_id ?? null,
+                        'content_id' => $content->id ?? null,
                         'message' => $e->getMessage(),
+                        'line' => $e->getLine(),
+                        'file' => $e->getFile(),
                     ]
                 );
             }
@@ -189,8 +243,7 @@ class TopicContent extends BaseModel
     |--------------------------------------------------------------------------
     */
 
-    public function getAudioUrlAttribute(): ?string
-    {
+    public function getAudioUrlAttribute(): ?string {
         if (!$this->audio_path) {
             return null;
         }
@@ -207,29 +260,25 @@ class TopicContent extends BaseModel
     |--------------------------------------------------------------------------
     */
 
-    public function topic()
-    {
+    public function topic() {
         return $this->belongsTo(Topic::class)
             ->withTrashed();
     }
 
-    public function progress()
-    {
+    public function progress() {
         return $this->hasMany(
             UserContentProgress::class,
             'topic_content_id'
         );
     }
 
-    public function translations()
-    {
+    public function translations() {
         return $this->hasMany(
             TopicContentTranslation::class
         );
     }
 
-    public function creator()
-    {
+    public function creator() {
         return $this->belongsTo(
             User::class,
             'created_by'
@@ -242,8 +291,7 @@ class TopicContent extends BaseModel
     |--------------------------------------------------------------------------
     */
 
-    public function scopeOrdered($query)
-    {
+    public function scopeOrdered($query) {
         return $query->orderBy('order');
     }
 
@@ -253,8 +301,7 @@ class TopicContent extends BaseModel
     |--------------------------------------------------------------------------
     */
 
-    public function cascadeSoftDelete()
-    {
+    public function cascadeSoftDelete() {
         /*
         |--------------------------------------------------------------------------
         | IMPORTANT
@@ -273,8 +320,7 @@ class TopicContent extends BaseModel
     |--------------------------------------------------------------------------
     */
 
-    public function cascadeRestore()
-    {
+    public function cascadeRestore() {
         // Nothing required
     }
 
@@ -284,20 +330,17 @@ class TopicContent extends BaseModel
     |--------------------------------------------------------------------------
     */
 
-    public function isPublished(): bool
-    {
+    public function isPublished(): bool {
         return $this->publish_status
             === self::PUBLISH_PUBLISHED;
     }
 
-    public function isDraft(): bool
-    {
+    public function isDraft(): bool {
         return $this->publish_status
             === self::PUBLISH_DRAFT;
     }
 
-    public function isUnpublished(): bool
-    {
+    public function isUnpublished(): bool {
         return $this->publish_status
             === self::PUBLISH_UNPUBLISHED;
     }

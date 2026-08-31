@@ -2,55 +2,43 @@
 
 namespace App\Modules\Admin\Import\Services;
 
-class HierarchyParserService
-{
+use DOMDocument;
+use DOMNode;
+use Illuminate\Support\Facades\Log;
+
+class HierarchyParserService {
     /*
     |--------------------------------------------------------------------------
-    | Parse HTML Hierarchy
+    | Structure Detection Patterns
     |--------------------------------------------------------------------------
     */
 
-    public function parse(string $html): array
-    {
-        /*
-        |--------------------------------------------------------------------------
-        | Preserve Structure Breaks
-        |--------------------------------------------------------------------------
-        */
+    protected const PATTERN_MODULE =
+    '/^\s*Module\s*(?:No\.?)?\s*\d+\s*:?\s*/i';
 
-        $html = preg_replace(
-            '/<\/p>/i',
-            "</p>\n",
-            $html
-        );
+    protected const PATTERN_CHAPTER =
+    '/^\s*Chapter\s*(?:No\.?)?\s*\d+(?:\.\d+)*\s*:?\s*/i';
 
-        $html = preg_replace(
-            '/<\/div>/i',
-            "</div>\n",
-            $html
-        );
+    protected const PATTERN_TOPIC =
+    '/^\s*Topic\s*(?:No\.?)?\s*(\d+(?:\.\d+)*)\s*:?\s*(.+)?$/i';
 
-        $html = preg_replace(
-            '/<\/table>/i',
-            "</table>\n",
-            $html
-        );
+    protected TopicBufferCollectorService $topicBuffer;
 
-        $html = preg_replace(
-            '/<br\s*\/?>/i',
-            "\n",
-            $html
-        );
+    public function __construct(
+        TopicBufferCollectorService $topicBuffer
+    ) {
+        $this->topicBuffer = $topicBuffer;
+    }
 
-        /*
-        |--------------------------------------------------------------------------
-        | DOM LOAD
-        |--------------------------------------------------------------------------
-        */
+    /**
+     * Parse HTML into hierarchy.
+     */
+    public function parse(string $html): array {
+
 
         libxml_use_internal_errors(true);
 
-        $dom = new \DOMDocument();
+        $dom = new DOMDocument();
 
         $dom->loadHTML(
             mb_convert_encoding(
@@ -62,30 +50,21 @@ class HierarchyParserService
 
         libxml_clear_errors();
 
-        /*
-        |--------------------------------------------------------------------------
-        | BODY
-        |--------------------------------------------------------------------------
-        */
-
-        $body = $dom
-            ->getElementsByTagName('body')
-            ->item(0);
+        $body = $dom->getElementsByTagName('body')->item(0);
 
         if (!$body) {
-
-            throw new \Exception(
-                'Invalid HTML body.'
-            );
+            throw new \Exception('Invalid HTML.');
         }
 
-        /*
-        |--------------------------------------------------------------------------
-        | STORAGE
-        |--------------------------------------------------------------------------
-        */
+        $nodes = [];
+
+        $this->flattenNodes(
+            $body,
+            $nodes
+        );
 
         $modules = [];
+
 
         $currentModuleIndex = null;
 
@@ -93,53 +72,33 @@ class HierarchyParserService
 
         $currentTopicIndex = null;
 
-        $currentContentIndex = null;
-
-        /*
-        |--------------------------------------------------------------------------
-        | LOOP NODES
-        |--------------------------------------------------------------------------
-        */
-
-        foreach ($body->childNodes as $node) {
-
-            /*
-            |--------------------------------------------------------------------------
-            | RAW HTML
-            |--------------------------------------------------------------------------
-            */
+        foreach ($nodes as $node) {
 
             $rawHtml = trim(
                 $dom->saveHTML($node)
             );
 
-            /*
-            |--------------------------------------------------------------------------
-            | TEXT
-            |--------------------------------------------------------------------------
-            */
-
             $text = trim(
-                preg_replace(
-                    '/\s+/',
-                    ' ',
-                    strip_tags($rawHtml)
+                html_entity_decode(
+                    preg_replace(
+                        '/\s+/',
+                        ' ',
+                        strip_tags($rawHtml)
+                    )
                 )
             );
 
-            if (
-                empty($text)
-                &&
-                empty($rawHtml)
-            ) {
+            $text = preg_replace(
+                '/^[\s•●·▪◦◆►▶\-*]+/u',
+                '',
+                $text
+            );
+
+            $text = trim($text);
+
+            if ($text === '' && $rawHtml === '') {
                 continue;
             }
-
-            /*
-            |--------------------------------------------------------------------------
-            | Ignore separators
-            |--------------------------------------------------------------------------
-            */
 
             if (
                 preg_match(
@@ -152,45 +111,59 @@ class HierarchyParserService
 
             /*
             |--------------------------------------------------------------------------
-            | MODULE
+            | Module Detection
             |--------------------------------------------------------------------------
             */
 
             if (
                 preg_match(
-                    '/^Module\s+\d+\s*:/i',
+                    self::PATTERN_MODULE,
                     $text
                 )
             ) {
+
+                $this->finalizeCurrentTopic(
+                    $modules,
+                    $currentModuleIndex,
+                    $currentChapterIndex,
+                    $currentTopicIndex
+                );
 
                 $modules[] = [
 
                     'title' => $text,
 
+                    'description' => '',
+
                     'chapters' => [],
+
                 ];
 
-                $currentModuleIndex =
-                    count($modules) - 1;
+                $currentModuleIndex = count($modules) - 1;
 
                 $currentChapterIndex = null;
 
                 $currentTopicIndex = null;
 
-                $currentContentIndex = null;
+                Log::info(
+                    'Module detected',
+                    [
+                        'title' => $text
+                    ]
+                );
 
                 continue;
             }
 
             /*
             |--------------------------------------------------------------------------
-            | CHAPTER
+            | Chapter Detection
             |--------------------------------------------------------------------------
             */
 
             if (
                 preg_match(
-                    '/^Chapter\s+\d+(\.\d+)?\s*:/i',
+                    self::PATTERN_CHAPTER,
                     $text
                 )
             ) {
@@ -201,41 +174,71 @@ class HierarchyParserService
                     continue;
                 }
 
-                $modules
-                [$currentModuleIndex]
-                ['chapters'][] = [
+                $this->finalizeCurrentTopic(
+                    $modules,
+                    $currentModuleIndex,
+                    $currentChapterIndex,
+                    $currentTopicIndex
+                );
+
+                $modules[$currentModuleIndex]['chapters'][] = [
 
                     'title' => $text,
 
+                    'description' => '',
+
                     'topics' => [],
+
                 ];
 
-                $currentChapterIndex =
-                    count(
-                        $modules
-                        [$currentModuleIndex]
-                        ['chapters']
-                    ) - 1;
+                $currentChapterIndex = count(
+                    $modules[$currentModuleIndex]['chapters']
+                ) - 1;
 
                 $currentTopicIndex = null;
 
-                $currentContentIndex = null;
+                Log::info(
+                    'Chapter detected',
+                    [
+                        'title' => $text
+                    ]
+                );
 
                 continue;
             }
 
             /*
             |--------------------------------------------------------------------------
-            | TOPIC
+            | Topic Detection
             |--------------------------------------------------------------------------
             */
 
+            $normalizedTopicText = preg_replace(
+                '/^[\s•●·▪◦◆►▶\-*]+/u',
+                '',
+                $text
+            );
+
+            $topicTitle = null;
+
             if (
                 preg_match(
-                    '/^Topic\s+\d+\.\d+\.\d+\s*:/i',
-                    $text
+                    self::PATTERN_TOPIC,
+                    $normalizedTopicText,
+                    $matches
                 )
             ) {
+
+                $topicTitle = trim(
+                    $matches[2] ?? ''
+                );
+
+                $this->finalizeCurrentTopic(
+                    $modules,
+                    $currentModuleIndex,
+                    $currentChapterIndex,
+                    $currentTopicIndex
+                );
 
                 if (
                     $currentChapterIndex === null
@@ -243,188 +246,357 @@ class HierarchyParserService
                     continue;
                 }
 
-                $modules
-                [$currentModuleIndex]
-                ['chapters']
-                [$currentChapterIndex]
-                ['topics'][] = [
+                $modules[$currentModuleIndex]['chapters'][$currentChapterIndex]['topics'][] = [
 
-                    'title' => $text,
+                    'title' => $topicTitle !== ''
+                        ? $topicTitle
+                        : $normalizedTopicText,
 
-                    'contents' => [],
+                    'blocks' => [],
+
+                    'raw_html' => '',
                 ];
 
-                $currentTopicIndex =
-                    count(
-                        $modules
-                        [$currentModuleIndex]
-                        ['chapters']
-                        [$currentChapterIndex]
-                        ['topics']
-                    ) - 1;
+                $currentTopicIndex = count(
+                    $modules[$currentModuleIndex]['chapters'][$currentChapterIndex]['topics']
+                ) - 1;
 
-                $currentContentIndex = null;
+                $this->topicBuffer->start();
+
+                Log::info(
+                    'Topic detected',
+                    [
+                        'title' => $topicTitle
+                    ]
+                );
 
                 continue;
             }
 
             /*
             |--------------------------------------------------------------------------
-            | HEADING
+            | Ignore Everything Until First Topic
             |--------------------------------------------------------------------------
-            |
-            | 1.1.1.H1 Heading
-            |
             */
 
             if (
-                preg_match(
-                    '/^(\d+\.\d+\.\d+)\.(H\d+)\s+(.*)$/i',
-                    $text,
-                    $matches
-                )
+                $currentTopicIndex === null
             ) {
-
-                if (
-                    $currentTopicIndex === null
-                ) {
-                    continue;
-                }
-
-                $topicCode = trim($matches[1]);
-
-                $headingCode = strtoupper(
-                    trim($matches[2])
-                );
-
-                $title = trim($matches[3]);
-
-                $modules
-                [$currentModuleIndex]
-                ['chapters']
-                [$currentChapterIndex]
-                ['topics']
-                [$currentTopicIndex]
-                ['contents'][] = [
-
-                    'topic_code' => $topicCode,
-
-                    'heading_code' => $headingCode,
-
-                    'heading_level' => strtolower($headingCode),
-
-                    'type' => 'text',
-
-                    'title' => $title,
-
-                    'content' => '',
-                ];
-
-                $currentContentIndex =
-                    count(
-                        $modules
-                        [$currentModuleIndex]
-                        ['chapters']
-                        [$currentChapterIndex]
-                        ['topics']
-                        [$currentTopicIndex]
-                        ['contents']
-                    ) - 1;
-
                 continue;
             }
 
             /*
             |--------------------------------------------------------------------------
-            | CONTENT START
+            | Append Everything To Current Topic
             |--------------------------------------------------------------------------
             |
-            | 1.1.1.C1
+            | Every block belongs to the current Topic.
+            |
+            | Paragraphs
+            | Headings
+            | Images
+            | Tables
+            | Lists
+            | Notes
+            | Warnings
+            | Everything.
             |
             */
 
-            if (
-                preg_match(
-                    '/^(\d+\.\d+\.\d+)\.(C\d+)/i',
-                    $text
-                )
-            ) {
-
-                /*
-                |--------------------------------------------------------------------------
-                | Remove Cx Marker ONLY
-                |--------------------------------------------------------------------------
-                */
-
-                $cleanHtml = preg_replace(
-                    '/^\s*<[^>]+>\s*\d+\.\d+\.\d+\.(C\d+)\s*/i',
-                    '',
-                    $rawHtml
-                );
-
-                $cleanHtml = preg_replace(
-                    '/^\s*\d+\.\d+\.\d+\.(C\d+)\s*/i',
-                    '',
-                    $cleanHtml
-                );
-
-                if (
-                    $currentContentIndex !== null
-                ) {
-
-                    $modules
-                    [$currentModuleIndex]
-                    ['chapters']
-                    [$currentChapterIndex]
-                    ['topics']
-                    [$currentTopicIndex]
-                    ['contents']
-                    [$currentContentIndex]
-                    ['content']
-                    .= $cleanHtml;
-                }
-
-                continue;
-            }
-
-            /*
-            |--------------------------------------------------------------------------
-            | NORMAL CONTENT
-            |--------------------------------------------------------------------------
-            */
-
-            if (
-                $currentContentIndex !== null
-            ) {
-
-                $modules
-                [$currentModuleIndex]
-                ['chapters']
-                [$currentChapterIndex]
-                ['topics']
-                [$currentTopicIndex]
-                ['contents']
-                [$currentContentIndex]
-                ['content']
-                .= $rawHtml;
-            }
+            $this->topicBuffer->append(
+                $rawHtml
+            );
         }
 
         /*
         |--------------------------------------------------------------------------
-        | VALIDATION
+        | Save Last Topic
         |--------------------------------------------------------------------------
         */
 
-        if (empty($modules)) {
+        $this->finalizeCurrentTopic(
+            $modules,
+            $currentModuleIndex,
+            $currentChapterIndex,
+            $currentTopicIndex
+        );
 
+        if (empty($modules)) {
             throw new \Exception(
-                'No modules detected.'
+                'No modules detected in document.'
             );
         }
 
         return [
-            'modules' => $modules,
+
+            'modules' => $modules
+
         ];
+    }
+
+    /**
+     * Save current topic buffer.
+     */
+    private function finalizeCurrentTopic(
+        array &$modules,
+        ?int $moduleIndex,
+        ?int $chapterIndex,
+        ?int $topicIndex
+    ): void {
+
+        if (
+
+            $moduleIndex === null ||
+
+            $chapterIndex === null ||
+
+            $topicIndex === null
+
+        ) {
+
+            return;
+        }
+
+        $blocks = $this->topicBuffer->getBlocks();
+
+        $html = $this->topicBuffer->getHtml();
+
+        $modules[$moduleIndex]['chapters'][$chapterIndex]['topics'][$topicIndex]['blocks']
+            = $blocks;
+
+        $modules[$moduleIndex]['chapters'][$chapterIndex]['topics'][$topicIndex]['raw_html']
+            = $html;
+
+        Log::info(
+            '[Parser] Topic Completed',
+            [
+
+                'topic' => $modules[$moduleIndex]['chapters'][$chapterIndex]['topics'][$topicIndex]['title'],
+
+                'blocks' => count($blocks),
+
+                'html_length' => strlen($html),
+
+            ]
+        );
+
+        $this->topicBuffer->reset();
+    }
+
+    /**
+     * Flatten DOM into sequential block elements.
+     */
+    /**
+     * Flatten DOM into sequential block elements.
+     *
+     * Only leaf block elements are collected.
+     * This prevents duplicate collection such as:
+     *
+     * <div>
+     *     <h2>...</h2>
+     *     <p>...</p>
+     * </div>
+     *
+     * where previously DIV + H2 + P all became blocks.
+     */
+    protected function flattenNodes(
+        DOMNode $node,
+        array &$nodes
+    ): void {
+
+        foreach ($node->childNodes as $child) {
+
+            if ($child->nodeType !== XML_ELEMENT_NODE) {
+                continue;
+            }
+
+            $tag = strtolower($child->nodeName);
+
+            /*
+        |--------------------------------------------------------------------------
+        | Supported Block Elements
+        |--------------------------------------------------------------------------
+        */
+
+            $supported = [
+
+                'h1',
+                'h2',
+                'h3',
+                'h4',
+                'h5',
+                'h6',
+
+                'p',
+
+                'div',
+
+                'table',
+
+                'ul',
+                'ol',
+
+                'figure',
+
+                'img',
+
+            ];
+
+            if (!in_array($tag, $supported)) {
+
+                if ($child->hasChildNodes()) {
+
+                    $this->flattenNodes(
+                        $child,
+                        $nodes
+                    );
+                }
+
+                continue;
+            }
+
+            /*
+        |--------------------------------------------------------------------------
+        | Ignore Word Header / Footer
+        |--------------------------------------------------------------------------
+        */
+
+            $text = trim(
+                preg_replace(
+                    '/\s+/u',
+                    ' ',
+                    strip_tags(
+                        $child->textContent
+                    )
+                )
+            );
+
+            if (
+                preg_match(
+                    '/^Level\s+\d+\s*\|\s*Module\s+\d+\s*:/i',
+                    $text
+                )
+            ) {
+                continue;
+            }
+
+            /*
+        |--------------------------------------------------------------------------
+        | DIV Handling
+        |--------------------------------------------------------------------------
+        |
+        | Only keep DIV if it does NOT contain
+        | another supported block element.
+        |
+        */
+
+            if ($tag === 'div') {
+
+                $hasNestedBlocks = false;
+
+                foreach ($child->childNodes as $grandChild) {
+
+                    if (
+                        $grandChild->nodeType === XML_ELEMENT_NODE
+                    ) {
+
+                        $grandTag = strtolower(
+                            $grandChild->nodeName
+                        );
+
+                        if (
+                            in_array(
+                                $grandTag,
+                                [
+                                    'h1',
+                                    'h2',
+                                    'h3',
+                                    'h4',
+                                    'h5',
+                                    'h6',
+                                    'p',
+                                    'table',
+                                    'ul',
+                                    'ol',
+                                    'figure',
+                                    'img',
+                                    'div',
+                                ]
+                            )
+                        ) {
+
+                            $hasNestedBlocks = true;
+
+                            break;
+                        }
+                    }
+                }
+
+                /*
+            |--------------------------------------------------------------------------
+            | Nested Blocks
+            |--------------------------------------------------------------------------
+            */
+
+                if ($hasNestedBlocks) {
+
+                    $this->flattenNodes(
+                        $child,
+                        $nodes
+                    );
+
+                    continue;
+                }
+            }
+
+            /*
+        |--------------------------------------------------------------------------
+        | Store Block
+        |--------------------------------------------------------------------------
+        */
+
+            $nodes[] = $child;
+
+            Log::debug(
+                '[Flatten] Block Added',
+                [
+
+                    'tag' => $tag,
+
+                    'text' => mb_substr(
+                        $text,
+                        0,
+                        80
+                    ),
+
+                ]
+            );
+
+            /*
+        |--------------------------------------------------------------------------
+        | Tables / Images are terminal nodes.
+        |--------------------------------------------------------------------------
+        */
+
+            if (
+                in_array(
+                    $tag,
+                    [
+                        'table',
+                        'img',
+                        'figure',
+                    ]
+                )
+            ) {
+                continue;
+            }
+        }
+
+        Log::info(
+            '[Flatten] Completed',
+            [
+                'blocks' => count($nodes)
+            ]
+        );
     }
 }

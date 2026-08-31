@@ -19,12 +19,10 @@ use App\Models\UserDevice;
 use App\Services\NotificationService;
 
 
-class AuthController extends Controller
-{
+class AuthController extends Controller {
     protected $smtpService;
 
-    public function __construct(SmtpService $smtpService)
-    {
+    public function __construct(SmtpService $smtpService) {
         $this->smtpService = $smtpService;
     }
 
@@ -33,8 +31,7 @@ class AuthController extends Controller
     | REGISTER
     |-----------------------------------------
     */
-    public function register(Request $request)
-    {
+    public function register(Request $request) {
         $request->validate([
             'name' => 'required',
             'email' => 'required|email|unique:users,email',
@@ -98,6 +95,9 @@ class AuthController extends Controller
                     . "verify-email?token=$token";
             }
 
+            $verifyLink = rtrim(env('FRONT_END_SALES_URL'), '/') . "/verify-email?token={$token}";
+
+            /*
             /*
             |-----------------------------------------
             | SMTP + MAIL
@@ -136,8 +136,7 @@ class AuthController extends Controller
     | VERIFY EMAIL (TOKEN BASED)
     |-----------------------------------------
     */
-    public function verifyEmail(Request $request)
-    {
+    public function verifyEmail(Request $request) {
         $request->validate([
             'token' => 'required'
         ]);
@@ -179,8 +178,7 @@ class AuthController extends Controller
     | LOGIN
     |-----------------------------------------
     */
-    public function login(Request $request)
-    {
+    public function login(Request $request) {
         $request->validate([
             'email' => 'required|email',
             'password' => 'required',
@@ -292,6 +290,16 @@ class AuthController extends Controller
         $user->last_login_at = now();
 
         $user->save();
+
+        /*
+        |--------------------------------------------------------------------------
+        | 🧹 Disable All Other Device Tokens
+        |--------------------------------------------------------------------------
+        */
+
+        UserDevice::where('user_id', $user->id)
+            ->where('device_id', $deviceId)
+            ->delete();
 
         /*
         |--------------------------------------------------------------------------
@@ -483,21 +491,14 @@ class AuthController extends Controller
 
             UserDevice::updateOrCreate(
                 [
-                    'user_id' => $user->id,
+                    'user_id'   => $user->id,
                     'device_id' => $deviceId,
                 ],
                 [
-                    'fcm_token' => $request->fcm_token,
-
-                    'device_type' =>
-                    $request->device_type
-                        ?? 'android',
-
-                    'device_name' =>
-                    $request->device_name
-                        ?? $request->header('User-Agent'),
-
-                    'last_used_at' => now()
+                    'fcm_token'   => $request->fcm_token,
+                    'device_type' => $request->device_type ?? 'android',
+                    'device_name' => $request->device_name ?? $request->header('User-Agent'),
+                    'last_used_at' => now(),
                 ]
             );
         }
@@ -518,18 +519,12 @@ class AuthController extends Controller
     | LOGOUT
     |-----------------------------------------
     */
-<<<<<<< Updated upstream
-    public function logout(Request $request)
-    {
-        AuditService::log('logged_out', 'User logged out of the system');
-=======
     public function logout(Request $request) {
 
 
         Log::info('================ LOGOUT START ================');
 
         Log::info('Headers', $request->headers->all());
->>>>>>> Stashed changes
 
         $user = $request->user();
 
@@ -548,28 +543,8 @@ class AuthController extends Controller
             ], 401);
         }
 
-        // 🔑 Delete current token
-        $request->user()->currentAccessToken()?->delete();
-
-        // 🔓 Unbind device
-        $user->device_id = null;
-        $user->device_name = null;
-        $user->save();
-
-        // 🧾 Audit log
-        audit_log($user->id, 'logout', 'User logged out');
-
         $deviceId = $request->header('X-Device-Id');
 
-<<<<<<< Updated upstream
-        UserDevice::where('user_id', $user->id)
-            ->where('device_id', $deviceId)
-            ->delete();
-
-        return response()->json([
-            'message' => 'Logged out successfully'
-        ]);
-=======
         Log::info('Device Details', [
             'header_device_id' => $deviceId,
             'db_device_id'     => $user->device_id,
@@ -639,6 +614,5 @@ class AuthController extends Controller
                 'error' => $e->getMessage(),
             ], 500);
         }
->>>>>>> Stashed changes
     }
 }

@@ -279,11 +279,11 @@ class ChapterController extends Controller
         |--------------------------------------------------------------------------
         */
 
-        $limit = (int) $request->get('limit', 10);
+        $limit = (int) $request->get('limit', 1000);
 
         $limit = ($limit > 0 && $limit <= 100)
             ? $limit
-            : 10;
+            : 1000;
 
         $chapters = $query->paginate($limit);
 

@@ -26,17 +26,12 @@ class ImportLog extends Model
     protected $fillable = [
 
         'program_id',
-
         'level_id',
-
+        'type',
         'status',
-
         'raw_html',
-
         'meta',
-
         'error',
-
         'created_by',
     ];
 
