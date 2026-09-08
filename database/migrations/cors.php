@@ -11,8 +11,6 @@ return [
         'http://localhost:5173',
         'https://avanta-sales.vercel.app',
         'https://avante-medical.vercel.app',
-        'https://admin.avantemedical.co.in/',
-        'https://avantemedical.co.in/'
     ],
 
     'allowed_headers' => ['*'],
@@ -23,5 +21,4 @@ return [
 
     'supports_credentials' => false,
 
-    'allowed_origins' => ['*'],
 ];

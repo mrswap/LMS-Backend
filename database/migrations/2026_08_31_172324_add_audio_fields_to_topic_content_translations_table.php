@@ -13,17 +13,23 @@ return new class extends Migration
     {
         Schema::table('topic_content_translations', function (Blueprint $table) {
 
-            $table->string('audio_path')
-                ->nullable()
-                ->after('content');
+            if (!Schema::hasColumn('topic_content_translations', 'audio_path')) {
+                $table->string('audio_path')
+                    ->nullable()
+                    ->after('content');
+            }
 
-            $table->timestamp('audio_generated_at')
-                ->nullable()
-                ->after('audio_path');
+            if (!Schema::hasColumn('topic_content_translations', 'audio_generated_at')) {
+                $table->timestamp('audio_generated_at')
+                    ->nullable()
+                    ->after('audio_path');
+            }
 
-            $table->string('audio_provider')
-                ->nullable()
-                ->after('audio_generated_at');
+            if (!Schema::hasColumn('topic_content_translations', 'audio_provider')) {
+                $table->string('audio_provider')
+                    ->nullable()
+                    ->after('audio_generated_at');
+            }
         });
     }
 
@@ -34,11 +40,23 @@ return new class extends Migration
     {
         Schema::table('topic_content_translations', function (Blueprint $table) {
 
-            $table->dropColumn([
-                'audio_path',
-                'audio_generated_at',
-                'audio_provider',
-            ]);
+            $columns = [];
+
+            if (Schema::hasColumn('topic_content_translations', 'audio_path')) {
+                $columns[] = 'audio_path';
+            }
+
+            if (Schema::hasColumn('topic_content_translations', 'audio_generated_at')) {
+                $columns[] = 'audio_generated_at';
+            }
+
+            if (Schema::hasColumn('topic_content_translations', 'audio_provider')) {
+                $columns[] = 'audio_provider';
+            }
+
+            if (!empty($columns)) {
+                $table->dropColumn($columns);
+            }
         });
     }
 };
