@@ -8,24 +8,34 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use App\Models\Role;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Mail;
+use Carbon\Carbon;
+use App\Services\SmtpService;
 
 
 class UserController extends Controller {
     protected $uploadPath = 'uploads/users/profile-images/';
 
+    protected $smtpService;
+
+    public function __construct(SmtpService $smtpService) {
+        $this->smtpService = $smtpService;
+    }
+
     public function index(Request $request) {
         /*
-    |------------------------------------------------------------
-    | ROLE FILTER
-    |------------------------------------------------------------
-    | Supported:
-    |
-    | ?role=sales
-    | ?role=staff
-    | ?role=superadmin
-    | ?role=all
-    | ?role=no_sales
-    */
+            |------------------------------------------------------------
+            | ROLE FILTER
+            |------------------------------------------------------------
+            | Supported:
+            |
+            | ?role=sales
+            | ?role=staff
+            | ?role=superadmin
+            | ?role=all
+            | ?role=no_sales
+            */
         $role = strtolower(
             $request->get('role', User::ROLE_SALES)
         );
@@ -38,24 +48,24 @@ class UserController extends Controller {
             ])
 
             /*
-        |------------------------------------------------------------
-        | EXCLUDE ROLE ID = 1
-        |------------------------------------------------------------
-        */
+                |------------------------------------------------------------
+                | EXCLUDE ROLE ID = 1
+                |------------------------------------------------------------
+                */
             ->where('role_id', '!=', 1);
 
         /*
-    |------------------------------------------------------------
-    | ROLE CONDITION
-    |------------------------------------------------------------
-    */
+            |------------------------------------------------------------
+            | ROLE CONDITION
+            |------------------------------------------------------------
+            */
         if ($role !== 'all') {
 
             /*
-        |------------------------------------------------------------
-        | NO SALES
-        |------------------------------------------------------------
-        */
+                |------------------------------------------------------------
+                | NO SALES
+                |------------------------------------------------------------
+                */
             if ($role === 'no_sales') {
 
                 $query->whereHas('role', function ($q) {
@@ -65,10 +75,10 @@ class UserController extends Controller {
             } else {
 
                 /*
-            |------------------------------------------------------------
-            | NORMAL ROLE FILTER
-            |------------------------------------------------------------
-            */
+                    |------------------------------------------------------------
+                    | NORMAL ROLE FILTER
+                    |------------------------------------------------------------
+                    */
                 $allowedRoles = [
                     User::ROLE_SUPERADMIN,
                     User::ROLE_STAFF,
@@ -91,10 +101,10 @@ class UserController extends Controller {
         }
 
         /*
-    |------------------------------------------------------------
-    | SEARCH
-    |------------------------------------------------------------
-    */
+                |------------------------------------------------------------
+                | SEARCH
+                |------------------------------------------------------------
+                */
         if ($request->filled('search')) {
 
             $search = trim($request->search);
@@ -109,10 +119,10 @@ class UserController extends Controller {
                     ->orWhere('region', 'like', "%{$search}%");
 
                 /*
-            |------------------------------------------------------------
-            | SEARCH BY ROLE
-            |------------------------------------------------------------
-            */
+                    |------------------------------------------------------------
+                    | SEARCH BY ROLE
+                    |------------------------------------------------------------
+                    */
                 $q->orWhereHas('role', function ($roleQuery) use ($search) {
 
                     $roleQuery->where('name', 'like', "%{$search}%")
@@ -120,10 +130,10 @@ class UserController extends Controller {
                 });
 
                 /*
-            |------------------------------------------------------------
-            | SEARCH BY DESIGNATION
-            |------------------------------------------------------------
-            */
+                    |------------------------------------------------------------
+                    | SEARCH BY DESIGNATION
+                    |------------------------------------------------------------
+                    */
                 $q->orWhereHas('designation', function ($designationQuery) use ($search) {
 
                     $designationQuery->where('name', 'like', "%{$search}%")
@@ -133,10 +143,10 @@ class UserController extends Controller {
         }
 
         /*
-    |------------------------------------------------------------
-    | STATUS FILTER
-    |------------------------------------------------------------
-    */
+                |------------------------------------------------------------
+                | STATUS FILTER
+                |------------------------------------------------------------
+                */
         if ($request->has('status')) {
 
             if ($request->status !== 'all') {
@@ -149,10 +159,10 @@ class UserController extends Controller {
         }
 
         /*
-    |------------------------------------------------------------
-    | DESIGNATION FILTER
-    |------------------------------------------------------------
-    */
+                |------------------------------------------------------------
+                | DESIGNATION FILTER
+                |------------------------------------------------------------
+                */
         if ($request->filled('designation_id')) {
 
             $query->where(
@@ -162,10 +172,10 @@ class UserController extends Controller {
         }
 
         /*
-    |------------------------------------------------------------
-    | REGION FILTER
-    |------------------------------------------------------------
-    */
+                |------------------------------------------------------------
+                | REGION FILTER
+                |------------------------------------------------------------
+                */
         if ($request->filled('region')) {
 
             $query->where(
@@ -175,10 +185,10 @@ class UserController extends Controller {
         }
 
         /*
-    |------------------------------------------------------------
-    | CITY FILTER
-    |------------------------------------------------------------
-    */
+                |------------------------------------------------------------
+                | CITY FILTER
+                |------------------------------------------------------------
+                */
         if ($request->filled('city')) {
 
             $query->where(
@@ -188,10 +198,10 @@ class UserController extends Controller {
         }
 
         /*
-    |------------------------------------------------------------
-    | SORTING
-    |------------------------------------------------------------
-    */
+                |------------------------------------------------------------
+                | SORTING
+                |------------------------------------------------------------
+                */
         $sortByMap = [
             'createdAt'  => 'created_at',
             'updatedAt'  => 'updated_at',
@@ -221,10 +231,10 @@ class UserController extends Controller {
         );
 
         /*
-    |------------------------------------------------------------
-    | PAGINATION
-    |------------------------------------------------------------
-    */
+                |------------------------------------------------------------
+                | PAGINATION
+                |------------------------------------------------------------
+                */
         $limit = (int) $request->get('limit', 10);
 
         $limit = ($limit > 0 && $limit <= 100)
@@ -234,15 +244,17 @@ class UserController extends Controller {
         $users = $query->paginate($limit);
 
         /*
-    |------------------------------------------------------------
-    | RESPONSE
-    |------------------------------------------------------------
-    */
+                |------------------------------------------------------------
+                | RESPONSE
+                |------------------------------------------------------------
+                */
         return response()->json([
             'success' => true,
             'data'    => $users
         ]);
     }
+
+
     public function store(Request $request) {
         $request->validate([
             'name' => 'required',
@@ -251,40 +263,155 @@ class UserController extends Controller {
             'department' => 'required',
             'region' => 'required',
             'designation_id' => 'required|exists:designations,id',
-            'password' => 'required|min:6',
             'role_id' => 'required|exists:roles,id',
-
+            'password' => 'nullable|min:6',
         ]);
 
         $imagePath = null;
 
+        /*
+    |--------------------------------------------------------------------------
+    | PROFILE IMAGE
+    |--------------------------------------------------------------------------
+    */
         if ($request->hasFile('profile_image')) {
             $file = $request->file('profile_image');
+
             $name = time() . '_' . Str::random(10) . '.' . $file->getClientOriginalExtension();
+
             $file->move(public_path($this->uploadPath), $name);
+
             $imagePath = $this->uploadPath . $name;
         }
 
+        /*
+    |--------------------------------------------------------------------------
+    | CREATE USER
+    |--------------------------------------------------------------------------
+    */
         $user = User::create([
             'name' => $request->name,
             'email' => $request->email,
             'mobile' => $request->mobile,
             'employee_id' => $request->employee_id,
-            'role_id' =>  $request->role_id,
+            'role_id' => $request->role_id,
             'department' => $request->department,
             'designation_id' => $request->designation_id,
             'region' => $request->region,
             'city' => $request->city,
-            'password' => Hash::make($request->password),
+
+            // Password can be null during user creation.
+            // User will create password using the email link.
+            'password' => $request->filled('password')
+                ? Hash::make($request->password)
+                : null,
+
             'profile_image' => $imagePath,
             'created_by' => auth()->id(),
-            'email_verified_at' => now(),
         ]);
+
+        /*
+    |--------------------------------------------------------------------------
+    | GENERATE PASSWORD SETUP TOKEN
+    |--------------------------------------------------------------------------
+    */
+        $token = Str::random(64);
+
+        DB::table('password_reset_tokens')->updateOrInsert(
+            ['email' => $user->email],
+            [
+                'token' => $token,
+                'created_at' => Carbon::now(),
+            ]
+        );
+
+        /*
+    |--------------------------------------------------------------------------
+    | PASSWORD SETUP LINK
+    |--------------------------------------------------------------------------
+    */
+        $passwordSetupLink = rtrim(
+            env('FRONT_END_SALES_URL'),
+            '/'
+        ) . "/reset-password?token={$token}";
+
+        /*
+    |--------------------------------------------------------------------------
+    | APPLY SMTP CONFIGURATION
+    |--------------------------------------------------------------------------
+    */
+        $smtp = \App\Models\SmtpSetting::first();
+
+        if ($smtp) {
+            $this->smtpService->applyConfig($smtp);
+        }
+
+        /*
+    |--------------------------------------------------------------------------
+    | SEND ACCOUNT CREATION EMAIL
+    |--------------------------------------------------------------------------
+    */
+        $notificationStatus = 'sent';
+
+        try {
+
+            Mail::raw(
+                "Hello {$user->name},
+
+Your Avante Medical account has been created successfully.
+
+You can login using the following email address:
+
+Username / Email: {$user->email}
+
+Login URL:
+" . rtrim(env('FRONT_END_SALES_URL'), '/') . "
+
+To create your password, please use the secure link below:
+
+Set Your Password:
+{$passwordSetupLink}
+
+This password setup link is valid for 60 minutes.
+
+If you did not expect this account, please contact the administrator.
+
+Regards,
+Avante Medical Team",
+                function ($message) use ($user) {
+                    $message->to($user->email)
+                        ->subject('Your Avante Medical Account Has Been Created');
+                }
+            );
+        } catch (\Throwable $e) {
+
+            $notificationStatus = 'failed';
+
+            \Log::error('User creation email failed', [
+                'user_id' => $user->id,
+                'email' => $user->email,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        /*
+    |--------------------------------------------------------------------------
+    | RESPONSE
+    |--------------------------------------------------------------------------
+    */
         return response()->json([
-            'message' => 'User created successfully',
-            'data' => $user
+            'message' => 'User account created successfully.',
+            'data' => $user,
+            'notification' => [
+                'type' => 'email',
+                'status' => $notificationStatus,
+            ],
         ]);
     }
+
+
+
+
 
     public function show($id) {
         return response()->json(User::findOrFail($id));

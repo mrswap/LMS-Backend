@@ -13,12 +13,10 @@ use Carbon\Carbon;
 use App\Services\SmtpService;
 
 
-class PasswordController extends Controller
-{
+class PasswordController extends Controller {
     protected $smtpService;
 
-    public function __construct(SmtpService $smtpService)
-    {
+    public function __construct(SmtpService $smtpService) {
         $this->smtpService = $smtpService;
     }
 
@@ -28,8 +26,7 @@ class PasswordController extends Controller
     |-----------------------------------------
     */
 
-    public function forgotPassword(Request $request)
-    {
+    public function forgotPassword(Request $request) {
         /*
         |-----------------------------------------
         | VALIDATION
@@ -87,7 +84,7 @@ class PasswordController extends Controller
                 . "trainee/reset-password?token=$token";
         }
 
-        $verifyLink = rtrim(env('FRONT_END_SALES_URL'), '/') . "/trainee/reset-password?token={$token}";
+        $verifyLink = rtrim(env('FRONT_END_SALES_URL'), '/') . "/reset-password?token={$token}";
 
         /*
         |-----------------------------------------
@@ -104,10 +101,13 @@ class PasswordController extends Controller
         | SEND MAIL
         |-----------------------------------------
         */
-        Mail::raw("Reset your password:\n$resetLink", function ($message) use ($user) {
-            $message->to($user->email)
-                ->subject('Reset Password');
-        });
+        Mail::raw(
+            "Reset your password:\n\n" . $verifyLink,
+            function ($message) use ($user) {
+                $message->to($user->email)
+                    ->subject('Reset Password');
+            }
+        );
 
         /*
         |-----------------------------------------
@@ -124,8 +124,7 @@ class PasswordController extends Controller
     | RESET PASSWORD
     |-----------------------------------------
     */
-    public function resetPassword(Request $request)
-    {
+    public function resetPassword(Request $request) {
         $request->validate([
             'token' => 'required',
             'password' => 'required|min:6|confirmed'
@@ -157,7 +156,8 @@ class PasswordController extends Controller
         }
 
         $user->update([
-            'password' => Hash::make($request->password)
+            'password' => Hash::make($request->password),
+            'email_verified_at' => now(),
         ]);
 
         // Delete token after use
