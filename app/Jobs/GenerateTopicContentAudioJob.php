@@ -1,8 +1,10 @@
 <?php
+
 namespace App\Jobs;
 
 use App\Models\TopicContent;
 use App\Services\AI\TextToSpeechService;
+use App\Jobs\TranslateTopicContentJob;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -69,6 +71,31 @@ class GenerateTopicContentAudioJob implements ShouldQueue
         TextToSpeechService $ttsService
     ): void {
 
+        /*
+        |--------------------------------------------------------------------------
+        | TTS FEATURE CHECK
+        |--------------------------------------------------------------------------
+        */
+
+        if (! env('OPENAI_TTS_ENABLED', true)) {
+
+            Log::channel('ai')->info(
+                'TTS DISABLED - JOB SKIPPED',
+                [
+                    'content_id' =>
+                        $this->contentId,
+
+                    'language' =>
+                        $this->languageCode,
+
+                    'translation_id' =>
+                        $this->translationId,
+                ]
+            );
+
+            return;
+        }
+
         Log::channel('ai')->info(
             'TTS JOB STARTED',
             [
@@ -116,13 +143,12 @@ class GenerateTopicContentAudioJob implements ShouldQueue
 
             $plainText = null;
 
+            $translation = null;
+
             /*
             |--------------------------------------------------------------------------
             | ENGLISH
             |--------------------------------------------------------------------------
-            |
-            | English content lives directly on TopicContent.
-            |
             */
 
             if ($this->languageCode === 'en') {
@@ -157,15 +183,15 @@ class GenerateTopicContentAudioJob implements ShouldQueue
             |--------------------------------------------------------------------------
             | TRANSLATED LANGUAGE
             |--------------------------------------------------------------------------
-            |
-            | Hindi / Punjabi etc. content lives in
-            | TopicContentTranslation.
-            |
             */
 
             else {
 
-                $translation = null;
+                /*
+                |--------------------------------------------------------------------------
+                | FIND TRANSLATION
+                |--------------------------------------------------------------------------
+                */
 
                 if ($this->translationId) {
 
@@ -180,13 +206,12 @@ class GenerateTopicContentAudioJob implements ShouldQueue
                                 $this->languageCode
                             )
                             ->first();
-
                 }
 
                 /*
-                |------------------------------------------------------------------
-                | FALLBACK: FIND BY LANGUAGE
-                |------------------------------------------------------------------
+                |--------------------------------------------------------------------------
+                | FALLBACK
+                |--------------------------------------------------------------------------
                 */
 
                 if (! $translation) {
@@ -218,6 +243,12 @@ class GenerateTopicContentAudioJob implements ShouldQueue
 
                     return;
                 }
+
+                /*
+                |--------------------------------------------------------------------------
+                | VALIDATE
+                |--------------------------------------------------------------------------
+                */
 
                 if (
                     $content->type !== 'text'
@@ -253,7 +284,7 @@ class GenerateTopicContentAudioJob implements ShouldQueue
 
             /*
             |--------------------------------------------------------------------------
-            | EMPTY TEXT CHECK
+            | EMPTY TEXT
             |--------------------------------------------------------------------------
             */
 
@@ -275,12 +306,6 @@ class GenerateTopicContentAudioJob implements ShouldQueue
 
                 return;
             }
-
-            /*
-            |--------------------------------------------------------------------------
-            | TEXT READY
-            |--------------------------------------------------------------------------
-            */
 
             Log::channel('ai')->info(
                 'TTS TEXT READY',
@@ -309,9 +334,7 @@ class GenerateTopicContentAudioJob implements ShouldQueue
                 'content_' .
                 $content->id .
                 '_' .
-                $this->languageCode .
-                '_' .
-                uniqid();
+                $this->languageCode;
 
             /*
             |--------------------------------------------------------------------------
@@ -331,12 +354,6 @@ class GenerateTopicContentAudioJob implements ShouldQueue
             |--------------------------------------------------------------------------
             | SAVE AUDIO
             |--------------------------------------------------------------------------
-            */
-
-            /*
-            |----------------------------------------------------------------------
-            | ENGLISH
-            |----------------------------------------------------------------------
             */
 
             if ($this->languageCode === 'en') {
@@ -362,32 +379,49 @@ class GenerateTopicContentAudioJob implements ShouldQueue
                             $audioPath,
                     ]
                 );
-            }
 
-            /*
-            |----------------------------------------------------------------------
-            | TRANSLATED LANGUAGE
-            |----------------------------------------------------------------------
-            */
+                /*
+                |--------------------------------------------------------------------------
+                | AFTER ENGLISH TTS
+                |--------------------------------------------------------------------------
+                |
+                | English complete.
+                |
+                | Now automatically start Hindi translation.
+                |
+                */
 
-            else {
+                if (
+                    env(
+                        'OPENAI_TRANSLATION_ENABLED',
+                        true
+                    )
+                ) {
 
-                $translation = null;
+                    TranslateTopicContentJob::dispatch(
+                        $content->id,
+                        'hi'
+                    )->afterCommit();
 
-                if ($this->translationId) {
+                    Log::channel('ai')->info(
+                        'HINDI TRANSLATION JOB DISPATCHED',
+                        [
+                            'content_id' =>
+                                $content->id,
 
-                    $translation =
-                        $content->translations()
-                            ->where(
-                                'id',
-                                $this->translationId
-                            )
-                            ->where(
-                                'language_code',
-                                $this->languageCode
-                            )
-                            ->first();
+                            'language' =>
+                                'hi',
+                        ]
+                    );
                 }
+
+            } else {
+
+                /*
+                |--------------------------------------------------------------------------
+                | TRANSLATED AUDIO
+                |--------------------------------------------------------------------------
+                */
 
                 if (! $translation) {
 
@@ -446,6 +480,37 @@ class GenerateTopicContentAudioJob implements ShouldQueue
                             $audioPath,
                     ]
                 );
+
+                /*
+                |--------------------------------------------------------------------------
+                | AFTER HINDI TTS
+                |--------------------------------------------------------------------------
+                */
+
+                if (
+                    $this->languageCode === 'hi'
+                    && env(
+                        'OPENAI_TRANSLATION_ENABLED',
+                        true
+                    )
+                ) {
+
+                    TranslateTopicContentJob::dispatch(
+                        $content->id,
+                        'pa'
+                    )->afterCommit();
+
+                    Log::channel('ai')->info(
+                        'PUNJABI TRANSLATION JOB DISPATCHED',
+                        [
+                            'content_id' =>
+                                $content->id,
+
+                            'language' =>
+                                'pa',
+                        ]
+                    );
+                }
             }
 
             /*
@@ -503,4 +568,3 @@ class GenerateTopicContentAudioJob implements ShouldQueue
         }
     }
 }
-

@@ -211,7 +211,7 @@ class TopicContent extends BaseModel {
                     GenerateTopicContentAudioJob::dispatch(
                         $content->id,
                         'en'
-                    );
+                    )->afterCommit();
 
                     Log::channel('ai')->info(
                         'English Topic Content TTS Job Dispatched',

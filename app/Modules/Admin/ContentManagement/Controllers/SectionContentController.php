@@ -14,10 +14,8 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
 
-class SectionContentController extends Controller
-{
-    private function resolveLanguage(Request $request)
-    {
+class SectionContentController extends Controller {
+    private function resolveLanguage(Request $request) {
         return $request->query('lang')
             ?? $request->header('Accept-Language')
             ?? 'en';
@@ -29,8 +27,7 @@ class SectionContentController extends Controller
     |--------------------------------------------------------------------------
     */
 
-    private function isSystemUser(): bool
-    {
+    private function isSystemUser(): bool {
         return auth()->user()?->isSystemUser() ?? false;
     }
 
@@ -40,8 +37,7 @@ class SectionContentController extends Controller
     |--------------------------------------------------------------------------
     */
 
-    private function governanceDefaults(): array
-    {
+    private function governanceDefaults(): array {
         $isSystemUser = $this->isSystemUser();
 
         return [
@@ -53,11 +49,8 @@ class SectionContentController extends Controller
         ];
     }
 
-    public function store(SectionContentRequest $request, $topicId)
-    {
 
-        $lang = $this->resolveLanguage($request);
-
+    public function store(SectionContentRequest $request, $topicId) {
         $data = $request->validated();
 
         $this->validateMediaShortcode($data);
@@ -75,31 +68,37 @@ class SectionContentController extends Controller
             ...$this->governanceDefaults(),
         ];
 
-        if ($lang === 'en') {
+        /*
+        |--------------------------------------------------------------------------
+        | ALWAYS SAVE ENGLISH SOURCE CONTENT
+        |--------------------------------------------------------------------------
+        |
+        | Admin does not send X-Lang for content creation.
+        | English is the source language.
+        |
+        | TopicContent model event will automatically trigger:
+        |
+        | EN TTS
+        |    ↓
+        | HI Translation
+        |    ↓
+        | HI TTS
+        |    ↓
+        | PA Translation
+        |    ↓
+        | PA TTS
+        |
+        */
 
-            $content = TopicContent::create([
-                ...$baseData,
-                'title' => $data['title'] ?? null,
-                'content' => $data['content'] ?? null,
-            ]);
-        } else {
-
-            $content = TopicContent::create([
-                ...$baseData,
-                'title' => 'BASE_RECORD',
-                'content' => null,
-            ]);
-
-            $content->translations()->create([
-                'language_code' => $lang,
-                'title' => $data['title'] ?? null,
-                'content' => $data['content'] ?? null,
-            ]);
-        }
+        $content = TopicContent::create([
+            ...$baseData,
+            'title' => $data['title'] ?? null,
+            'content' => $data['content'] ?? null,
+        ]);
 
         return response()->json([
             'success' => true,
-            'message' => 'Created',
+            'message' => 'Created. AI translation and audio generation started.',
             'data' => $content,
         ]);
     }
@@ -110,10 +109,8 @@ class SectionContentController extends Controller
     |--------------------------------------------------------------------------
     */
 
-    public function bulkStore(Request $request, $topicId)
-    {
-        $lang = $this->resolveLanguage($request);
 
+    public function bulkStore(Request $request, $topicId) {
         $request->validate([
             'sections' => 'required|array|min:1',
             'sections.*.type' => 'required|in:text,media,h5p,quiz',
@@ -132,42 +129,49 @@ class SectionContentController extends Controller
 
             /*
             |--------------------------------------------------------------------------
-            | Current Max Order
+            | CURRENT MAX ORDER
             |--------------------------------------------------------------------------
             */
+
             $currentMaxOrder = TopicContent::where('topic_id', $topicId)
                 ->max('order') ?? 0;
 
             /*
             |--------------------------------------------------------------------------
-            | Used Orders Tracker
+            | USED ORDERS TRACKER
             |--------------------------------------------------------------------------
             */
+
             $usedOrders = TopicContent::where('topic_id', $topicId)
                 ->pluck('order')
                 ->toArray();
 
             foreach ($request->sections as $section) {
 
-                $this->validateMediaShortcode($section);
                 /*
                 |--------------------------------------------------------------------------
-                | Requested Order
+                | VALIDATE MEDIA
                 |--------------------------------------------------------------------------
                 */
+
+                $this->validateMediaShortcode($section);
+
+                /*
+                |--------------------------------------------------------------------------
+                | REQUESTED ORDER
+                |--------------------------------------------------------------------------
+                */
+
                 $requestedOrder = isset($section['order'])
                     ? (int) $section['order']
                     : null;
 
                 /*
                 |--------------------------------------------------------------------------
-                | Auto Resolve Order Conflict
+                | AUTO RESOLVE ORDER CONFLICT
                 |--------------------------------------------------------------------------
-                |
-                | If order already exists:
-                | assign next available order
-                |
                 */
+
                 if (
                     ! $requestedOrder ||
                     in_array($requestedOrder, $usedOrders)
@@ -187,16 +191,18 @@ class SectionContentController extends Controller
 
                 /*
                 |--------------------------------------------------------------------------
-                | Mark Order As Used
+                | MARK ORDER AS USED
                 |--------------------------------------------------------------------------
                 */
+
                 $usedOrders[] = $finalOrder;
 
                 /*
                 |--------------------------------------------------------------------------
-                | Media Meta Handling
+                | MEDIA META
                 |--------------------------------------------------------------------------
                 */
+
                 if ($section['type'] === 'media') {
 
                     $section['meta'] = [
@@ -207,9 +213,10 @@ class SectionContentController extends Controller
 
                 /*
                 |--------------------------------------------------------------------------
-                | Base Data
+                | BASE DATA
                 |--------------------------------------------------------------------------
                 */
+
                 $baseData = [
                     'topic_id' => $topicId,
                     'type' => $section['type'],
@@ -222,44 +229,36 @@ class SectionContentController extends Controller
 
                 /*
                 |--------------------------------------------------------------------------
-                | English Content
+                | ALWAYS CREATE ENGLISH SOURCE CONTENT
                 |--------------------------------------------------------------------------
+                |
+                | No language check here.
+                | No translation record is created here.
+                |
+                | TopicContent model will trigger English TTS automatically.
+                |
                 */
-                if ($lang === 'en') {
 
-                    $content = TopicContent::create([
-                        ...$baseData,
-                        'title' => $section['title'] ?? null,
-                        'content' => $section['content'] ?? null,
-                    ]);
-                } else {
-
-                    /*
-                    |--------------------------------------------------------------------------
-                    | Multilingual Content
-                    |--------------------------------------------------------------------------
-                    */
-                    $content = TopicContent::create([
-                        ...$baseData,
-                        'title' => 'BASE_RECORD',
-                        'content' => null,
-                    ]);
-
-                    $content->translations()->create([
-                        'language_code' => $lang,
-                        'title' => $section['title'] ?? null,
-                        'content' => $section['content'] ?? null,
-                    ]);
-                }
+                $content = TopicContent::create([
+                    ...$baseData,
+                    'title' => $section['title'] ?? null,
+                    'content' => $section['content'] ?? null,
+                ]);
 
                 $created[] = $content;
             }
+
+            /*
+            |--------------------------------------------------------------------------
+            | COMMIT
+            |--------------------------------------------------------------------------
+            */
 
             DB::commit();
 
             return response()->json([
                 'success' => true,
-                'message' => 'Bulk content created successfully',
+                'message' => 'Bulk content created successfully. AI translation and audio generation started.',
                 'count' => count($created),
                 'data' => $created,
             ]);
@@ -278,6 +277,14 @@ class SectionContentController extends Controller
 
             DB::rollBack();
 
+            Log::error('BULK STORE FAILED', [
+                'topic_id' => $topicId,
+                'message' => $e->getMessage(),
+                'line' => $e->getLine(),
+                'file' => $e->getFile(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
             return response()->json([
                 'success' => false,
                 'message' => $e->getMessage(),
@@ -290,8 +297,7 @@ class SectionContentController extends Controller
     | BULK EDIT (Get all contents for update)
     |--------------------------------------------------------------------------
     */
-    public function bulkEdit(Request $request, $topicId)
-    {
+    public function bulkEdit(Request $request, $topicId) {
         $lang = $this->resolveLanguage($request);
 
         $contents = TopicContent::where('topic_id', $topicId)
@@ -334,8 +340,13 @@ class SectionContentController extends Controller
                 'status' => (bool) $item->status,
                 'publish_status' => $item->publish_status,
 
-                'audio_url' => $item->audio_url,
-                'audio_generated_at' => $item->audio_generated_at,
+                'audio_url' => $lang === 'en'
+                    ? $item->audio_url
+                    : $translation?->audio_url,
+
+                'audio_generated_at' => $lang === 'en'
+                    ? $item->audio_generated_at
+                    : $translation?->audio_generated_at,
 
                 'media_shortcode' => $item->meta['shortcode'] ?? null,
             ];
@@ -379,8 +390,7 @@ class SectionContentController extends Controller
     |--------------------------------------------------------------------------
     */
 
-    public function bulkUpdate(Request $request, $topicId)
-    {
+    public function bulkUpdate(Request $request, $topicId) {
         Log::info('================ BULK UPDATE START ================');
 
         Log::info('Incoming Bulk Update Request', [
@@ -395,20 +405,28 @@ class SectionContentController extends Controller
 
         try {
 
-            $lang = $this->resolveLanguage($request);
+            /*
+        |--------------------------------------------------------------------------
+        | IMPORTANT
+        |--------------------------------------------------------------------------
+        | Admin bulk update ALWAYS works on English source content.
+        |
+        | X-Lang / Accept-Language is NOT used here.
+        |
+        */
 
             $isSystemUser = $this->isSystemUser();
 
             Log::info('Bulk Update Context', [
-                'language' => $lang,
+                'language' => 'en',
                 'is_system_user' => $isSystemUser,
             ]);
 
             /*
-            |--------------------------------------------------------------------------
-            | VALIDATION
-            |--------------------------------------------------------------------------
-            */
+        |--------------------------------------------------------------------------
+        | VALIDATION
+        |--------------------------------------------------------------------------
+        */
 
             $request->validate([
                 'sections' => 'required|array|min:1',
@@ -426,10 +444,10 @@ class SectionContentController extends Controller
             Log::info('Validation Passed');
 
             /*
-            |--------------------------------------------------------------------------
-            | DUPLICATE ORDER CHECK
-            |--------------------------------------------------------------------------
-            */
+        |--------------------------------------------------------------------------
+        | DUPLICATE ORDER CHECK
+        |--------------------------------------------------------------------------
+        */
 
             $orders = collect($request->sections)->pluck('order');
 
@@ -452,13 +470,25 @@ class SectionContentController extends Controller
 
             $result = [];
 
-            $ids = collect(
-                $request->sections
-            )->pluck('id')->filter();
+            /*
+        |--------------------------------------------------------------------------
+        | GET EXISTING IDS
+        |--------------------------------------------------------------------------
+        */
+
+            $ids = collect($request->sections)
+                ->pluck('id')
+                ->filter();
 
             Log::info('Fetching Existing Contents', [
                 'ids' => $ids,
             ]);
+
+            /*
+        |--------------------------------------------------------------------------
+        | LOAD EXISTING CONTENTS
+        |--------------------------------------------------------------------------
+        */
 
             $contents = TopicContent::withTrashed()
                 ->where('topic_id', $topicId)
@@ -471,10 +501,10 @@ class SectionContentController extends Controller
             ]);
 
             /*
-            |--------------------------------------------------------------------------
-            | LOOP
-            |--------------------------------------------------------------------------
-            */
+        |--------------------------------------------------------------------------
+        | LOOP
+        |--------------------------------------------------------------------------
+        */
 
             foreach ($request->sections as $index => $section) {
 
@@ -488,16 +518,20 @@ class SectionContentController extends Controller
                     'is_new' => $section['is_new'] ?? false,
                     'is_deleted' => $section['is_deleted'] ?? false,
                     'content_length' => strlen($section['content'] ?? ''),
-                    'memory_usage_mb' => round(memory_get_usage(true) / 1024 / 1024, 2),
+                    'memory_usage_mb' => round(
+                        memory_get_usage(true) / 1024 / 1024,
+                        2
+                    ),
                 ]);
 
                 try {
 
                     /*
-                    |--------------------------------------------------------------------------
-                    | MEDIA META
-                    |--------------------------------------------------------------------------
-                    */
+                |--------------------------------------------------------------------------
+                | MEDIA META
+                |--------------------------------------------------------------------------
+                */
+
                     $this->validateMediaShortcode($section);
 
                     if ($section['type'] === 'media') {
@@ -512,16 +546,23 @@ class SectionContentController extends Controller
                         ]);
                     }
 
+                    /*
+                |--------------------------------------------------------------------------
+                | SAFE ORDER
+                |--------------------------------------------------------------------------
+                */
+
                     $resolvedOrder = $this->resolveSafeOrder(
                         $topicId,
                         $section['order'] ?? null,
                         $section['id'] ?? null
                     );
+
                     /*
-                    |--------------------------------------------------------------------------
-                    | BASE DATA
-                    |--------------------------------------------------------------------------
-                    */
+                |--------------------------------------------------------------------------
+                | BASE DATA
+                |--------------------------------------------------------------------------
+                */
 
                     $baseData = [
                         'topic_id' => $topicId,
@@ -532,50 +573,34 @@ class SectionContentController extends Controller
                     ];
 
                     /*
-                    |--------------------------------------------------------------------------
-                    | CREATE NEW
-                    |--------------------------------------------------------------------------
-                    */
+                |--------------------------------------------------------------------------
+                | CREATE NEW CONTENT
+                |--------------------------------------------------------------------------
+                */
 
                     if (
                         empty($section['id'])
                         || ! empty($section['is_new'])
                     ) {
 
-                        Log::info('Creating New Content');
+                        Log::info('Creating New EN Content');
 
                         $baseData = [
                             ...$baseData,
                             ...$this->governanceDefaults(),
                         ];
 
-                        if ($lang === 'en') {
+                        /*
+                    |--------------------------------------------------------------------------
+                    | ALWAYS ENGLISH SOURCE
+                    |--------------------------------------------------------------------------
+                    */
 
-                            Log::info('Creating EN Content');
-
-                            $content = TopicContent::create([
-                                ...$baseData,
-                                'title' => $section['title'] ?? null,
-                                'content' => $section['content'] ?? null,
-                            ]);
-                        } else {
-
-                            Log::info('Creating Multilingual Base Record');
-
-                            $content = TopicContent::create([
-                                ...$baseData,
-                                'title' => 'BASE_RECORD',
-                                'content' => null,
-                            ]);
-
-                            Log::info('Creating Translation');
-
-                            $content->translations()->create([
-                                'language_code' => $lang,
-                                'title' => $section['title'] ?? null,
-                                'content' => $section['content'] ?? null,
-                            ]);
-                        }
+                        $content = TopicContent::create([
+                            ...$baseData,
+                            'title' => $section['title'] ?? null,
+                            'content' => $section['content'] ?? null,
+                        ]);
 
                         Log::info('New Content Created', [
                             'content_id' => $content->id,
@@ -587,10 +612,10 @@ class SectionContentController extends Controller
                     }
 
                     /*
-                    |--------------------------------------------------------------------------
-                    | EXISTING
-                    |--------------------------------------------------------------------------
-                    */
+                |--------------------------------------------------------------------------
+                | EXISTING CONTENT
+                |--------------------------------------------------------------------------
+                */
 
                     Log::info('Finding Existing Content');
 
@@ -611,10 +636,10 @@ class SectionContentController extends Controller
                     ]);
 
                     /*
-                    |--------------------------------------------------------------------------
-                    | DELETE
-                    |--------------------------------------------------------------------------
-                    */
+                |--------------------------------------------------------------------------
+                | DELETE
+                |--------------------------------------------------------------------------
+                */
 
                     if (! empty($section['is_deleted'])) {
 
@@ -630,10 +655,10 @@ class SectionContentController extends Controller
                     }
 
                     /*
-                    |--------------------------------------------------------------------------
-                    | RESTORE
-                    |--------------------------------------------------------------------------
-                    */
+                |--------------------------------------------------------------------------
+                | RESTORE
+                |--------------------------------------------------------------------------
+                */
 
                     if ($content->trashed()) {
 
@@ -645,10 +670,10 @@ class SectionContentController extends Controller
                     }
 
                     /*
-                    |--------------------------------------------------------------------------
-                    | SYSTEM USER CONTROLS
-                    |--------------------------------------------------------------------------
-                    */
+                |--------------------------------------------------------------------------
+                | SYSTEM USER CONTROLS
+                |--------------------------------------------------------------------------
+                */
 
                     if ($isSystemUser) {
 
@@ -656,8 +681,8 @@ class SectionContentController extends Controller
 
                         if (isset($section['status'])) {
 
-                            $baseData['status']
-                                = (bool) $section['status'];
+                            $baseData['status'] =
+                                (bool) $section['status'];
                         }
 
                         if (! empty($section['publish_status'])) {
@@ -675,60 +700,29 @@ class SectionContentController extends Controller
                                 )
                             ) {
 
-                                $baseData['publish_status']
-                                    = $section['publish_status'];
+                                $baseData['publish_status'] =
+                                    $section['publish_status'];
                             }
                         }
                     }
 
                     /*
-                    |--------------------------------------------------------------------------
-                    | UPDATE
-                    |--------------------------------------------------------------------------
-                    */
+                |--------------------------------------------------------------------------
+                | UPDATE ENGLISH SOURCE CONTENT
+                |--------------------------------------------------------------------------
+                */
 
-                    Log::info('Updating Content', [
+                    Log::info('Updating EN Content', [
                         'content_id' => $content->id,
                     ]);
 
-                    if ($lang === 'en') {
+                    $content->update([
+                        ...$baseData,
 
-                        $content->update([
-                            ...$baseData,
-                            'title' => $section['title'] ?? null,
-                            'content' => $section['content'] ?? null,
-                        ]);
-                    } else {
+                        'title' => $section['title'] ?? null,
 
-                        $content->update($baseData);
-
-                        $translation = $content->translations()
-                            ->where('language_code', $lang)
-                            ->first();
-
-                        if ($translation) {
-
-                            Log::info('Updating Translation');
-
-                            $translation->update([
-                                'title' => $section['title'] ?? null,
-                                'content' => $section['content'] ?? null,
-                            ]);
-                        } else {
-
-                            Log::info('Creating Translation');
-
-                            $content->translations()->create([
-                                'language_code' => $lang,
-                                'title' => $section['title'] ?? null,
-                                'content' => $section['content'] ?? null,
-                            ]);
-                        }
-
-                        Log::info('Touching Content');
-
-                        $content->touch();
-                    }
+                        'content' => $section['content'] ?? null,
+                    ]);
 
                     Log::info('Content Updated Successfully', [
                         'content_id' => $content->id,
@@ -760,14 +754,20 @@ class SectionContentController extends Controller
 
             Log::info('DB Transaction Committed');
 
-            Log::info('================ BULK UPDATE SUCCESS ================', [
-                'result_count' => count($result),
-                'memory_peak_mb' => round(memory_get_peak_usage(true) / 1024 / 1024, 2),
-            ]);
+            Log::info(
+                '================ BULK UPDATE SUCCESS ================',
+                [
+                    'result_count' => count($result),
+                    'memory_peak_mb' => round(
+                        memory_get_peak_usage(true) / 1024 / 1024,
+                        2
+                    ),
+                ]
+            );
 
             return response()->json([
                 'success' => true,
-                'message' => 'Bulk operation successful',
+                'message' => 'Bulk operation successful. AI translation and audio generation started.',
                 'count' => count($result),
                 'data' => $result,
             ]);
@@ -786,13 +786,19 @@ class SectionContentController extends Controller
 
             DB::rollBack();
 
-            Log::error('================ BULK UPDATE FAILED ================', [
-                'message' => $e->getMessage(),
-                'line' => $e->getLine(),
-                'file' => $e->getFile(),
-                'memory_peak_mb' => round(memory_get_peak_usage(true) / 1024 / 1024, 2),
-                'trace' => $e->getTraceAsString(),
-            ]);
+            Log::error(
+                '================ BULK UPDATE FAILED ================',
+                [
+                    'message' => $e->getMessage(),
+                    'line' => $e->getLine(),
+                    'file' => $e->getFile(),
+                    'memory_peak_mb' => round(
+                        memory_get_peak_usage(true) / 1024 / 1024,
+                        2
+                    ),
+                    'trace' => $e->getTraceAsString(),
+                ]
+            );
 
             return response()->json([
                 'success' => false,
@@ -801,13 +807,13 @@ class SectionContentController extends Controller
         }
     }
 
+
     /*
     |--------------------------------------------------------------------------
     | LIST (Admin)
     |--------------------------------------------------------------------------
     */
-    public function index(Request $request, $topicId = null)
-    {
+    public function index(Request $request, $topicId = null) {
         $lang = $this->resolveLanguage($request);
 
         $query = TopicContent::with([
@@ -827,28 +833,28 @@ class SectionContentController extends Controller
         if ($request->filled('program_id')) {
             $query->whereHas(
                 'topic',
-                fn ($q) => $q->where('program_id', $request->program_id)
+                fn($q) => $q->where('program_id', $request->program_id)
             );
         }
 
         if ($request->filled('level_id')) {
             $query->whereHas(
                 'topic',
-                fn ($q) => $q->where('level_id', $request->level_id)
+                fn($q) => $q->where('level_id', $request->level_id)
             );
         }
 
         if ($request->filled('module_id')) {
             $query->whereHas(
                 'topic',
-                fn ($q) => $q->where('module_id', $request->module_id)
+                fn($q) => $q->where('module_id', $request->module_id)
             );
         }
 
         if ($request->filled('chapter_id')) {
             $query->whereHas(
                 'topic',
-                fn ($q) => $q->where('chapter_id', $request->chapter_id)
+                fn($q) => $q->where('chapter_id', $request->chapter_id)
             );
         }
 
@@ -889,15 +895,15 @@ class SectionContentController extends Controller
 
             if ($lang === 'en') {
                 $query->where(
-                    fn ($q) => $q->where('title', 'like', "%$search%")
+                    fn($q) => $q->where('title', 'like', "%$search%")
                         ->orWhere('content', 'like', "%$search%")
                 );
             } else {
                 $query->whereHas(
                     'translations',
-                    fn ($q) => $q->where('language_code', $lang)
+                    fn($q) => $q->where('language_code', $lang)
                         ->where(
-                            fn ($q2) => $q2->where('title', 'like', "%$search%")
+                            fn($q2) => $q2->where('title', 'like', "%$search%")
                                 ->orWhere('content', 'like', "%$search%")
                         )
                 );
@@ -934,10 +940,21 @@ class SectionContentController extends Controller
                 'order' => $item->order,
                 'status' => (bool) $item->status,
                 'publish_status' => $item->publish_status,
-                'audio_url' => $item->audio_url,
-                'audio_generated_at' => $item->audio_generated_at,
-                'audio_provider' => $item->audio_provider,
-                'audio_path' => $item->audio_path,
+                'audio_url' => $lang === 'en'
+                    ? $item->audio_url
+                    : $translation?->audio_url,
+
+                'audio_generated_at' => $lang === 'en'
+                    ? $item->audio_generated_at
+                    : $translation?->audio_generated_at,
+
+                'audio_provider' => $lang === 'en'
+                    ? $item->audio_provider
+                    : $translation?->audio_provider,
+
+                'audio_path' => $lang === 'en'
+                    ? $item->audio_path
+                    : $translation?->audio_path,
                 'creator' => [
                     'id' => $item->creator->id ?? null,
                     'name' => $item->creator->name ?? null,
@@ -981,8 +998,7 @@ class SectionContentController extends Controller
     | SHOW
     |--------------------------------------------------------------------------
     */
-    public function show(Request $request, $topicId, $id)
-    {
+    public function show(Request $request, $topicId, $id) {
         $lang = $this->resolveLanguage($request);
 
         $item = TopicContent::with([
@@ -1097,8 +1113,7 @@ class SectionContentController extends Controller
     | FULL (Frontend API)
     |--------------------------------------------------------------------------
     */
-    public function full(Request $request, $topicId)
-    {
+    public function full(Request $request, $topicId) {
         $lang = $this->resolveLanguage($request);
 
         $contents = TopicContent::where('topic_id', $topicId)
@@ -1151,8 +1166,21 @@ class SectionContentController extends Controller
                     'type' => 'text',
                     'title' => $title,
                     'content' => $content,
-                    'audio_url' => $item->audio_url,
-                    'audio_generated_at' => $item->audio_generated_at,
+                    'audio_url' => $lang === 'en'
+                        ? $item->audio_url
+                        : $translation?->audio_url,
+
+                    'audio_generated_at' => $lang === 'en'
+                        ? $item->audio_generated_at
+                        : $translation?->audio_generated_at,
+
+                    'audio_provider' => $lang === 'en'
+                        ? $item->audio_provider
+                        : $translation?->audio_provider,
+
+                    'audio_path' => $lang === 'en'
+                        ? $item->audio_path
+                        : $translation?->audio_path,
                 ];
             }
 
@@ -1167,10 +1195,9 @@ class SectionContentController extends Controller
     | UPDATE
     |--------------------------------------------------------------------------
     */
-    public function update(SectionContentRequest $request, $topicId, $id)
-    {
-        $lang = $this->resolveLanguage($request);
 
+
+    public function update(SectionContentRequest $request, $topicId, $id) {
         $content = TopicContent::where('topic_id', $topicId)
             ->findOrFail($id);
 
@@ -1178,53 +1205,44 @@ class SectionContentController extends Controller
 
         $this->validateMediaShortcode($data);
 
-        if ($lang === 'en') {
+        /*
+        |--------------------------------------------------------------------------
+        | ALWAYS UPDATE ENGLISH SOURCE CONTENT
+        |--------------------------------------------------------------------------
+        |
+        | Admin does not update translations directly.
+        |
+        | If title/content changes:
+        |
+        | TopicContent updating event
+        |        ↓
+        | English TTS
+        |        ↓
+        | Hindi Translation
+        |        ↓
+        | Hindi TTS
+        |        ↓
+        | Punjabi Translation
+        |        ↓
+        | Punjabi TTS
+        |
+        */
 
-            $content->update([
-                ...$data,
+        $content->update([
+            ...$data,
 
-                'order' => $this->resolveSafeOrder(
-                    $topicId,
-                    $data['order'] ?? null,
-                    $content->id
-                ),
+            'order' => $this->resolveSafeOrder(
+                $topicId,
+                $data['order'] ?? null,
+                $content->id
+            ),
 
-                'created_by' => auth()->id(),
-            ]);
-        } else {
-
-            $translation = $content->translations()
-                ->where('language_code', $lang)
-                ->first();
-
-            if ($translation) {
-
-                $translation->update([
-                    'title' => $data['title'] ?? null,
-                    'content' => $data['content'] ?? null,
-                ]);
-            } else {
-
-                $content->translations()->create([
-                    'language_code' => $lang,
-                    'title' => $data['title'] ?? null,
-                    'content' => $data['content'] ?? null,
-                ]);
-            }
-
-            /*
-            |---------------------------------------------------
-            | IMPORTANT
-            |---------------------------------------------------
-            | Trigger TopicContent saved event
-            | So TTS + AI Context regenerate works
-            */
-            $content->touch();
-        }
+            'created_by' => auth()->id(),
+        ]);
 
         return response()->json([
             'success' => true,
-            'message' => 'Updated',
+            'message' => 'Updated. AI translation and audio regeneration started.',
             'data' => $content->fresh([
                 'translations',
             ]),
@@ -1236,8 +1254,7 @@ class SectionContentController extends Controller
     | DELETE
     |--------------------------------------------------------------------------
     */
-    public function destroy($topicId, $id)
-    {
+    public function destroy($topicId, $id) {
         $content = TopicContent::where('topic_id', $topicId)->findOrFail($id);
         $content->delete();
 
@@ -1249,8 +1266,7 @@ class SectionContentController extends Controller
     | REORDER
     |--------------------------------------------------------------------------
     */
-    public function reorder(Request $request, $topicId)
-    {
+    public function reorder(Request $request, $topicId) {
         $request->validate([
             'items' => 'required|array',
             'items.*.id' => 'required|integer',
@@ -1301,8 +1317,7 @@ class SectionContentController extends Controller
     | TOGGLE STATUS
     |--------------------------------------------------------------------------
     */
-    public function toggleStatus($topicId, $id)
-    {
+    public function toggleStatus($topicId, $id) {
         /*
         |--------------------------------------------------------------------------
         | SYSTEM USER VALIDATION
@@ -1367,8 +1382,7 @@ class SectionContentController extends Controller
         ]);
     }
 
-    public function single(Request $request, $topic_id, $content_id)
-    {
+    public function single(Request $request, $topic_id, $content_id) {
         AuditService::log(
             'content_viewed',
             'User viewed a content item',
@@ -1395,7 +1409,7 @@ class SectionContentController extends Controller
         }
 
         $currentIndex = $contents->search(
-            fn ($c) => $c->id == $content_id
+            fn($c) => $c->id == $content_id
         );
 
         if ($currentIndex === false) {
@@ -1524,10 +1538,10 @@ class SectionContentController extends Controller
                 ),
 
                 'order' => $current->order,
-                'audio_url' => $current->audio_url,
-                'audio_generated_at' => $current->audio_generated_at,
-                'audio_provider' => $current->audio_provider,
-                'audio_path' => $current->audio_path,
+                'audio_url' => $translation->audio_url,
+                'audio_generated_at' => $translation->audio_generated_at,
+                'audio_provider' => $translation->audio_provider,
+                'audio_path' => $translation->audio_path,
                 'is_read' => $isRead,
                 'read_at' => $readAt,
             ];
@@ -1592,8 +1606,7 @@ class SectionContentController extends Controller
     | RESOLVE SAFE ORDER
     |--------------------------------------------------------------------------
     */
-    private function resolveSafeOrder(int $topicId, ?int $requestedOrder = null, ?int $ignoreId = null): int
-    {
+    private function resolveSafeOrder(int $topicId, ?int $requestedOrder = null, ?int $ignoreId = null): int {
 
         $query = TopicContent::where('topic_id', $topicId);
 
@@ -1632,8 +1645,7 @@ class SectionContentController extends Controller
     |--------------------------------------------------------------------------
     */
 
-    private function validateMediaShortcode(array $section): void
-    {
+    private function validateMediaShortcode(array $section): void {
         if (($section['type'] ?? null) !== 'media') {
             return;
         }

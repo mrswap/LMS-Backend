@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Services\AI;
 
 use Illuminate\Http\Client\ConnectionException;
@@ -6,16 +7,14 @@ use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
-class OpenAIService
-{
+class OpenAIService {
     /*
     |--------------------------------------------------------------------------
     | CHAT COMPLETION
     |--------------------------------------------------------------------------
     */
 
-    public function chat(array $messages): ?string
-    {
+    public function chat(array $messages): ?string {
         try {
 
             $apiKey = config('ai.openai.api_key');
@@ -43,7 +42,7 @@ class OpenAIService
                 'OpenAI Request Started',
                 [
                     'url' =>
-                        'https://api.openai.com/v1/chat/completions',
+                    'https://api.openai.com/v1/chat/completions',
 
                     'model' => $model,
 
@@ -54,24 +53,24 @@ class OpenAIService
 
                             return [
                                 'role' =>
-                                    $msg['role'] ?? null,
+                                $msg['role'] ?? null,
 
                                 'content_preview' =>
-                                    mb_substr(
-                                        $msg['content'] ?? '',
-                                        0,
-                                        300
-                                    ),
+                                mb_substr(
+                                    $msg['content'] ?? '',
+                                    0,
+                                    300
+                                ),
                             ];
                         }),
 
                     'php_version' => PHP_VERSION,
 
                     'curl_enabled' =>
-                        extension_loaded('curl'),
+                    extension_loaded('curl'),
 
                     'openssl_enabled' =>
-                        extension_loaded('openssl'),
+                    extension_loaded('openssl'),
                 ]
             );
 
@@ -81,10 +80,10 @@ class OpenAIService
                 ->withoutVerifying()
                 ->withHeaders([
                     'Authorization' =>
-                        'Bearer ' . $apiKey,
+                    'Bearer ' . $apiKey,
 
                     'Content-Type' =>
-                        'application/json',
+                    'application/json',
                 ])
                 ->post(
                     'https://api.openai.com/v1/chat/completions',
@@ -101,19 +100,19 @@ class OpenAIService
                 'OpenAI Raw Response',
                 [
                     'status' =>
-                        $response->status(),
+                    $response->status(),
 
                     'successful' =>
-                        $response->successful(),
+                    $response->successful(),
 
                     'failed' =>
-                        $response->failed(),
+                    $response->failed(),
 
                     'headers' =>
-                        $response->headers(),
+                    $response->headers(),
 
                     'body' =>
-                        $response->body(),
+                    $response->body(),
                 ]
             );
 
@@ -123,16 +122,16 @@ class OpenAIService
                     'OpenAI HTTP Error',
                     [
                         'status' =>
-                            $response->status(),
+                        $response->status(),
 
                         'reason' =>
-                            $response->reason(),
+                        $response->reason(),
 
                         'headers' =>
-                            $response->headers(),
+                        $response->headers(),
 
                         'body' =>
-                            $response->body(),
+                        $response->body(),
                     ]
                 );
 
@@ -145,13 +144,13 @@ class OpenAIService
                 'OpenAI JSON Parsed',
                 [
                     'has_choices' =>
-                        isset($json['choices']),
+                    isset($json['choices']),
 
                     'choices_count' =>
-                        count($json['choices'] ?? []),
+                    count($json['choices'] ?? []),
 
                     'usage' =>
-                        $json['usage'] ?? null,
+                    $json['usage'] ?? null,
                 ]
             );
 
@@ -175,77 +174,74 @@ class OpenAIService
                 'OpenAI Response Success',
                 [
                     'response_length' =>
-                        strlen($content),
+                    strlen($content),
 
                     'preview' =>
-                        mb_substr(
-                            $content,
-                            0,
-                            500
-                        ),
+                    mb_substr(
+                        $content,
+                        0,
+                        500
+                    ),
                 ]
             );
 
             return trim($content);
-
         } catch (ConnectionException $e) {
 
             Log::channel('ai')->error(
                 'OpenAI Connection Error',
                 [
                     'message' =>
-                        $e->getMessage(),
+                    $e->getMessage(),
 
                     'file' =>
-                        $e->getFile(),
+                    $e->getFile(),
 
                     'line' =>
-                        $e->getLine(),
+                    $e->getLine(),
 
                     'trace' =>
-                        $e->getTraceAsString(),
+                    $e->getTraceAsString(),
                 ]
             );
 
             return null;
-
         } catch (RequestException $e) {
 
             Log::channel('ai')->error(
                 'OpenAI Request Exception',
                 [
                     'message' =>
-                        $e->getMessage(),
+                    $e->getMessage(),
 
                     'file' =>
-                        $e->getFile(),
+                    $e->getFile(),
 
                     'line' =>
-                        $e->getLine(),
+                    $e->getLine(),
 
                     'trace' =>
-                        $e->getTraceAsString(),
+                    $e->getTraceAsString(),
                 ]
             );
 
             return null;
-
         } catch (\Throwable $e) {
 
             Log::channel('ai')->error(
                 'OpenAI Unknown Error',
                 [
                     'message' =>
-                        $e->getMessage(),
+                    $e->getMessage(),
 
                     'file' =>
-                        $e->getFile(),
+                    $e->getFile(),
 
                     'line' =>
-                        $e->getLine(),
+                    $e->getLine(),
 
                     'trace' =>
-                        $e->getTraceAsString(),
+                    $e->getTraceAsString(),
                 ]
             );
 
@@ -258,7 +254,6 @@ class OpenAIService
     | TEXT TO SPEECH
     |--------------------------------------------------------------------------
     */
-
     public function speech(
         string $text,
         string $languageCode = 'en'
@@ -282,10 +277,10 @@ class OpenAIService
             );
 
             /*
-            |--------------------------------------------------------------------------
-            | API KEY VALIDATION
-            |--------------------------------------------------------------------------
-            */
+        |--------------------------------------------------------------------------
+        | API KEY VALIDATION
+        |--------------------------------------------------------------------------
+        */
 
             if (! $apiKey) {
 
@@ -297,88 +292,142 @@ class OpenAIService
             }
 
             /*
-            |--------------------------------------------------------------------------
-            | REQUEST LOG
-            |--------------------------------------------------------------------------
-            */
+        |--------------------------------------------------------------------------
+        | EMPTY TEXT VALIDATION
+        |--------------------------------------------------------------------------
+        */
+
+            $text = trim($text);
+
+            if ($text === '') {
+
+                Log::channel('ai')->warning(
+                    'OpenAI TTS Empty Input'
+                );
+
+                return null;
+            }
+
+            /*
+        |--------------------------------------------------------------------------
+        | REQUEST LOG
+        |--------------------------------------------------------------------------
+        */
 
             Log::channel('ai')->info(
                 'OpenAI TTS HTTP Request Started',
                 [
                     'url' =>
-                        'https://api.openai.com/v1/audio/speech',
+                    'https://api.openai.com/v1/audio/speech',
 
-                    'model' => $model,
+                    'model' =>
+                    $model,
 
-                    'voice' => $voice,
+                    'voice' =>
+                    $voice,
 
-                    'language' => $languageCode,
+                    'language' =>
+                    $languageCode,
 
-                    'text_length' => strlen($text),
+                    'text_length' =>
+                    strlen($text),
                 ]
             );
 
             /*
-            |--------------------------------------------------------------------------
-            | TTS REQUEST
-            |--------------------------------------------------------------------------
-            */
+        |--------------------------------------------------------------------------
+        | TTS REQUEST
+        |--------------------------------------------------------------------------
+        |
+        | Do NOT use automatic retry here.
+        |
+        | 429 rate-limit should not immediately fire another request.
+        |
+        */
 
             $response = Http::timeout(120)
                 ->connectTimeout(30)
-                ->retry(2, 2000)
                 ->withoutVerifying()
                 ->withHeaders([
                     'Authorization' =>
-                        'Bearer ' . $apiKey,
+                    'Bearer ' . $apiKey,
 
                     'Content-Type' =>
-                        'application/json',
+                    'application/json',
 
                     'Accept' =>
-                        'audio/mpeg',
+                    'audio/mpeg',
                 ])
                 ->post(
                     'https://api.openai.com/v1/audio/speech',
                     [
-                        'model' => $model,
+                        'model' =>
+                        $model,
 
-                        'voice' => $voice,
+                        'voice' =>
+                        $voice,
 
-                        'input' => $text,
+                        'input' =>
+                        $text,
 
-                        'response_format' => 'mp3',
+                        'response_format' =>
+                        'mp3',
                     ]
                 );
 
             /*
-            |--------------------------------------------------------------------------
-            | RESPONSE LOG
-            |--------------------------------------------------------------------------
-            */
+        |--------------------------------------------------------------------------
+        | RESPONSE LOG
+        |--------------------------------------------------------------------------
+        */
 
             Log::channel('ai')->info(
                 'OpenAI TTS HTTP Response',
                 [
                     'status' =>
-                        $response->status(),
+                    $response->status(),
 
                     'successful' =>
-                        $response->successful(),
+                    $response->successful(),
 
                     'content_type' =>
-                        $response->header('Content-Type'),
+                    $response->header('Content-Type'),
 
                     'body_size' =>
-                        strlen($response->body()),
+                    strlen($response->body()),
                 ]
             );
 
             /*
-            |--------------------------------------------------------------------------
-            | ERROR
-            |--------------------------------------------------------------------------
-            */
+        |--------------------------------------------------------------------------
+        | RATE LIMIT
+        |--------------------------------------------------------------------------
+        */
+
+            if ($response->status() === 429) {
+
+                Log::channel('ai')->warning(
+                    'OpenAI TTS Rate Limit Exceeded',
+                    [
+                        'language' =>
+                        $languageCode,
+
+                        'retry_after' =>
+                        $response->header('Retry-After'),
+
+                        'body' =>
+                        $response->body(),
+                    ]
+                );
+
+                return null;
+            }
+
+            /*
+        |--------------------------------------------------------------------------
+        | OTHER API ERROR
+        |--------------------------------------------------------------------------
+        */
 
             if (! $response->successful()) {
 
@@ -386,18 +435,24 @@ class OpenAIService
                     'OpenAI TTS HTTP Error',
                     [
                         'status' =>
-                            $response->status(),
+                        $response->status(),
 
                         'reason' =>
-                            $response->reason(),
+                        $response->reason(),
 
                         'body' =>
-                            $response->body(),
+                        $response->body(),
                     ]
                 );
 
                 return null;
             }
+
+            /*
+        |--------------------------------------------------------------------------
+        | AUDIO RESPONSE
+        |--------------------------------------------------------------------------
+        */
 
             $audioBinary = $response->body();
 
@@ -411,82 +466,299 @@ class OpenAIService
             }
 
             /*
-            |--------------------------------------------------------------------------
-            | SUCCESS
-            |--------------------------------------------------------------------------
-            */
+        |--------------------------------------------------------------------------
+        | SUCCESS
+        |--------------------------------------------------------------------------
+        */
 
             Log::channel('ai')->info(
                 'OpenAI TTS Response Success',
                 [
                     'language' =>
-                        $languageCode,
+                    $languageCode,
 
                     'audio_size' =>
-                        strlen($audioBinary),
+                    strlen($audioBinary),
                 ]
             );
 
             return $audioBinary;
-
         } catch (ConnectionException $e) {
 
             Log::channel('ai')->error(
                 'OpenAI TTS Connection Error',
                 [
                     'language' =>
-                        $languageCode,
+                    $languageCode,
 
                     'message' =>
-                        $e->getMessage(),
+                    $e->getMessage(),
 
                     'file' =>
-                        $e->getFile(),
+                    $e->getFile(),
 
                     'line' =>
-                        $e->getLine(),
+                    $e->getLine(),
                 ]
             );
 
             return null;
-
         } catch (RequestException $e) {
 
             Log::channel('ai')->error(
                 'OpenAI TTS Request Exception',
                 [
                     'language' =>
-                        $languageCode,
+                    $languageCode,
 
                     'message' =>
-                        $e->getMessage(),
+                    $e->getMessage(),
 
                     'file' =>
-                        $e->getFile(),
+                    $e->getFile(),
 
                     'line' =>
-                        $e->getLine(),
+                    $e->getLine(),
                 ]
             );
 
             return null;
-
         } catch (\Throwable $e) {
 
             Log::channel('ai')->error(
                 'OpenAI TTS Unknown Error',
                 [
                     'language' =>
-                        $languageCode,
+                    $languageCode,
 
                     'message' =>
-                        $e->getMessage(),
+                    $e->getMessage(),
 
                     'file' =>
-                        $e->getFile(),
+                    $e->getFile(),
 
                     'line' =>
-                        $e->getLine(),
+                    $e->getLine(),
+                ]
+            );
+
+            return null;
+        }
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | CONTENT TRANSLATION
+    |--------------------------------------------------------------------------
+    */
+
+    public function translate(
+        string $text,
+        string $targetLanguage
+    ): ?string {
+
+        try {
+
+            $apiKey = config('ai.openai.api_key');
+            $model = config(
+                'ai.openai.model'
+            );
+
+            if (! $apiKey) {
+
+                Log::channel('ai')->error(
+                    'OpenAI Translation API Key Missing'
+                );
+
+                return null;
+            }
+
+            $text = trim($text);
+
+            if ($text === '') {
+
+                Log::channel('ai')->warning(
+                    'OpenAI Translation Empty Input'
+                );
+
+                return null;
+            }
+
+            /*
+        |--------------------------------------------------------------------------
+        | LANGUAGE NAME
+        |--------------------------------------------------------------------------
+        */
+
+            $language = match (strtolower(trim($targetLanguage))) {
+
+                'hi' => 'Hindi',
+
+                'pa' => 'Punjabi',
+
+                'en' => 'English',
+
+                default => $targetLanguage,
+            };
+
+            Log::channel('ai')->info(
+                'OPENAI TRANSLATION REQUEST',
+                [
+                    'target_language' => $targetLanguage,
+                    'language_name' => $language,
+                    'text_length' => strlen($text),
+                ]
+            );
+
+            /*
+        |--------------------------------------------------------------------------
+        | TRANSLATION PROMPT
+        |--------------------------------------------------------------------------
+        */
+
+            $messages = [
+
+                [
+                    'role' => 'system',
+
+                    'content' =>
+                    'You are a professional LMS content translator. '
+                        . 'Translate the supplied training content into the requested language. '
+                        . 'Preserve the original meaning, structure, formatting, '
+                        . 'HTML tags, line breaks, technical terms, numbers, '
+                        . 'product names and proper nouns. '
+                        . 'Do not add explanations, comments or extra text. '
+                        . 'Return only the translated content.',
+                ],
+
+                [
+                    'role' => 'user',
+
+                    'content' =>
+                    "Translate the following content into {$language}.\n\n"
+                        . $text,
+                ],
+
+            ];
+
+            /*
+        |--------------------------------------------------------------------------
+        | OPENAI REQUEST
+        |--------------------------------------------------------------------------
+        */
+
+            $response = Http::timeout(120)
+                ->connectTimeout(30)
+                ->withoutVerifying()
+                ->withHeaders([
+                    'Authorization' =>
+                    'Bearer ' . $apiKey,
+
+                    'Content-Type' =>
+                    'application/json',
+                ])
+                ->post(
+                    'https://api.openai.com/v1/chat/completions',
+                    [
+                        'model' => $model,
+
+                        'messages' => $messages,
+
+                        'temperature' => 0.2,
+                    ]
+                );
+
+            Log::channel('ai')->info(
+                'OPENAI TRANSLATION RESPONSE',
+                [
+                    'status' =>
+                    $response->status(),
+
+                    'successful' =>
+                    $response->successful(),
+
+                    'target_language' =>
+                    $targetLanguage,
+
+                    'body_size' =>
+                    strlen($response->body()),
+                ]
+            );
+
+            if (! $response->successful()) {
+
+                Log::channel('ai')->error(
+                    'OPENAI TRANSLATION HTTP ERROR',
+                    [
+                        'status' =>
+                        $response->status(),
+
+                        'reason' =>
+                        $response->reason(),
+
+                        'body' =>
+                        $response->body(),
+
+                        'target_language' =>
+                        $targetLanguage,
+                    ]
+                );
+
+                return null;
+            }
+
+            $json = $response->json();
+
+            $translated =
+                $json['choices'][0]['message']['content']
+                ?? null;
+
+            if (! $translated) {
+
+                Log::channel('ai')->warning(
+                    'OPENAI TRANSLATION EMPTY RESPONSE',
+                    [
+                        'target_language' =>
+                        $targetLanguage,
+
+                        'json' =>
+                        $json,
+                    ]
+                );
+
+                return null;
+            }
+
+            $translated = trim($translated);
+
+            Log::channel('ai')->info(
+                'OPENAI TRANSLATION SUCCESS',
+                [
+                    'target_language' =>
+                    $targetLanguage,
+
+                    'translated_length' =>
+                    strlen($translated),
+                ]
+            );
+
+            return $translated;
+        } catch (\Throwable $e) {
+
+            Log::channel('ai')->error(
+                'OPENAI TRANSLATION FAILED',
+                [
+                    'target_language' =>
+                    $targetLanguage,
+
+                    'message' =>
+                    $e->getMessage(),
+
+                    'line' =>
+                    $e->getLine(),
+
+                    'file' =>
+                    $e->getFile(),
                 ]
             );
 
@@ -494,4 +766,3 @@ class OpenAIService
         }
     }
 }
-

@@ -2,16 +2,11 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Log;
+use App\Jobs\GenerateTopicContentAudioJob;
 
-class TopicContentTranslation extends Model
+class TopicContentTranslation extends BaseModel
 {
-    /*
-    |--------------------------------------------------------------------------
-    | FILLABLE
-    |--------------------------------------------------------------------------
-    */
-
     protected $fillable = [
         'topic_content_id',
         'language_code',
@@ -24,21 +19,9 @@ class TopicContentTranslation extends Model
         'audio_provider',
     ];
 
-    /*
-    |--------------------------------------------------------------------------
-    | CASTS
-    |--------------------------------------------------------------------------
-    */
-
     protected $casts = [
         'audio_generated_at' => 'datetime',
     ];
-
-    /*
-    |--------------------------------------------------------------------------
-    | APPENDS
-    |--------------------------------------------------------------------------
-    */
 
     protected $appends = [
         'audio_url',
@@ -46,11 +29,148 @@ class TopicContentTranslation extends Model
 
     /*
     |--------------------------------------------------------------------------
-    | RELATIONSHIPS
+    | MODEL EVENTS
     |--------------------------------------------------------------------------
     */
 
-    public function content()
+    protected static function booted()
+    {
+        parent::booted();
+
+        /*
+        |--------------------------------------------------------------------------
+        | TRANSLATION CREATED
+        |--------------------------------------------------------------------------
+        */
+
+        static::created(function ($translation) {
+
+            if (
+                ! env('OPENAI_TTS_ENABLED', true)
+                || empty($translation->content)
+            ) {
+                return;
+            }
+
+            $topicContent = $translation->topicContent;
+
+            /*
+            |--------------------------------------------------------------------------
+            | Only TEXT content
+            |--------------------------------------------------------------------------
+            */
+
+            if (
+                ! $topicContent
+                || $topicContent->type !== 'text'
+            ) {
+                return;
+            }
+
+            $language = strtolower(
+                trim($translation->language_code)
+            );
+
+            /*
+            |--------------------------------------------------------------------------
+            | English handled by TopicContent
+            |--------------------------------------------------------------------------
+            */
+
+            if ($language === 'en') {
+                return;
+            }
+
+            Log::channel('ai')->info(
+                'TRANSLATION TTS CREATE - DISPATCHING JOB',
+                [
+                    'content_id' => $translation->topic_content_id,
+                    'translation_id' => $translation->id,
+                    'language' => $language,
+                ]
+            );
+
+            GenerateTopicContentAudioJob::dispatch(
+                $translation->topic_content_id,
+                $language,
+                $translation->id
+            )->afterCommit();
+        });
+
+        /*
+        |--------------------------------------------------------------------------
+        | TRANSLATION UPDATED
+        |--------------------------------------------------------------------------
+        */
+
+        static::updated(function ($translation) {
+
+            /*
+            |--------------------------------------------------------------------------
+            | Only regenerate when actual content changed
+            |--------------------------------------------------------------------------
+            */
+
+            if (
+                ! env('OPENAI_TTS_ENABLED', true)
+                || ! $translation->wasChanged('content')
+            ) {
+                return;
+            }
+
+            $topicContent = $translation->topicContent;
+
+            /*
+            |--------------------------------------------------------------------------
+            | Only TEXT content
+            |--------------------------------------------------------------------------
+            */
+
+            if (
+                ! $topicContent
+                || $topicContent->type !== 'text'
+            ) {
+                return;
+            }
+
+            $language = strtolower(
+                trim($translation->language_code)
+            );
+
+            /*
+            |--------------------------------------------------------------------------
+            | English handled by TopicContent
+            |--------------------------------------------------------------------------
+            */
+
+            if ($language === 'en') {
+                return;
+            }
+
+            Log::channel('ai')->info(
+                'TRANSLATION TTS UPDATE - DISPATCHING JOB',
+                [
+                    'content_id' => $translation->topic_content_id,
+                    'translation_id' => $translation->id,
+                    'language' => $language,
+                ]
+            );
+
+            GenerateTopicContentAudioJob::dispatch(
+                $translation->topic_content_id,
+                $language,
+                $translation->id
+            )->afterCommit();
+        });
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | RELATIONSHIP
+    |--------------------------------------------------------------------------
+    */
+
+    public function topicContent()
     {
         return $this->belongsTo(
             TopicContent::class,
@@ -60,7 +180,7 @@ class TopicContentTranslation extends Model
 
     /*
     |--------------------------------------------------------------------------
-    | ACCESSORS
+    | AUDIO URL
     |--------------------------------------------------------------------------
     */
 
