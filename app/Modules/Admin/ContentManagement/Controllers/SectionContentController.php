@@ -92,7 +92,7 @@ class SectionContentController extends Controller {
 
         $content = TopicContent::create([
             ...$baseData,
-            'title' => $data['title'] ?? null,
+            'title' => $this->cleanTitle($data['title'] ?? null),
             'content' => $data['content'] ?? null,
         ]);
 
@@ -241,7 +241,7 @@ class SectionContentController extends Controller {
 
                 $content = TopicContent::create([
                     ...$baseData,
-                    'title' => $section['title'] ?? null,
+                    'title' => $this->cleanTitle($section['title'] ?? null),
                     'content' => $section['content'] ?? null,
                 ]);
 
@@ -598,7 +598,7 @@ class SectionContentController extends Controller {
 
                         $content = TopicContent::create([
                             ...$baseData,
-                            'title' => $section['title'] ?? null,
+                            'title' => $this->cleanTitle($section['title'] ?? null),
                             'content' => $section['content'] ?? null,
                         ]);
 
@@ -1228,8 +1228,11 @@ class SectionContentController extends Controller {
         |
         */
 
+
         $content->update([
             ...$data,
+
+            'title' => $this->cleanTitle($data['title'] ?? null),
 
             'order' => $this->resolveSafeOrder(
                 $topicId,
@@ -1675,5 +1678,14 @@ class SectionContentController extends Controller {
                 ],
             ]);
         }
+    }
+
+
+    private function cleanTitle(?string $title): ?string {
+        if ($title === null) {
+            return null;
+        }
+
+        return trim(strip_tags($title));
     }
 }
