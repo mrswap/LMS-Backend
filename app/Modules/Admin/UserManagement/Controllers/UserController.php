@@ -278,6 +278,7 @@ class UserController extends Controller {
             'password' => Hash::make($request->password),
             'profile_image' => $imagePath,
             'created_by' => auth()->id(),
+            'email_verified_at' => now(),
         ]);
         return response()->json([
             'message' => 'User created successfully',

@@ -29,6 +29,7 @@ class User extends Authenticatable {
         'device_id',
         'device_name',
         'last_login_at',
+        'email_verified_at'
     ];
 
     protected $hidden = [
