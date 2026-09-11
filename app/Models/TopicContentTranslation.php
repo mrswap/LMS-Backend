@@ -46,7 +46,7 @@ class TopicContentTranslation extends BaseModel
         static::created(function ($translation) {
 
             if (
-                ! env('OPENAI_TTS_ENABLED', true)
+                ! config('ai.tts_enabled', true)
                 || empty($translation->content)
             ) {
                 return;
@@ -112,7 +112,7 @@ class TopicContentTranslation extends BaseModel
             */
 
             if (
-                ! env('OPENAI_TTS_ENABLED', true)
+                ! config('ai.tts_enabled', true)
                 || ! $translation->wasChanged('content')
             ) {
                 return;
@@ -203,4 +203,3 @@ class TopicContentTranslation extends BaseModel
         return asset($path);
     }
 }
-

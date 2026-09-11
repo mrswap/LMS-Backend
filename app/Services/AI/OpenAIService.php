@@ -262,13 +262,13 @@ class OpenAIService {
 
             $apiKey = config('ai.openai.api_key');
 
-            $model = env(
-                'OPENAI_TTS_MODEL',
+            $model = config(
+                'ai.tts_model',
                 'gpt-4o-mini-tts'
             );
 
-            $voice = env(
-                'OPENAI_TTS_VOICE',
+            $voice = config(
+                'ai.tts_voice',
                 'alloy'
             );
 

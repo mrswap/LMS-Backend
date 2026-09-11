@@ -194,7 +194,7 @@ class TopicContent extends BaseModel {
             */
 
                 if (
-                    env('OPENAI_TTS_ENABLED', true)
+                    config('ai.tts_enabled', true)
                     && $content->shouldGenerateAudio
                     && $content->audioLanguage === 'en'
                 ) {

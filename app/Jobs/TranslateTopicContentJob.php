@@ -11,8 +11,7 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 
-class TranslateTopicContentJob implements ShouldQueue
-{
+class TranslateTopicContentJob implements ShouldQueue {
     use Dispatchable,
         InteractsWithQueue,
         Queueable,
@@ -66,29 +65,21 @@ class TranslateTopicContentJob implements ShouldQueue
     ): void {
 
         /*
-        |--------------------------------------------------------------------------
-        | TRANSLATION FEATURE CHECK
-        |--------------------------------------------------------------------------
-        */
+    |--------------------------------------------------------------------------
+    | CONTENT TRANSLATION FEATURE CHECK
+    |--------------------------------------------------------------------------
+    */
 
-        if (
-            ! config(
-                'ai.translation_enabled',
-                env(
-                    'OPENAI_TRANSLATION_ENABLED',
-                    true
-                )
-            )
-        ) {
+        if (!config('ai.content_translation_enabled', false)) {
 
             Log::channel('ai')->info(
-                'TRANSLATION DISABLED - JOB SKIPPED',
+                'CONTENT TRANSLATION DISABLED - JOB SKIPPED',
                 [
                     'content_id' =>
-                        $this->contentId,
+                    $this->contentId,
 
                     'target_language' =>
-                        $this->targetLanguage,
+                    $this->targetLanguage,
                 ]
             );
 
@@ -99,10 +90,10 @@ class TranslateTopicContentJob implements ShouldQueue
             'TRANSLATION JOB STARTED',
             [
                 'content_id' =>
-                    $this->contentId,
+                $this->contentId,
 
                 'target_language' =>
-                    $this->targetLanguage,
+                $this->targetLanguage,
             ]
         );
 
@@ -124,10 +115,10 @@ class TranslateTopicContentJob implements ShouldQueue
                     'TRANSLATION CONTENT NOT FOUND',
                     [
                         'content_id' =>
-                            $this->contentId,
+                        $this->contentId,
 
                         'target_language' =>
-                            $this->targetLanguage,
+                        $this->targetLanguage,
                     ]
                 );
 
@@ -146,13 +137,13 @@ class TranslateTopicContentJob implements ShouldQueue
                     'TRANSLATION SKIPPED - NON TEXT CONTENT',
                     [
                         'content_id' =>
-                            $content->id,
+                        $content->id,
 
                         'type' =>
-                            $content->type,
+                        $content->type,
 
                         'target_language' =>
-                            $this->targetLanguage,
+                        $this->targetLanguage,
                     ]
                 );
 
@@ -184,10 +175,10 @@ class TranslateTopicContentJob implements ShouldQueue
                     'TRANSLATION SOURCE EMPTY',
                     [
                         'content_id' =>
-                            $content->id,
+                        $content->id,
 
                         'target_language' =>
-                            $this->targetLanguage,
+                        $this->targetLanguage,
                     ]
                 );
 
@@ -206,7 +197,7 @@ class TranslateTopicContentJob implements ShouldQueue
                     'TRANSLATION SKIPPED - TARGET IS ENGLISH',
                     [
                         'content_id' =>
-                            $content->id,
+                        $content->id,
                     ]
                 );
 
@@ -219,16 +210,14 @@ class TranslateTopicContentJob implements ShouldQueue
             |--------------------------------------------------------------------------
             */
 
-            $languageName = match (
-                $this->targetLanguage
-            ) {
+            $languageName = match ($this->targetLanguage) {
 
                 'hi' => 'Hindi',
 
                 'pa' => 'Punjabi',
 
                 default =>
-                    $this->targetLanguage,
+                $this->targetLanguage,
             };
 
             /*
@@ -287,41 +276,41 @@ class TranslateTopicContentJob implements ShouldQueue
 
             $translation =
                 $content->translations()
-                    ->updateOrCreate(
-                        [
-                            'language_code' =>
-                                $this->targetLanguage,
-                        ],
-                        [
-                            'title' =>
-                                $translatedTitle,
+                ->updateOrCreate(
+                    [
+                        'language_code' =>
+                        $this->targetLanguage,
+                    ],
+                    [
+                        'title' =>
+                        $translatedTitle,
 
-                            'content' =>
-                                $translatedContent,
-                        ]
-                    );
+                        'content' =>
+                        $translatedContent,
+                    ]
+                );
 
             Log::channel('ai')->info(
                 'TRANSLATION SAVED',
                 [
                     'content_id' =>
-                        $content->id,
+                    $content->id,
 
                     'translation_id' =>
-                        $translation->id,
+                    $translation->id,
 
                     'target_language' =>
-                        $this->targetLanguage,
+                    $this->targetLanguage,
 
                     'title_length' =>
-                        strlen(
-                            $translatedTitle ?? ''
-                        ),
+                    strlen(
+                        $translatedTitle ?? ''
+                    ),
 
                     'content_length' =>
-                        strlen(
-                            $translatedContent ?? ''
-                        ),
+                    strlen(
+                        $translatedContent ?? ''
+                    ),
                 ]
             );
 
@@ -335,38 +324,37 @@ class TranslateTopicContentJob implements ShouldQueue
                 'TRANSLATION JOB COMPLETED',
                 [
                     'content_id' =>
-                        $content->id,
+                    $content->id,
 
                     'translation_id' =>
-                        $translation->id,
+                    $translation->id,
 
                     'target_language' =>
-                        $this->targetLanguage,
+                    $this->targetLanguage,
                 ]
             );
-
         } catch (\Throwable $e) {
 
             Log::channel('ai')->error(
                 'TRANSLATION JOB FAILED',
                 [
                     'content_id' =>
-                        $this->contentId,
+                    $this->contentId,
 
                     'target_language' =>
-                        $this->targetLanguage,
+                    $this->targetLanguage,
 
                     'message' =>
-                        $e->getMessage(),
+                    $e->getMessage(),
 
                     'line' =>
-                        $e->getLine(),
+                    $e->getLine(),
 
                     'file' =>
-                        $e->getFile(),
+                    $e->getFile(),
 
                     'trace' =>
-                        $e->getTraceAsString(),
+                    $e->getTraceAsString(),
                 ]
             );
 
