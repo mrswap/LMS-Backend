@@ -3,7 +3,9 @@
 namespace App\Jobs;
 
 use App\Models\TopicContent;
-use App\Services\TextToSpeechService;
+use App\Services\AI\TextToSpeechService;
+use App\Jobs\TranslateTopicContentJob;
+use App\Jobs\GenerateMultilanguageAudioJob;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -11,8 +13,7 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 
-class GenerateTopicContentAudioJob implements ShouldQueue
-{
+class GenerateTopicContentAudioJob implements ShouldQueue {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public int $contentId;
@@ -29,8 +30,7 @@ class GenerateTopicContentAudioJob implements ShouldQueue
         $this->translationId = $translationId;
     }
 
-    public function handle(TextToSpeechService $ttsService): void
-    {
+    public function handle(TextToSpeechService $ttsService): void {
         /*
         |--------------------------------------------------------------------------
         | Global TTS Check
@@ -99,9 +99,7 @@ class GenerateTopicContentAudioJob implements ShouldQueue
         |--------------------------------------------------------------------------
         | Non-English Translation Content
         |--------------------------------------------------------------------------
-        */
-
-        else {
+        */ else {
 
             if ($this->translationId) {
                 $translation = $content->translations
@@ -214,30 +212,46 @@ class GenerateTopicContentAudioJob implements ShouldQueue
             |
             | Process already-existing Hindi/Punjabi translations.
             |
-            */
+            */ elseif (config('ai.multilanguage_audio_enabled', true)) {
 
-            elseif (config('ai.multilanguage_audio_enabled', true)) {
+                foreach (['hi', 'pa'] as $languageCode) {
 
-                $existingTranslations = $content->translations()
-                    ->whereIn('language_code', ['hi', 'pa'])
-                    ->whereNotNull('content')
-                    ->where('content', '!=', '')
-                    ->get();
+                    /*
+                    |--------------------------------------------------------------------------
+                    | Create Translation Row If Missing
+                    |--------------------------------------------------------------------------
+                    */
 
-                foreach ($existingTranslations as $existingTranslation) {
+                    $translation = $content->translations()
+                        ->firstOrCreate(
+                            [
+                                'language_code' => $languageCode,
+                            ],
+                            [
+                                'title' => null,
+                                'content' => null,
+                            ]
+                        );
 
-                    self::dispatch(
+                    /*
+                    |--------------------------------------------------------------------------
+                    | Dispatch Multilanguage Audio Job
+                    |--------------------------------------------------------------------------
+                    */
+
+                    GenerateMultilanguageAudioJob::dispatch(
                         $content->id,
-                        $existingTranslation->language_code,
-                        $existingTranslation->id
+                        $languageCode,
+                        $translation->id
                     )->afterCommit();
 
                     Log::channel('ai')->info(
-                        'EXISTING TRANSLATION TTS JOB DISPATCHED',
+                        'MULTILANGUAGE AUDIO JOB DISPATCHED',
                         [
                             'content_id' => $content->id,
-                            'translation_id' => $existingTranslation->id,
-                            'language' => $existingTranslation->language_code,
+                            'translation_id' => $translation->id,
+                            'language' => $languageCode,
+                            'content_available' => !empty(trim((string) $translation->content)),
                         ]
                     );
                 }

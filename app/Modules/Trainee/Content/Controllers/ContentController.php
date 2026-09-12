@@ -1,18 +1,23 @@
 <?php
+
 namespace App\Modules\Trainee\Content\Controllers;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Models\UserProgress;
+use App\Models\UserContentProgress;
+use App\Models\Media;
+use App\Models\Question;
 use App\Models\Topic;
 
 use App\Models\TopicContent;
 use App\Services\AuditService;
 use App\Models\Assessment;
 use App\Models\AssessmentAttempt;
+use App\Models\AssessmentQuestion;
 
-class ContentController extends Controller
-{
+
+class ContentController extends Controller {
     /*
     |--------------------------------------------------------------------------
     | RESOLVE LANGUAGE
@@ -42,8 +47,7 @@ class ContentController extends Controller
     |
     */
 
-    private function resolveLanguage(Request $request): string
-    {
+    private function resolveLanguage(Request $request): string {
         /*
         |--------------------------------------------------------------------------
         | X-Lang
@@ -128,12 +132,22 @@ class ContentController extends Controller
     | 📚 TOPIC CONTENT
     |--------------------------------------------------------------------------
     */
-
-    public function index(Request $request, $topic_id)
-    {
+    public function index(Request $request, $topic_id) {
         $userId = auth()->id();
 
-        $lang = $this->resolveLanguage($request);
+        /*
+    |--------------------------------------------------------------------------
+    | MANUAL TRANSLATION TOGGLE
+    |--------------------------------------------------------------------------
+    | false = Always English
+    | true  = resolveLanguage() will be executed
+    |--------------------------------------------------------------------------
+    */
+        $useTranslations = false;
+
+        $lang = $useTranslations
+            ? $this->resolveLanguage($request)
+            : 'en';
 
         $topic = \App\Models\Topic::with([
             'chapter.module.level.program',
@@ -141,23 +155,16 @@ class ContentController extends Controller
         ])->findOrFail($topic_id);
 
         /*
-        |--------------------------------------------------------------------------
-        | TOPIC ACCESS
-        |--------------------------------------------------------------------------
-        */
+    |--------------------------------------------------------------------------
+    | TOPIC ACCESS
+    |--------------------------------------------------------------------------
+    */
 
-        $progress = UserProgress::where(
-            'user_id',
-            $userId
-        )
-            ->where(
-                'topic_id',
-                $topic_id
-            )
+        $progress = UserProgress::where('user_id', $userId)
+            ->where('topic_id', $topic_id)
             ->first();
 
         if (!$progress || !$progress->is_unlocked) {
-
             return response()->json([
                 'success' => false,
                 'message' => 'Topic is locked'
@@ -165,10 +172,10 @@ class ContentController extends Controller
         }
 
         /*
-        |--------------------------------------------------------------------------
-        | CONTENT QUERY
-        |--------------------------------------------------------------------------
-        */
+    |--------------------------------------------------------------------------
+    | CONTENT QUERY
+    |--------------------------------------------------------------------------
+    */
 
         $query = TopicContent::with('translations')
             ->where('topic_id', $topic_id)
@@ -177,40 +184,25 @@ class ContentController extends Controller
             ->orderBy('order');
 
         if ($request->filled('type')) {
-            $query->where(
-                'type',
-                $request->type
-            );
+            $query->where('type', $request->type);
         }
 
         /*
-        |--------------------------------------------------------------------------
-        | TOTAL CONTENTS
-        |--------------------------------------------------------------------------
-        */
+    |--------------------------------------------------------------------------
+    | TOTAL CONTENTS
+    |--------------------------------------------------------------------------
+    */
 
-        $allTopicContentIds = TopicContent::where(
-            'topic_id',
-            $topic_id
-        )
+        $allTopicContentIds = TopicContent::where('topic_id', $topic_id)
             ->where('status', true)
             ->where('publish_status', 'published')
             ->pluck('id');
 
         $totalContents = $allTopicContentIds->count();
 
-        $readContents = \App\Models\UserContentProgress::where(
-            'user_id',
-            $userId
-        )
-            ->whereIn(
-                'topic_content_id',
-                $allTopicContentIds
-            )
-            ->where(
-                'is_read',
-                true
-            )
+        $readContents = \App\Models\UserContentProgress::where('user_id', $userId)
+            ->whereIn('topic_content_id', $allTopicContentIds)
+            ->where('is_read', true)
             ->count();
 
         $isAllRead = $totalContents > 0
@@ -218,19 +210,16 @@ class ContentController extends Controller
             : true;
 
         /*
-        |--------------------------------------------------------------------------
-        | PAGINATION
-        |--------------------------------------------------------------------------
-        */
+    |--------------------------------------------------------------------------
+    | PAGINATION
+    |--------------------------------------------------------------------------
+    */
 
-        $limit = (int) $request->get(
-            'limit',
-            5
-        );
+        $limit = (int) $request->get('limit', 5);
 
         $limit = (
-            $limit > 0
-            && $limit <= 20
+            $limit > 0 &&
+            $limit <= 20
         )
             ? $limit
             : 5;
@@ -238,58 +227,51 @@ class ContentController extends Controller
         $contents = $query->paginate($limit);
 
         /*
-        |--------------------------------------------------------------------------
-        | USER CONTENT PROGRESS
-        |--------------------------------------------------------------------------
-        */
+    |--------------------------------------------------------------------------
+    | USER CONTENT PROGRESS
+    |--------------------------------------------------------------------------
+    */
 
-        $userContentProgress =
-            \App\Models\UserContentProgress::where(
-                'user_id',
-                $userId
+        $userContentProgress = \App\Models\UserContentProgress::where(
+            'user_id',
+            $userId
+        )
+            ->whereIn(
+                'topic_content_id',
+                $contents->pluck('id')
             )
-                ->whereIn(
-                    'topic_content_id',
-                    $contents->pluck('id')
-                )
-                ->get()
-                ->keyBy('topic_content_id');
+            ->get()
+            ->keyBy('topic_content_id');
 
         /*
-        |--------------------------------------------------------------------------
-        | TRANSFORM CONTENTS
-        |--------------------------------------------------------------------------
-        */
+    |--------------------------------------------------------------------------
+    | TRANSFORM CONTENTS
+    |--------------------------------------------------------------------------
+    */
 
         $contents->getCollection()->transform(
             function ($item) use (
                 $lang,
+                $useTranslations,
                 $userContentProgress
             ) {
+                $progress = $userContentProgress[$item->id] ?? null;
 
-                $progress =
-                    $userContentProgress[$item->id]
-                    ?? null;
+                $isRead = $progress?->is_read ?? false;
 
-                $isRead =
-                    $progress?->is_read
-                    ?? false;
-
-                $readAt =
-                    $progress?->read_at
-                    ?? null;
+                $readAt = $progress?->read_at ?? null;
 
                 /*
-                |--------------------------------------------------------------------------
-                | ENGLISH
-                |--------------------------------------------------------------------------
-                */
+            |--------------------------------------------------------------------------
+            | ENGLISH CONTENT
+            |--------------------------------------------------------------------------
+            |
+            | If translation toggle is OFF, English content will always return.
+            |
+            */
 
-                if ($lang === 'en') {
-
-                    if (
-                        $item->title === 'BASE_RECORD'
-                    ) {
+                if (!$useTranslations || $lang === 'en') {
+                    if ($item->title === 'BASE_RECORD') {
                         return null;
                     }
 
@@ -300,35 +282,29 @@ class ContentController extends Controller
 
                         'title' => $item->title,
 
-                        'content' =>
-                            $item->type === 'text'
-                                ? $item->content
-                                : null,
+                        'content' => $item->type === 'text'
+                            ? $item->content
+                            : null,
 
                         'meta' => $item->meta,
 
                         'order' => $item->order,
 
                         /*
-                        |----------------------------------------------------------
-                        | ENGLISH AUDIO
-                        |----------------------------------------------------------
-                        */
+                    |--------------------------------------------------------------------------
+                    | ENGLISH AUDIO
+                    |--------------------------------------------------------------------------
+                    */
 
-                        'audio_url' =>
-                            $item->audio_url,
+                        'audio_url' => $item->audio_url,
 
-                        'audio_content' =>
-                            $item->audio_url,
+                        'audio_content' => $item->audio_url,
 
-                        'audio_generated_at' =>
-                            $item->audio_generated_at,
+                        'audio_generated_at' => $item->audio_generated_at,
 
-                        'audio_provider' =>
-                            $item->audio_provider,
+                        'audio_provider' => $item->audio_provider,
 
-                        'audio_path' =>
-                            $item->audio_path,
+                        'audio_path' => $item->audio_path,
 
                         'language_code' => 'en',
 
@@ -339,18 +315,24 @@ class ContentController extends Controller
                 }
 
                 /*
-                |--------------------------------------------------------------------------
-                | OTHER LANGUAGES
-                |--------------------------------------------------------------------------
-                */
+            |--------------------------------------------------------------------------
+            | TRANSLATED CONTENT
+            |--------------------------------------------------------------------------
+            */
 
-                $translation =
-                    $item->translations
-                        ->where(
-                            'language_code',
-                            $lang
-                        )
-                        ->first();
+                $translation = $item->translations
+                    ->where('language_code', $lang)
+                    ->first();
+
+                /*
+            |--------------------------------------------------------------------------
+            | Translation Missing
+            |--------------------------------------------------------------------------
+            |
+            | Existing behavior maintained: if translation is missing,
+            | this content will not be returned.
+            |
+            */
 
                 if (!$translation) {
                     return null;
@@ -359,45 +341,37 @@ class ContentController extends Controller
                 return [
                     'id' => $item->id,
 
-                    'translation_id' =>
-                        $translation->id,
+                    'translation_id' => $translation->id,
 
                     'language_code' => $lang,
 
                     'type' => $item->type,
 
-                    'title' =>
-                        $translation->title,
+                    'title' => $translation->title,
 
-                    'content' =>
-                        $item->type === 'text'
-                            ? $translation->content
-                            : null,
+                    'content' => $item->type === 'text'
+                        ? $translation->content
+                        : null,
 
                     'meta' => $item->meta,
 
                     'order' => $item->order,
 
                     /*
-                    |--------------------------------------------------------------
-                    | TRANSLATION AUDIO
-                    |--------------------------------------------------------------
-                    */
+                |--------------------------------------------------------------------------
+                | TRANSLATION AUDIO
+                |--------------------------------------------------------------------------
+                */
 
-                    'audio_url' =>
-                        $translation->audio_url,
+                    'audio_url' => $translation->audio_url,
 
-                    'audio_content' =>
-                        $translation->audio_url,
+                    'audio_content' => $translation->audio_url,
 
-                    'audio_generated_at' =>
-                        $translation->audio_generated_at,
+                    'audio_generated_at' => $translation->audio_generated_at,
 
-                    'audio_provider' =>
-                        $translation->audio_provider,
+                    'audio_provider' => $translation->audio_provider,
 
-                    'audio_path' =>
-                        $translation->audio_path,
+                    'audio_path' => $translation->audio_path,
 
                     'is_read' => $isRead,
 
@@ -414,10 +388,10 @@ class ContentController extends Controller
         );
 
         /*
-        |--------------------------------------------------------------------------
-        | ASSESSMENT
-        |--------------------------------------------------------------------------
-        */
+    |--------------------------------------------------------------------------
+    | ASSESSMENT
+    |--------------------------------------------------------------------------
+    */
 
         $assessmentStatus = [
             'status' => 'not_attempted',
@@ -441,119 +415,99 @@ class ContentController extends Controller
             ->first();
 
         /*
-        |--------------------------------------------------------------------------
-        | ATTEMPT
-        |--------------------------------------------------------------------------
-        */
+    |--------------------------------------------------------------------------
+    | ATTEMPT
+    |--------------------------------------------------------------------------
+    */
 
         $passedAttempt = null;
 
         if ($assessment) {
-
-            $attempt =
-                AssessmentAttempt::where(
-                    'user_id',
-                    $userId
+            $attempt = AssessmentAttempt::where(
+                'user_id',
+                $userId
+            )
+                ->where(
+                    'assessment_id',
+                    $assessment->id
                 )
-                    ->where(
-                        'assessment_id',
-                        $assessment->id
-                    )
-                    ->whereIn(
-                        'status',
-                        [
-                            'passed',
-                            'failed'
-                        ]
-                    )
-                    ->latest()
-                    ->first();
+                ->whereIn(
+                    'status',
+                    [
+                        'passed',
+                        'failed'
+                    ]
+                )
+                ->latest()
+                ->first();
 
             if ($attempt) {
-
                 $assessmentStatus = [
-                    'status' =>
-                        $attempt->status,
+                    'status' => $attempt->status,
 
-                    'score' =>
-                        $attempt->score,
+                    'score' => $attempt->score,
 
-                    'percentage' =>
-                        $attempt->percentage,
+                    'percentage' => $attempt->percentage,
 
-                    'attempt_id' =>
-                        $attempt->id,
+                    'attempt_id' => $attempt->id,
                 ];
             }
 
-            $passedAttempt =
-                AssessmentAttempt::where(
-                    'user_id',
-                    $userId
+            $passedAttempt = AssessmentAttempt::where(
+                'user_id',
+                $userId
+            )
+                ->where(
+                    'assessment_id',
+                    $assessment->id
                 )
-                    ->where(
-                        'assessment_id',
-                        $assessment->id
-                    )
-                    ->where(
-                        'status',
-                        'passed'
-                    )
-                    ->first();
+                ->where(
+                    'status',
+                    'passed'
+                )
+                ->first();
         }
 
         /*
-        |--------------------------------------------------------------------------
-        | FLAGS
-        |--------------------------------------------------------------------------
-        */
+    |--------------------------------------------------------------------------
+    | FLAGS
+    |--------------------------------------------------------------------------
+    */
 
-        $isQuizAvailable =
-            $isAllRead
-            && $assessment;
+        $isQuizAvailable = $isAllRead && $assessment;
 
-        $isCompleted =
-            $passedAttempt
-                ? true
-                : false;
+        $isCompleted = $passedAttempt
+            ? true
+            : false;
 
         /*
-        |--------------------------------------------------------------------------
-        | CONTEXT
-        |--------------------------------------------------------------------------
-        */
+    |--------------------------------------------------------------------------
+    | CONTEXT
+    |--------------------------------------------------------------------------
+    */
 
         $context = [
-
             'type' => 'topic',
 
-            'is_all_read' =>
-                $isAllRead,
+            'is_all_read' => $isAllRead,
 
-            'is_quiz_available' =>
-                (bool) $isQuizAvailable,
+            'is_quiz_available' => (bool) $isQuizAvailable,
 
-            'is_completed' =>
-                $isCompleted,
+            'is_completed' => $isCompleted,
 
             'progress' => [
+                'total_contents' => $totalContents,
 
-                'total_contents' =>
-                    $totalContents,
+                'read_contents' => $readContents,
 
-                'read_contents' =>
-                    $readContents,
-
-                'progress_percent' =>
-                    $totalContents > 0
-                        ? round(
-                            (
-                                $readContents
-                                / $totalContents
-                            ) * 100,
-                            2
-                        )
-                        : 0,
+                'progress_percent' => $totalContents > 0
+                    ? round(
+                        (
+                            $readContents / $totalContents
+                        ) * 100,
+                        2
+                    )
+                    : 0,
             ],
 
             'topic' => [
@@ -561,90 +515,65 @@ class ContentController extends Controller
 
                 'title' => $topic->title,
 
-                'estimated_duration' =>
-                    $topic->estimated_duration,
+                'estimated_duration' => $topic->estimated_duration,
             ],
 
             'chapter' => [
-                'id' =>
-                    $topic->chapter->id
-                    ?? null,
+                'id' => $topic->chapter->id ?? null,
 
-                'title' =>
-                    $topic->chapter->title
-                    ?? null,
+                'title' => $topic->chapter->title ?? null,
             ],
 
             'module' => [
-                'id' =>
-                    $topic->chapter->module->id
-                    ?? null,
+                'id' => $topic->chapter->module->id ?? null,
 
-                'title' =>
-                    $topic->chapter->module->title
-                    ?? null,
+                'title' => $topic->chapter->module->title ?? null,
             ],
 
             'level' => [
-                'id' =>
-                    $topic->chapter->module->level->id
-                    ?? null,
+                'id' => $topic->chapter->module->level->id ?? null,
 
-                'title' =>
-                    $topic->chapter->module->level->title
-                    ?? null,
+                'title' => $topic->chapter->module->level->title ?? null,
             ],
 
             'program' => [
-                'id' =>
-                    $topic->chapter->module->level->program->id
-                    ?? null,
+                'id' => $topic->chapter->module->level->program->id ?? null,
 
-                'title' =>
-                    $topic->chapter->module->level->program->title
-                    ?? null,
+                'title' => $topic->chapter->module->level->program->title ?? null,
             ],
         ];
 
         /*
-        |--------------------------------------------------------------------------
-        | RESPONSE
-        |--------------------------------------------------------------------------
-        */
+    |--------------------------------------------------------------------------
+    | RESPONSE
+    |--------------------------------------------------------------------------
+    */
 
         return response()->json([
-
             'success' => true,
 
             'context' => $context,
 
             'data' => $contents,
 
-            'assessment_status' =>
-                array_merge(
-                    (array) $assessmentStatus,
-                    [
-                        'assessment' =>
-                            $assessment
-                                ? [
-                                    'id' =>
-                                        $assessment->id,
+            'assessment_status' => array_merge(
+                (array) $assessmentStatus,
+                [
+                    'assessment' => $assessment
+                        ? [
+                            'id' => $assessment->id,
 
-                                    'title' =>
-                                        $assessment->title,
+                            'title' => $assessment->title,
 
-                                    'type' =>
-                                        $assessment->type,
+                            'type' => $assessment->type,
 
-                                    'duration' =>
-                                        $assessment->duration,
+                            'duration' => $assessment->duration,
 
-                                    'passing_score' =>
-                                        $assessment->passing_score,
-                                ]
-                                : null,
-                    ]
-                ),
+                            'passing_score' => $assessment->passing_score,
+                        ]
+                        : null,
+                ]
+            ),
         ]);
     }
 
@@ -653,1038 +582,463 @@ class ContentController extends Controller
     | SINGLE CONTENT
     |--------------------------------------------------------------------------
     */
-<<<<<<< Updated upstream
 
-    public function single(
-        Request $request,
-        $topic_id,
-        $content_id
-    ) {
-
+    public function single(Request $request, $topic_id, $content_id) {
         AuditService::log(
             'content_viewed',
             'User viewed a content item',
             [
-                'content_id' => $content_id
+                'content_id' => $content_id,
+                'topic_id' => $topic_id,
             ]
         );
 
         $userId = auth()->id();
 
-        $lang = $this->resolveLanguage(
-            $request
-        );
+        /*
+    |--------------------------------------------------------------------------
+    | LANGUAGE
+    |--------------------------------------------------------------------------
+    | Text will always be English.
+    | Language is only used for fetching translated audio.
+    |--------------------------------------------------------------------------
+    */
+        $lang = $this->resolveLanguage($request);
 
         /*
-        |--------------------------------------------------------------------------
-        | TOPIC ACCESS
-        |--------------------------------------------------------------------------
-        */
+    |--------------------------------------------------------------------------
+    | Get Topic
+    |--------------------------------------------------------------------------
+    */
 
-        $progress = UserProgress::where(
-            'user_id',
-            $userId
-        )
-            ->where(
-                'topic_id',
-                $topic_id
-            )
-            ->first();
-
-        if (
-            !$progress
-            || !$progress->is_unlocked
-        ) {
-
-            return response()->json([
-                'success' => false,
-                'message' => 'Topic is locked'
-            ], 403);
-        }
+        $topic = Topic::with([
+            'chapter.module.level.program',
+            'translations',
+        ])->findOrFail($topic_id);
 
         /*
-        |--------------------------------------------------------------------------
-        | TOPIC
-        |--------------------------------------------------------------------------
-        */
+    |--------------------------------------------------------------------------
+    | Get All Contents Of Current Topic
+    |--------------------------------------------------------------------------
+    */
 
-        $topic =
-            \App\Models\Topic::with(
-                'chapter.module.level.program'
-            )
-                ->findOrFail($topic_id);
-
-        /*
-        |--------------------------------------------------------------------------
-        | CONTENTS
-        |--------------------------------------------------------------------------
-        */
-
-        $contents = TopicContent::with(
-            'translations'
-        )
-            ->where(
-                'topic_id',
-                $topic_id
-            )
-            ->where(
-                'status',
-                true
-            )
-            ->orderBy('order')
+        $contents = TopicContent::with('translations')
+            ->where('topic_id', $topic_id)
+            ->where('status', true)
+            ->where(function ($query) {
+                $query->where('publish_status', 'published')
+                    ->orWhereNull('publish_status');
+            })
+            ->orderBy('order', 'asc')
             ->get();
 
         if ($contents->isEmpty()) {
-
             return response()->json([
                 'success' => false,
-                'message' => 'No content found'
+                'message' => 'No content found',
             ], 404);
         }
 
         /*
-        |--------------------------------------------------------------------------
-        | CURRENT CONTENT
-        |--------------------------------------------------------------------------
-        */
+    |--------------------------------------------------------------------------
+    | Find Current Content Index
+    |--------------------------------------------------------------------------
+    */
 
         $currentIndex = $contents->search(
-            fn ($c) =>
-                $c->id == $content_id
+            fn($content) => (int) $content->id === (int) $content_id
         );
 
         if ($currentIndex === false) {
-
             return response()->json([
                 'success' => false,
-                'message' =>
-                    'Content not found in this topic'
+                'message' => 'Content not found in this topic',
             ], 404);
         }
 
-        $current =
-            $contents[$currentIndex];
+        $current = $contents[$currentIndex];
+
+        $previous = $currentIndex > 0
+            ? $contents[$currentIndex - 1]
+            : null;
+
+        $next = $currentIndex < ($contents->count() - 1)
+            ? $contents[$currentIndex + 1]
+            : null;
 
         /*
-        |--------------------------------------------------------------------------
-        | NAVIGATION
-        |--------------------------------------------------------------------------
-        */
+    |--------------------------------------------------------------------------
+    | Current Content Progress
+    |--------------------------------------------------------------------------
+    */
 
-        $previous =
-            $contents[$currentIndex - 1]
-            ?? null;
+        $currentProgress = UserContentProgress::where('user_id', $userId)
+            ->where('topic_content_id', $current->id)
+            ->first();
 
-        $next =
-            $contents[$currentIndex + 1]
-            ?? null;
+        $isRead = (bool) ($currentProgress?->is_read ?? false);
 
-        /*
-        |--------------------------------------------------------------------------
-        | USER CONTENT PROGRESS
-        |--------------------------------------------------------------------------
-        */
-
-        $userProgress =
-            \App\Models\UserContentProgress::where(
-                'user_id',
-                $userId
-            )
-                ->where(
-                    'topic_content_id',
-                    $current->id
-                )
-                ->first();
-
-        $isRead =
-            $userProgress?->is_read
-            ?? false;
-
-        $readAt =
-            $userProgress?->read_at
-            ?? null;
+        $readAt = $currentProgress?->read_at ?? null;
 
         /*
-        |--------------------------------------------------------------------------
-        | MEDIA
-        |--------------------------------------------------------------------------
-        */
+    |--------------------------------------------------------------------------
+    | Resolve Media
+    |--------------------------------------------------------------------------
+    */
 
         $resolvedMedia = null;
 
         if (
-            $current->type === 'media'
-            && !empty(
-                $current->meta['shortcode']
-            )
-=======
-
-public function single(
-    Request $request,
-    $topic_id,
-    $content_id
-) {
-    /*
-    |--------------------------------------------------------------------------
-    | AUDIT
-    |--------------------------------------------------------------------------
-    */
-
-    AuditService::log(
-        'content_viewed',
-        'User viewed a content item',
-        [
-            'content_id' => $content_id,
-        ]
-    );
-
-    $userId = auth()->id();
-    $lang = $this->resolveLanguage($request);
-
-    /*
-    |--------------------------------------------------------------------------
-    | TOPIC ACCESS
-    |--------------------------------------------------------------------------
-    */
-
-    $progress = UserProgress::where('user_id', $userId)
-        ->where('topic_id', $topic_id)
-        ->first();
-
-    if (!$progress || !$progress->is_unlocked) {
-        return response()->json([
-            'success' => false,
-            'message' => 'Topic is locked',
-        ], 403);
-    }
-
-    /*
-    |--------------------------------------------------------------------------
-    | TOPIC
-    |--------------------------------------------------------------------------
-    */
-
-    $topic = \App\Models\Topic::with([
-        'chapter.module.level.program',
-        'translations',
-    ])->findOrFail($topic_id);
-
-    /*
-    |--------------------------------------------------------------------------
-    | ALL PUBLISHED CONTENTS
-    |--------------------------------------------------------------------------
-    */
-
-    $contents = TopicContent::with('translations')
-        ->where('topic_id', $topic_id)
-        ->where('status', true)
-        ->where('publish_status', 'published')
-        ->orderBy('order')
-        ->get();
-
-    if ($contents->isEmpty()) {
-        return response()->json([
-            'success' => false,
-            'message' => 'No content found',
-        ], 404);
-    }
-
-    /*
-    |--------------------------------------------------------------------------
-    | CURRENT CONTENT INDEX
-    |--------------------------------------------------------------------------
-    */
-
-    $currentIndex = $contents->search(
-        fn ($c) => (int) $c->id === (int) $content_id
-    );
-
-    if ($currentIndex === false) {
-        return response()->json([
-            'success' => false,
-            'message' => 'Content not found in this topic',
-        ], 404);
-    }
-
-    $current = $contents[$currentIndex];
-
-    /*
-    |--------------------------------------------------------------------------
-    | PREVIOUS / NEXT
-    |--------------------------------------------------------------------------
-    */
-
-    $previous = $contents[$currentIndex - 1] ?? null;
-    $next = $contents[$currentIndex + 1] ?? null;
-
-    /*
-    |--------------------------------------------------------------------------
-    | CURRENT CONTENT USER PROGRESS
-    |--------------------------------------------------------------------------
-    */
-
-    $userProgress = \App\Models\UserContentProgress::where(
-        'user_id',
-        $userId
-    )
-        ->where('topic_content_id', $current->id)
-        ->first();
-
-    $isRead = $userProgress?->is_read ?? false;
-    $readAt = $userProgress?->read_at ?? null;
-
-    /*
-    |--------------------------------------------------------------------------
-    | MEDIA RESOLUTION
-    |--------------------------------------------------------------------------
-    */
-
-    $resolvedMedia = null;
-
-    if (
-        $current->type === 'media'
-        && !empty($current->meta['shortcode'])
-    ) {
-        $resolvedMedia = \App\Models\Media::where(
-            'shortcode',
-            $current->meta['shortcode']
-        )->first();
-    }
-
-    /*
-    |--------------------------------------------------------------------------
-    | DEFAULT CONTENT VALUES
-    |--------------------------------------------------------------------------
-    */
-
-    $translation = null;
-    $translationId = null;
-
-    $title = null;
-    $content = null;
-
-    $audioUrl = null;
-    $audioGeneratedAt = null;
-    $audioProvider = null;
-    $audioPath = null;
-
-    /*
-    |--------------------------------------------------------------------------
-    | ENGLISH CONTENT
-    |--------------------------------------------------------------------------
-    */
-
-    if ($lang === 'en') {
-        if ($current->title === 'BASE_RECORD') {
-            return response()->json([
-                'success' => false,
-                'message' => 'Content not available',
-            ], 404);
-        }
-
-        $title = $current->title;
-        $content = $current->content;
-
-        $audioUrl = $current->audio_url;
-        $audioGeneratedAt = $current->audio_generated_at;
-        $audioProvider = $current->audio_provider;
-        $audioPath = $current->audio_path;
-    }
-
-    /*
-    |--------------------------------------------------------------------------
-    | OTHER LANGUAGES
-    |--------------------------------------------------------------------------
-    */
-
-    else {
-        $translation = $current->translations
-            ->where('language_code', $lang)
-            ->first();
-
-        if (!$translation) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Translation not available',
-            ], 404);
-        }
-
-        $translationId = $translation->id;
-
-        $title = $translation->title;
-        $content = $translation->content;
-
-        $audioUrl = $translation->audio_url;
-        $audioGeneratedAt = $translation->audio_generated_at;
-        $audioProvider = $translation->audio_provider;
-        $audioPath = $translation->audio_path;
-    }
-
-    /*
-    |--------------------------------------------------------------------------
-    | CURRENT CONTENT DATA
-    |--------------------------------------------------------------------------
-    */
-
-    $currentData = [
-        'id' => $current->id,
-
-        'translation_id' => $translationId,
-
-        'language_code' => $lang,
-
-        'type' => $current->type,
-
-        'title' => $title,
-
-        'content' => $content,
-
-        /*
-        |--------------------------------------------------------------------------
-        | AUDIO
-        |--------------------------------------------------------------------------
-        */
-
-        'audio_url' => $audioUrl,
-
-        'audio_content' => $audioUrl,
-
-        'audio_generated_at' => $audioGeneratedAt,
-
-        'audio_provider' => $audioProvider,
-
-        'audio_path' => $audioPath,
-
-        /*
-        |--------------------------------------------------------------------------
-        | MEDIA
-        |--------------------------------------------------------------------------
-        */
-
-        'media' => $resolvedMedia
-            ? [
-                'id' => $resolvedMedia->id,
-                'title' => $resolvedMedia->title,
-                'description' => $resolvedMedia->description,
-                'type' => $resolvedMedia->type,
-                'shortcode' => $resolvedMedia->shortcode,
-                'file' => $resolvedMedia->file,
-                'external_url' => $resolvedMedia->external_url,
-                'full_url' => $resolvedMedia->full_url,
-            ]
-            : null,
-
-        /*
-        |--------------------------------------------------------------------------
-        | META
-        |--------------------------------------------------------------------------
-        */
-
-        'meta' => array_merge(
-            $current->meta ?? [],
-            $resolvedMedia
-                ? [
-                    'full_url' => $resolvedMedia->full_url,
-                    'file' => $resolvedMedia->file,
-                    'type' => $resolvedMedia->type,
-                ]
-                : []
-        ),
-
-        /*
-        |--------------------------------------------------------------------------
-        | ORDER / PROGRESS
-        |--------------------------------------------------------------------------
-        */
-
-        'order' => $current->order,
-
-        'is_read' => $isRead,
-
-        'read_at' => $readAt,
-    ];
-
-    /*
-    |--------------------------------------------------------------------------
-    | TOPIC TRANSLATION
-    |--------------------------------------------------------------------------
-    */
-
-    $topicTranslation = method_exists(
-        $topic,
-        'getTranslation'
-    )
-        ? $topic->getTranslation($lang)
-        : null;
-
-    $topicData = [
-        'id' => $topic->id,
-
-        'title' => $topicTranslation->title
-            ?? $topic->title,
-
-        'description' => $topicTranslation->description
-            ?? $topic->description,
-
-        'thumbnail' => $topic->thumbnail,
-
-        'estimated_duration' => $topic->estimated_duration,
-    ];
-
-    /*
-    |--------------------------------------------------------------------------
-    | USER PROGRESS MAP FOR TOC
-    |--------------------------------------------------------------------------
-    */
-
-    $contentProgressMap = \App\Models\UserContentProgress::where(
-        'user_id',
-        $userId
-    )
-        ->whereIn(
-            'topic_content_id',
-            $contents->pluck('id')
-        )
-        ->get()
-        ->keyBy('topic_content_id');
-
-    /*
-    |--------------------------------------------------------------------------
-    | TABLE OF CONTENTS
-    |--------------------------------------------------------------------------
-    */
-
-    $tableOfContents = $contents
-        ->filter(function ($item) {
-            return $item->title !== 'BASE_RECORD';
-        })
-        ->map(function ($item) use (
-            $lang,
-            $contentProgressMap
->>>>>>> Stashed changes
+            $current->type === 'media' &&
+            !empty(data_get($current->meta, 'shortcode'))
         ) {
-            $progress = $contentProgressMap[$item->id] ?? null;
-
-<<<<<<< Updated upstream
-            $resolvedMedia =
-                \App\Models\Media::where(
-                    'shortcode',
-                    $current->meta['shortcode']
-                )->first();
+            $resolvedMedia = Media::where(
+                'shortcode',
+                data_get($current->meta, 'shortcode')
+            )->first();
         }
 
         /*
-        |--------------------------------------------------------------------------
-        | LANGUAGE RESOLUTION
-        |--------------------------------------------------------------------------
-        */
-
-        $translation = null;
-
-        /*
-        |--------------------------------------------------------------------------
-        | ENGLISH
-        |--------------------------------------------------------------------------
-        */
-
-        if ($lang === 'en') {
-
-            if (
-                $current->title ===
-                'BASE_RECORD'
-            ) {
-
-                return response()->json([
-                    'success' => false,
-                    'message' =>
-                        'Content not available'
-                ], 404);
-            }
-
-            $title =
-                $current->title;
-
-            $content =
-                $current->content;
-
-            /*
-            |------------------------------------------------------------------
-            | ENGLISH AUDIO
-            |------------------------------------------------------------------
-            */
-
-            $audioUrl =
-                $current->audio_url;
-
-            $audioGeneratedAt =
-                $current->audio_generated_at;
-
-            $audioProvider =
-                $current->audio_provider;
-
-            $audioPath =
-                $current->audio_path;
-
-            $translationId = null;
-        }
-
-        /*
-        |--------------------------------------------------------------------------
-        | OTHER LANGUAGES
-        |--------------------------------------------------------------------------
-        */
-
-        else {
-
-            $translation =
-                $current->translations
-                    ->where(
-                        'language_code',
-                        $lang
-                    )
-                    ->first();
-
-            if (!$translation) {
-
-                return response()->json([
-                    'success' => false,
-                    'message' =>
-                        'Translation not available'
-                ], 404);
-            }
-
-            $title =
-                $translation->title;
-
-            $content =
-                $translation->content;
-
-            /*
-            |------------------------------------------------------------------
-            | TRANSLATION AUDIO
-            |------------------------------------------------------------------
-            */
-
-            $audioUrl =
-                $translation->audio_url;
-
-            $audioGeneratedAt =
-                $translation->audio_generated_at;
-
-            $audioProvider =
-                $translation->audio_provider;
-
-            $audioPath =
-                $translation->audio_path;
-
-            $translationId =
-                $translation->id;
-        }
-
-        /*
-        |--------------------------------------------------------------------------
-        | CURRENT DATA
-        |--------------------------------------------------------------------------
-        */
-
-        $data = [
-
-            'id' =>
-                $current->id,
-
-            'translation_id' =>
-                $translationId,
-
-            'language_code' =>
-                $lang,
-
-            'type' =>
-                $current->type,
-
-            'title' =>
-                $title,
-
-            'content' =>
-                $content,
-
-            /*
-            |--------------------------------------------------------------------------
-            | TTS
-            |--------------------------------------------------------------------------
-            */
-
-            'audio_url' =>
-                $audioUrl,
-
-            'audio_content' =>
-                $audioUrl,
-
-            'audio_generated_at' =>
-                $audioGeneratedAt,
-
-            'audio_provider' =>
-                $audioProvider,
-
-            'audio_path' =>
-                $audioPath,
-
-            /*
-            |--------------------------------------------------------------------------
-            | MEDIA
-            |--------------------------------------------------------------------------
-            */
-
-            'media' =>
-                $resolvedMedia
-                    ? [
-                        'id' =>
-                            $resolvedMedia->id,
-
-                        'title' =>
-                            $resolvedMedia->title,
-
-                        'description' =>
-                            $resolvedMedia->description,
-
-                        'type' =>
-                            $resolvedMedia->type,
-
-                        'shortcode' =>
-                            $resolvedMedia->shortcode,
-
-                        'file' =>
-                            $resolvedMedia->file,
-
-                        'external_url' =>
-                            $resolvedMedia->external_url,
-
-                        'full_url' =>
-                            $resolvedMedia->full_url,
-                    ]
-                    : null,
-
-            /*
-            |--------------------------------------------------------------------------
-            | META
-            |--------------------------------------------------------------------------
-            */
-
-            'meta' =>
-                array_merge(
-                    $current->meta ?? [],
-                    $resolvedMedia
-                        ? [
-                            'full_url' =>
-                                $resolvedMedia->full_url,
-
-                            'file' =>
-                                $resolvedMedia->file,
-
-                            'type' =>
-                                $resolvedMedia->type,
-                        ]
-                        : []
-                ),
-
-            /*
-            |--------------------------------------------------------------------------
-            | ORDER / PROGRESS
-            |--------------------------------------------------------------------------
-            */
-
-            'order' =>
-                $current->order,
-
-            'is_read' =>
-                $isRead,
-
-            'read_at' =>
-                $readAt,
-=======
-            $isRead = $progress?->is_read ?? false;
-            $readAt = $progress?->read_at ?? null;
-
-            if ($lang === 'en') {
-                return [
-                    'id' => $item->id,
-
-                    'type' => $item->type,
-
-                    'title' => $item->title,
-
-                    'order' => $item->order,
-
-                    'language_code' => 'en',
-
-                    'is_read' => $isRead,
-
-                    'read_at' => $readAt,
-                ];
-            }
-
-            $itemTranslation = $item->translations
+    |--------------------------------------------------------------------------
+    | Find Requested Language Audio Only
+    |--------------------------------------------------------------------------
+    */
+
+        $audioTranslation = null;
+
+        if ($lang !== 'en') {
+            $audioTranslation = $current->translations
                 ->where('language_code', $lang)
                 ->first();
+        }
 
-            return [
-                'id' => $item->id,
-
-                'translation_id' => $itemTranslation?->id,
-
-                'type' => $item->type,
-
-                'title' => $itemTranslation?->title
-                    ?? $item->title,
-
-                'order' => $item->order,
-
-                'language_code' => $lang,
-
-                'is_read' => $isRead,
-
-                'read_at' => $readAt,
-            ];
-        })
-        ->values()
-        ->toArray();
-
-    /*
+        /*
     |--------------------------------------------------------------------------
-    | OTHER TOPICS IN SAME CHAPTER
+    | Audio Selection
+    |--------------------------------------------------------------------------
+    | Requested language audio first.
+    | If unavailable, fallback to English audio.
     |--------------------------------------------------------------------------
     */
 
-   $otherTopics = Topic::where('chapter_id', $topic->chapter_id)
-    ->where('id', '!=', $topic->id)
-    ->where('status', true)
-    ->where('publish_status', 'published')
-    ->orderBy('id', 'asc')
-    ->get()
-    ->map(function ($otherTopic) use ($lang) {
-        $translation = method_exists($otherTopic, 'getTranslation')
-            ? $otherTopic->getTranslation($lang)
-            : null;
+        $selectedAudioUrl = null;
+        $selectedAudioPath = null;
+        $selectedAudioGeneratedAt = null;
+        $selectedAudioProvider = null;
+        $selectedAudioLanguage = 'en';
 
-        return [
-            'id' => $otherTopic->id,
-            'title' => $translation->title ?? $otherTopic->title,
-            'description' => $translation->description ?? $otherTopic->description,
-            'thumbnail' => $otherTopic->thumbnail,
-            'estimated_duration' => $otherTopic->estimated_duration,
-            'status' => $otherTopic->status,
-            'publish_status' => $otherTopic->publish_status,
->>>>>>> Stashed changes
-        ];
-    })
-    ->values()
-    ->toArray();
-
-<<<<<<< Updated upstream
-        /*
-        |--------------------------------------------------------------------------
-        | TOPIC TRANSLATION
-        |--------------------------------------------------------------------------
-        */
-
-        $topicTranslation =
-            method_exists(
-                $topic,
-                'getTranslation'
+        if (
+            $audioTranslation &&
+            (
+                !empty($audioTranslation->audio_url) ||
+                !empty($audioTranslation->audio_path)
             )
-                ? $topic->getTranslation(
-                    $lang
-                )
-                : null;
+        ) {
+            $selectedAudioUrl = $audioTranslation->audio_url;
+            $selectedAudioPath = $audioTranslation->audio_path;
+            $selectedAudioGeneratedAt = $audioTranslation->audio_generated_at;
+            $selectedAudioProvider = $audioTranslation->audio_provider;
+            $selectedAudioLanguage = $lang;
+        } else {
+            $selectedAudioUrl = $current->audio_url;
+            $selectedAudioPath = $current->audio_path;
+            $selectedAudioGeneratedAt = $current->audio_generated_at;
+            $selectedAudioProvider = $current->audio_provider;
+            $selectedAudioLanguage = 'en';
+        }
+
+        $selectedAudio = $selectedAudioUrl
+            ?? $selectedAudioPath
+            ?? null;
+
+        /*
+    |--------------------------------------------------------------------------
+    | Current Content Data
+    |--------------------------------------------------------------------------
+    | Text is ALWAYS English.
+    | Only audio changes according to X-Lang.
+    |--------------------------------------------------------------------------
+    */
+
+        $currentData = [
+            'id' => $current->id,
+            'topic_id' => $current->topic_id,
+
+            // Always English
+            'title' => $current->title,
+            'slug' => $current->slug ?? null,
+            'type' => $current->type,
+            'content' => $current->content,
+            'body' => $current->content,
+
+            // Audio according to requested language
+            'audio_content' => $selectedAudio,
+            'audio_url' => $selectedAudioUrl,
+            'audio_path' => $selectedAudioPath,
+            'audio_generated_at' => $selectedAudioGeneratedAt,
+            'audio_provider' => $selectedAudioProvider,
+            'audio_language_code' => $selectedAudioLanguage,
+
+            'pdf_url' => $current->pdf_url ?? null,
+            'image_url' => $current->image_url ?? null,
+
+            'is_read' => $isRead,
+            'read_at' => $readAt,
+
+            'last_updated_at' => $current->updated_at,
+            'updated_at' => $current->updated_at,
+            'created_at' => $current->created_at,
+
+            'meta' => array_merge(
+                is_array($current->meta)
+                    ? $current->meta
+                    : [],
+                [
+                    'type' => $current->type,
+                    'full_url' => $resolvedMedia?->full_url,
+                ]
+            ),
+
+            'media' => $resolvedMedia
+                ? [
+                    'id' => $resolvedMedia->id,
+                    'type' => $resolvedMedia->type,
+                    'name' => $resolvedMedia->title
+                        ?? $resolvedMedia->name
+                        ?? null,
+                    'full_url' => $resolvedMedia->full_url,
+                    'thumbnail' => $resolvedMedia->thumbnail ?? null,
+                    'size' => $resolvedMedia->size ?? null,
+                    'duration' => $resolvedMedia->duration ?? null,
+                ]
+                : null,
+        ];
+
+        /*
+    |--------------------------------------------------------------------------
+    | Topic Data
+    |--------------------------------------------------------------------------
+    | Topic title and description always English.
+    |--------------------------------------------------------------------------
+    */
+
+        $topicContentIds = TopicContent::where('topic_id', $topic->id)
+            ->where('status', true)
+            ->pluck('id');
+
+        $totalTopicContents = $topicContentIds->count();
+
+        $completedTopicContents = UserContentProgress::where('user_id', $userId)
+            ->whereIn('topic_content_id', $topicContentIds)
+            ->where('is_read', true)
+            ->count();
+
+        $topicProgress = $totalTopicContents > 0
+            ? round(
+                ($completedTopicContents / $totalTopicContents) * 100
+            )
+            : 0;
 
         $topicData = [
+            'id' => $topic->id,
 
-            'id' =>
-                $topic->id,
+            // Always English
+            'title' => $topic->title,
+            'description' => $topic->description,
 
-            'title' =>
-                $topicTranslation->title
-                ?? $topic->title,
-
-            'description' =>
-                $topicTranslation->description
-                ?? $topic->description,
-
-            'thumbnail' =>
-                $topic->thumbnail,
-
-            'estimated_duration' =>
-                $topic->estimated_duration,
+            'estimated_duration' => $topic->estimated_duration,
+            'total_contents' => $totalTopicContents,
+            'completed_contents' => $completedTopicContents,
+            'progress' => $topicProgress,
         ];
 
         /*
-        |--------------------------------------------------------------------------
-        | CONTEXT
-        |--------------------------------------------------------------------------
-        */
+    |--------------------------------------------------------------------------
+    | Current Topic Contents
+    |--------------------------------------------------------------------------
+    | Titles always English.
+    |--------------------------------------------------------------------------
+    */
 
-        $context = [
+        $currentTopicContents = $contents
+            ->map(function ($content) use ($userId) {
+                $progress = UserContentProgress::where('user_id', $userId)
+                    ->where('topic_content_id', $content->id)
+                    ->first();
 
-            'chapter' => [
-                'id' =>
-                    $topic->chapter->id
-                    ?? null,
+                return [
+                    'id' => $content->id,
 
-                'title' =>
-                    $topic->chapter->title
-                    ?? null,
-            ],
+                    // Always English
+                    'title' => $content->title,
 
-            'module' => [
-                'id' =>
-                    $topic->chapter->module->id
-                    ?? null,
+                    'type' => $content->type,
 
-                'title' =>
-                    $topic->chapter->module->title
-                    ?? null,
-            ],
-
-            'level' => [
-                'id' =>
-                    $topic->chapter->module->level->id
-                    ?? null,
-
-                'title' =>
-                    $topic->chapter->module->level->title
-                    ?? null,
-            ],
-
-            'program' => [
-                'id' =>
-                    $topic->chapter->module->level->program->id
-                    ?? null,
-
-                'title' =>
-                    $topic->chapter->module->level->program->title
-                    ?? null,
-            ],
-        ];
+                    'is_read' => (bool) (
+                        $progress?->is_read ?? false
+                    ),
+                ];
+            })
+            ->values()
+            ->toArray();
 
         /*
-        |--------------------------------------------------------------------------
-        | RESPONSE
-        |--------------------------------------------------------------------------
-        */
+    |--------------------------------------------------------------------------
+    | Chapter Topics
+    |--------------------------------------------------------------------------
+    | Topic titles always English.
+    |--------------------------------------------------------------------------
+    | topics table has no order column, so order by id.
+    |--------------------------------------------------------------------------
+    */
+
+        $chapterTopics = Topic::with('translations')
+            ->where('chapter_id', $topic->chapter_id)
+            ->where('status', true)
+            ->where(function ($query) {
+                $query->where('publish_status', 'published')
+                    ->orWhereNull('publish_status');
+            })
+            ->orderBy('id', 'asc')
+            ->get()
+            ->map(function ($chapterTopic) use ($topic, $userId) {
+
+                /*
+            |--------------------------------------------------------------------------
+            | First Content Of Topic
+            |--------------------------------------------------------------------------
+            */
+
+                $firstContent = TopicContent::where(
+                    'topic_id',
+                    $chapterTopic->id
+                )
+                    ->where('status', true)
+                    ->where(function ($query) {
+                        $query->where('publish_status', 'published')
+                            ->orWhereNull('publish_status');
+                    })
+                    ->orderBy('order', 'asc')
+                    ->first();
+
+                /*
+            |--------------------------------------------------------------------------
+            | Topic Completion
+            |--------------------------------------------------------------------------
+            */
+
+                $chapterTopicContentIds = TopicContent::where(
+                    'topic_id',
+                    $chapterTopic->id
+                )
+                    ->where('status', true)
+                    ->pluck('id');
+
+                $totalContents = $chapterTopicContentIds->count();
+
+                $completedContents = UserContentProgress::where(
+                    'user_id',
+                    $userId
+                )
+                    ->whereIn(
+                        'topic_content_id',
+                        $chapterTopicContentIds
+                    )
+                    ->where('is_read', true)
+                    ->count();
+
+                $isCompleted = $totalContents > 0
+                    && $completedContents >= $totalContents;
+
+                /*
+            |--------------------------------------------------------------------------
+            | Unlock Logic
+            |--------------------------------------------------------------------------
+            */
+
+                $isUnlocked = true;
+
+                return [
+                    'id' => $chapterTopic->id,
+
+                    // Always English
+                    'title' => $chapterTopic->title,
+
+                    'is_current' => (int) $chapterTopic->id
+                        === (int) $topic->id,
+
+                    'is_unlocked' => $isUnlocked,
+
+                    'is_completed' => $isCompleted,
+
+                    'first_content_id' => $firstContent?->id,
+                ];
+            })
+            ->values()
+            ->toArray();
+
+        /*
+    |--------------------------------------------------------------------------
+    | Assessment
+    |--------------------------------------------------------------------------
+    */
+
+        $assessmentData = null;
+
+        $assessment = Assessment::where(
+            'assessmentable_id',
+            $topic->id
+        )
+            ->where('assessmentable_type', Topic::class)
+            ->where('type', 'topic')
+            ->where('status', true)
+            ->first();
+
+        if ($assessment) {
+            $totalQuestions = AssessmentQuestion::where(
+                'assessment_id',
+                $assessment->id
+            )->count();
+
+            $assessmentData = [
+                'id' => $assessment->id,
+                'title' => $assessment->title,
+                'status' => 'ready',
+                'total_questions' => $totalQuestions,
+                'passing_marks' => $assessment->passing_score,
+                'obtained_marks' => null,
+            ];
+        }
+
+        /*
+    |--------------------------------------------------------------------------
+    | Final Response
+    |--------------------------------------------------------------------------
+    */
 
         return response()->json([
-
             'success' => true,
+            'message' => 'Content fetched successfully',
 
             'data' => [
+                'current' => $currentData,
 
-                'topic' =>
-                    $topicData,
-
-                'context' =>
-                    $context,
-
-                'current' =>
-                    $data,
+                'topic' => $topicData,
 
                 'navigation' => [
+                    'has_previous' => $previous !== null,
+                    'previous_content_id' => $previous?->id,
 
-                    'previous_content_id' =>
-                        $previous?->id,
+                    'has_next' => $next !== null,
+                    'next_content_id' => $next?->id,
+                ],
 
-                    'next_content_id' =>
-                        $next?->id,
-
-                    'has_previous' =>
-                        $previous !== null,
-
-                    'has_next' =>
-                        $next !== null,
-                ]
-            ]
+                'learning_navigation' => [
+                    'current_topic_contents' => $currentTopicContents,
+                    'chapter_topics' => $chapterTopics,
+                    'assessment' => $assessmentData,
+                ],
+            ],
         ]);
     }
 }
-
-=======
-    /*
-    |--------------------------------------------------------------------------
-    | CONTEXT
-    |--------------------------------------------------------------------------
-    */
-
-    $context = [
-        'chapter' => [
-            'id' => $topic->chapter->id ?? null,
-            'title' => $topic->chapter->title ?? null,
-        ],
-
-        'module' => [
-            'id' => $topic->chapter->module->id ?? null,
-            'title' => $topic->chapter->module->title ?? null,
-        ],
-
-        'level' => [
-            'id' => $topic->chapter->module->level->id ?? null,
-            'title' => $topic->chapter->module->level->title ?? null,
-        ],
-
-        'program' => [
-            'id' => $topic->chapter->module->level->program->id ?? null,
-            'title' => $topic->chapter->module->level->program->title ?? null,
-        ],
-    ];
-
-    /*
-    |--------------------------------------------------------------------------
-    | FINAL RESPONSE
-    |--------------------------------------------------------------------------
-    */
-
-    return response()->json([
-        'success' => true,
-
-        'data' => [
-            'topic' => $topicData,
-
-            'context' => $context,
-
-            'current' => $currentData,
-
-            /*
-            |--------------------------------------------------------------------------
-            | TOC
-            |--------------------------------------------------------------------------
-            */
-
-            'contents' => $tableOfContents,
-
-            'table_of_contents' => $tableOfContents,
-
-            /*
-            |--------------------------------------------------------------------------
-            | OTHER TOPICS
-            |--------------------------------------------------------------------------
-            */
-
-            'other_topics' => $otherTopics,
-
-            /*
-            |--------------------------------------------------------------------------
-            | NAVIGATION
-            |--------------------------------------------------------------------------
-            */
-
-            'navigation' => [
-                'previous_content_id' => $previous?->id,
-
-                'next_content_id' => $next?->id,
-
-                'has_previous' => $previous !== null,
-
-                'has_next' => $next !== null,
-            ],
-        ],
-    ]);
-}
-}
->>>>>>> Stashed changes

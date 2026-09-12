@@ -54,6 +54,7 @@ return [
 
     'url' => env('APP_URL', 'http://localhost'),
 
+    'frontend_sales_url' => env('FRONT_END_SALES_URL', 'https://avantemedical.co.in'),
     /*
     |--------------------------------------------------------------------------
     | Application Timezone
