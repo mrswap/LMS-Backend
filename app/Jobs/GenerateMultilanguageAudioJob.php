@@ -11,6 +11,7 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
+use Throwable;
 
 class GenerateMultilanguageAudioJob implements ShouldQueue {
     use Dispatchable,
@@ -40,6 +41,13 @@ class GenerateMultilanguageAudioJob implements ShouldQueue {
 
     public ?int $translationId;
 
+    /**
+     * If true, regenerate audio even if already exists.
+     * Manual admin update = true
+     * Bulk command = false
+     */
+    public bool $force;
+
     /*
     |--------------------------------------------------------------------------
     | CONSTRUCTOR
@@ -49,11 +57,13 @@ class GenerateMultilanguageAudioJob implements ShouldQueue {
     public function __construct(
         int $contentId,
         string $languageCode,
-        ?int $translationId = null
+        ?int $translationId = null,
+        bool $force = false
     ) {
         $this->contentId = $contentId;
         $this->languageCode = strtolower(trim($languageCode));
         $this->translationId = $translationId;
+        $this->force = $force;
     }
 
     /*
@@ -130,7 +140,9 @@ class GenerateMultilanguageAudioJob implements ShouldQueue {
         |--------------------------------------------------------------------------
         */
 
-        $content = TopicContent::find($this->contentId);
+        $content = TopicContent::with('translations')
+            ->whereNull('deleted_at')
+            ->find($this->contentId);
 
         if (!$content) {
 
@@ -178,7 +190,7 @@ class GenerateMultilanguageAudioJob implements ShouldQueue {
 
         /*
         |--------------------------------------------------------------------------
-        | Find Or Create Translation Row
+        | Find Existing Translation
         |--------------------------------------------------------------------------
         */
 
@@ -186,17 +198,21 @@ class GenerateMultilanguageAudioJob implements ShouldQueue {
 
         if ($this->translationId) {
 
-            $translation = $content->translations()
-                ->where('id', $this->translationId)
-                ->first();
+            $translation = $content->translations
+                ->firstWhere('id', $this->translationId);
         }
 
         if (!$translation) {
 
-            $translation = $content->translations()
-                ->where('language_code', $this->languageCode)
-                ->first();
+            $translation = $content->translations
+                ->firstWhere('language_code', $this->languageCode);
         }
+
+        /*
+        |--------------------------------------------------------------------------
+        | Create Translation Row If Missing
+        |--------------------------------------------------------------------------
+        */
 
         if (!$translation) {
 
@@ -219,11 +235,43 @@ class GenerateMultilanguageAudioJob implements ShouldQueue {
 
         /*
         |--------------------------------------------------------------------------
+        | IMPORTANT:
+        | Skip Existing Audio For Bulk Command
+        |--------------------------------------------------------------------------
+        |
+        | Manual update passes force=true.
+        | Bulk command passes force=false.
+        |
+        */
+
+        if (
+            !$this->force &&
+            !empty($translation->audio_path) &&
+            !empty($translation->audio_generated_at)
+        ) {
+
+            Log::channel('ai')->info(
+                'MULTILANGUAGE AUDIO SKIPPED - AUDIO ALREADY EXISTS',
+                [
+                    'content_id' => $content->id,
+                    'translation_id' => $translation->id,
+                    'language' => $this->languageCode,
+                    'audio_path' => $translation->audio_path,
+                    'audio_generated_at' => $translation->audio_generated_at,
+                    'force' => false,
+                ]
+            );
+
+            return;
+        }
+
+        /*
+        |--------------------------------------------------------------------------
         | Resolve Text For Audio
         |--------------------------------------------------------------------------
         |
         | Priority:
-        | 1. Existing Google/manual translation
+        | 1. Existing translation content
         | 2. Temporary OpenAI translation
         |
         */
@@ -245,12 +293,6 @@ class GenerateMultilanguageAudioJob implements ShouldQueue {
                 ]
             );
         } else {
-
-            /*
-            |--------------------------------------------------------------------------
-            | Temporary Translation For Audio Only
-            |--------------------------------------------------------------------------
-            */
 
             Log::channel('ai')->info(
                 'MULTILANGUAGE AUDIO TRANSLATION CONTENT EMPTY',
@@ -311,25 +353,26 @@ class GenerateMultilanguageAudioJob implements ShouldQueue {
                 'translation_id' => $translation->id,
                 'language' => $this->languageCode,
                 'text_length' => strlen($translatedText),
+                'force' => $this->force,
             ]
         );
 
         $fileName = "content_{$content->id}_{$this->languageCode}";
 
         $audioPath = $ttsService->generate(
-            $translatedText,
-            $fileName,
-            $content->topic_id,
-            $this->languageCode
+            (string) $translatedText,
+            (string) $this->languageCode,
+            $content->topic_id !== null
+                ? (int) $content->topic_id
+                : null,
+            $content->id !== null
+                ? (int) $content->id
+                : null
         );
-
         /*
         |--------------------------------------------------------------------------
         | Save Only Audio Fields
         |--------------------------------------------------------------------------
-        |
-        | Existing Google/manual translation text remains untouched.
-        |
         */
 
         $translation->update([
@@ -345,6 +388,7 @@ class GenerateMultilanguageAudioJob implements ShouldQueue {
                 'translation_id' => $translation->id,
                 'language' => $this->languageCode,
                 'audio_path' => $audioPath,
+                'force' => $this->force,
                 'translation_content_saved' => false,
             ]
         );

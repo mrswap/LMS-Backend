@@ -13,7 +13,8 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 
-class GenerateTopicContentAudioJob implements ShouldQueue {
+class GenerateTopicContentAudioJob implements ShouldQueue
+{
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public int $contentId;
@@ -26,11 +27,12 @@ class GenerateTopicContentAudioJob implements ShouldQueue {
         ?int $translationId = null
     ) {
         $this->contentId = $contentId;
-        $this->languageCode = strtolower($languageCode);
+        $this->languageCode = strtolower(trim($languageCode));
         $this->translationId = $translationId;
     }
 
-    public function handle(TextToSpeechService $ttsService): void {
+    public function handle(TextToSpeechService $ttsService): void
+    {
         /*
         |--------------------------------------------------------------------------
         | Global TTS Check
@@ -38,6 +40,7 @@ class GenerateTopicContentAudioJob implements ShouldQueue {
         */
 
         if (!config('ai.tts_enabled', true)) {
+
             Log::channel('ai')->info('TTS DISABLED - JOB SKIPPED', [
                 'content_id' => $this->contentId,
                 'language' => $this->languageCode,
@@ -47,9 +50,11 @@ class GenerateTopicContentAudioJob implements ShouldQueue {
         }
 
         $content = TopicContent::with('translations')
+            ->whereNull('deleted_at')
             ->find($this->contentId);
 
         if (!$content) {
+
             Log::channel('ai')->warning('TTS CONTENT NOT FOUND', [
                 'content_id' => $this->contentId,
                 'language' => $this->languageCode,
@@ -57,12 +62,6 @@ class GenerateTopicContentAudioJob implements ShouldQueue {
 
             return;
         }
-
-        /*
-        |--------------------------------------------------------------------------
-        | Resolve Text
-        |--------------------------------------------------------------------------
-        */
 
         $plainText = null;
         $translation = null;
@@ -76,72 +75,106 @@ class GenerateTopicContentAudioJob implements ShouldQueue {
         if ($this->languageCode === 'en') {
 
             if ($content->type !== 'text') {
-                Log::channel('ai')->info('TTS SKIPPED - NON TEXT CONTENT', [
-                    'content_id' => $content->id,
-                    'type' => $content->type,
-                ]);
+
+                Log::channel('ai')->info(
+                    'TTS SKIPPED - NON TEXT CONTENT',
+                    [
+                        'content_id' => $content->id,
+                        'type' => $content->type,
+                    ]
+                );
 
                 return;
             }
 
-            if (empty(trim(strip_tags((string) $content->content)))) {
-                Log::channel('ai')->info('TTS SKIPPED - EMPTY ENGLISH CONTENT', [
-                    'content_id' => $content->id,
-                ]);
+            $plainText = trim(
+                strip_tags((string) $content->content)
+            );
+
+            if ($plainText === '') {
+
+                Log::channel('ai')->info(
+                    'TTS SKIPPED - EMPTY ENGLISH CONTENT',
+                    [
+                        'content_id' => $content->id,
+                    ]
+                );
 
                 return;
             }
-
-            $plainText = trim(strip_tags((string) $content->content));
         }
 
         /*
         |--------------------------------------------------------------------------
         | Non-English Translation Content
         |--------------------------------------------------------------------------
-        */ else {
+        */
+
+        else {
+
+            if (!in_array($this->languageCode, ['hi', 'pa'], true)) {
+
+                Log::channel('ai')->warning(
+                    'TTS INVALID NON ENGLISH LANGUAGE',
+                    [
+                        'content_id' => $content->id,
+                        'language' => $this->languageCode,
+                    ]
+                );
+
+                return;
+            }
 
             if ($this->translationId) {
+
                 $translation = $content->translations
                     ->firstWhere('id', $this->translationId);
             }
 
             if (!$translation) {
+
                 $translation = $content->translations
                     ->firstWhere('language_code', $this->languageCode);
             }
 
             if (!$translation) {
-                Log::channel('ai')->warning('TTS TRANSLATION NOT FOUND', [
-                    'content_id' => $content->id,
-                    'language' => $this->languageCode,
-                    'translation_id' => $this->translationId,
-                ]);
+
+                Log::channel('ai')->warning(
+                    'TTS TRANSLATION NOT FOUND',
+                    [
+                        'content_id' => $content->id,
+                        'language' => $this->languageCode,
+                        'translation_id' => $this->translationId,
+                    ]
+                );
 
                 return;
             }
 
-            if (empty(trim(strip_tags((string) $translation->content)))) {
-                Log::channel('ai')->info('TTS SKIPPED - EMPTY TRANSLATION CONTENT', [
-                    'content_id' => $content->id,
-                    'translation_id' => $translation->id,
-                    'language' => $this->languageCode,
-                ]);
+            $plainText = trim(
+                strip_tags((string) $translation->content)
+            );
+
+            if ($plainText === '') {
+
+                Log::channel('ai')->info(
+                    'TTS SKIPPED - EMPTY TRANSLATION CONTENT',
+                    [
+                        'content_id' => $content->id,
+                        'translation_id' => $translation->id,
+                        'language' => $this->languageCode,
+                    ]
+                );
 
                 return;
             }
-
-            $plainText = trim(strip_tags((string) $translation->content));
         }
 
-        if (empty($plainText)) {
-            Log::channel('ai')->info('TTS SKIPPED - EMPTY TEXT', [
-                'content_id' => $content->id,
-                'language' => $this->languageCode,
-            ]);
-
-            return;
-        }
+        /*
+        |--------------------------------------------------------------------------
+        | Generate Audio
+        |--------------------------------------------------------------------------
+        */
 
         Log::channel('ai')->info('TTS JOB STARTED', [
             'content_id' => $content->id,
@@ -149,12 +182,6 @@ class GenerateTopicContentAudioJob implements ShouldQueue {
             'translation_id' => $this->translationId,
             'text_length' => strlen($plainText),
         ]);
-
-        /*
-        |--------------------------------------------------------------------------
-        | Generate Audio
-        |--------------------------------------------------------------------------
-        */
 
         $fileName = "content_{$content->id}_{$this->languageCode}";
 
@@ -179,18 +206,18 @@ class GenerateTopicContentAudioJob implements ShouldQueue {
                 'audio_provider' => 'openai',
             ]);
 
-            Log::channel('ai')->info('ENGLISH TTS DATABASE UPDATED', [
-                'content_id' => $content->id,
-                'audio_path' => $audioPath,
-            ]);
+            Log::channel('ai')->info(
+                'ENGLISH TTS DATABASE UPDATED',
+                [
+                    'content_id' => $content->id,
+                    'audio_path' => $audioPath,
+                ]
+            );
 
             /*
             |--------------------------------------------------------------------------
-            | Content Translation Enabled
+            | Automatic Translation Enabled
             |--------------------------------------------------------------------------
-            |
-            | English -> Hindi translation job
-            |
             */
 
             if (config('ai.content_translation_enabled', false)) {
@@ -200,27 +227,24 @@ class GenerateTopicContentAudioJob implements ShouldQueue {
                     'hi'
                 )->afterCommit();
 
-                Log::channel('ai')->info('HINDI TRANSLATION JOB DISPATCHED', [
-                    'content_id' => $content->id,
-                ]);
+                Log::channel('ai')->info(
+                    'HINDI TRANSLATION JOB DISPATCHED',
+                    [
+                        'content_id' => $content->id,
+                    ]
+                );
             }
 
             /*
             |--------------------------------------------------------------------------
-            | Translation Disabled But Multilanguage Audio Enabled
+            | Translation Disabled:
+            | Generate Audio For Existing/Created HI and PA Rows
             |--------------------------------------------------------------------------
-            |
-            | Process already-existing Hindi/Punjabi translations.
-            |
-            */ elseif (config('ai.multilanguage_audio_enabled', true)) {
+            */
+
+            elseif (config('ai.multilanguage_audio_enabled', true)) {
 
                 foreach (['hi', 'pa'] as $languageCode) {
-
-                    /*
-                    |--------------------------------------------------------------------------
-                    | Create Translation Row If Missing
-                    |--------------------------------------------------------------------------
-                    */
 
                     $translation = $content->translations()
                         ->firstOrCreate(
@@ -235,23 +259,27 @@ class GenerateTopicContentAudioJob implements ShouldQueue {
 
                     /*
                     |--------------------------------------------------------------------------
-                    | Dispatch Multilanguage Audio Job
+                    | force=true
                     |--------------------------------------------------------------------------
+                    |
+                    | Manual admin update should regenerate HI/PA audio.
+                    |
                     */
 
                     GenerateMultilanguageAudioJob::dispatch(
                         $content->id,
                         $languageCode,
-                        $translation->id
+                        $translation->id,
+                        true
                     )->afterCommit();
 
                     Log::channel('ai')->info(
-                        'MULTILANGUAGE AUDIO JOB DISPATCHED',
+                        'MANUAL MULTILANGUAGE AUDIO JOB DISPATCHED',
                         [
                             'content_id' => $content->id,
                             'translation_id' => $translation->id,
                             'language' => $languageCode,
-                            'content_available' => !empty(trim((string) $translation->content)),
+                            'force' => true,
                         ]
                     );
                 }
@@ -274,26 +302,26 @@ class GenerateTopicContentAudioJob implements ShouldQueue {
                 'audio_provider' => 'openai',
             ]);
 
-            Log::channel('ai')->info('TRANSLATION TTS DATABASE UPDATED', [
-                'content_id' => $content->id,
-                'translation_id' => $translation->id,
-                'language' => $this->languageCode,
-                'audio_path' => $audioPath,
-            ]);
+            Log::channel('ai')->info(
+                'TRANSLATION TTS DATABASE UPDATED',
+                [
+                    'content_id' => $content->id,
+                    'translation_id' => $translation->id,
+                    'language' => $this->languageCode,
+                    'audio_path' => $audioPath,
+                ]
+            );
         }
 
         /*
         |--------------------------------------------------------------------------
         | Punjabi Translation Chain
         |--------------------------------------------------------------------------
-        |
-        | Only run when automatic content translation is enabled.
-        |
         */
 
         if (
-            $this->languageCode === 'hi'
-            && config('ai.content_translation_enabled', false)
+            $this->languageCode === 'hi' &&
+            config('ai.content_translation_enabled', false)
         ) {
 
             TranslateTopicContentJob::dispatch(
@@ -301,14 +329,20 @@ class GenerateTopicContentAudioJob implements ShouldQueue {
                 'pa'
             )->afterCommit();
 
-            Log::channel('ai')->info('PUNJABI TRANSLATION JOB DISPATCHED', [
-                'content_id' => $content->id,
-            ]);
+            Log::channel('ai')->info(
+                'PUNJABI TRANSLATION JOB DISPATCHED',
+                [
+                    'content_id' => $content->id,
+                ]
+            );
         }
 
-        Log::channel('ai')->info('TTS JOB COMPLETED', [
-            'content_id' => $content->id,
-            'language' => $this->languageCode,
-        ]);
+        Log::channel('ai')->info(
+            'TTS JOB COMPLETED',
+            [
+                'content_id' => $content->id,
+                'language' => $this->languageCode,
+            ]
+        );
     }
 }
