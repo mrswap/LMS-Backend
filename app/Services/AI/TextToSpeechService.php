@@ -65,28 +65,58 @@ class TextToSpeechService {
     }
 
     /**
-     * Dedicated English audio generation.
-     *
-     * Uses the existing TTS pipeline:
-     * - Existing chunking
-     * - Existing FFmpeg merging
-     * - Existing final single-file logic
-     *
-     * No changes to existing multilingual generation required.
+     * Generate English audio using complete content hierarchy.
      */
     public function generateEnglish(
         string $text,
-        ?int $topicId = null,
-        ?int $contentId = null
+        int $levelId,
+        int $moduleId,
+        int $chapterId,
+        int $topicId,
+        int $contentId
     ): string {
-        return $this->generate(
+        $text = trim($text);
+
+        if ($text === '') {
+            throw new RuntimeException(
+                'English TTS text cannot be empty.'
+            );
+        }
+
+        Log::channel('ai')->info(
+            'ENGLISH CONTENT AUDIO GENERATION STARTED',
+            [
+                'level_id' => $levelId,
+                'module_id' => $moduleId,
+                'chapter_id' => $chapterId,
+                'topic_id' => $topicId,
+                'content_id' => $contentId,
+                'text_length' => mb_strlen($text),
+            ]
+        );
+
+        if (
+            mb_strlen($text) > $this->maxChunkCharacters
+        ) {
+            return $this->generateEnglishLongAudio(
+                $text,
+                $levelId,
+                $moduleId,
+                $chapterId,
+                $topicId,
+                $contentId
+            );
+        }
+
+        return $this->generateEnglishSingleAudio(
             $text,
-            'en',
+            $levelId,
+            $moduleId,
+            $chapterId,
             $topicId,
             $contentId
         );
     }
-
 
     /**
      * Generate one short audio file.
@@ -599,6 +629,12 @@ class TextToSpeechService {
     /**
      * Audio directory.
      */
+    /**
+     * Multilingual audio directory.
+     *
+     * Path:
+     * public/uploads/curriculum/programs/topic-audio/{topic_id}/{language}
+     */
     protected function getAudioDirectory(
         ?int $topicId,
         ?int $contentId,
@@ -608,34 +644,50 @@ class TextToSpeechService {
             'uploads/curriculum/programs/topic-audio'
         );
 
+        // Audio folder topic ID ke according hoga.
+        // Agar topic ID missing ho to content ID fallback hoga.
         $identifier = $topicId ?: $contentId ?: 'general';
 
         return $baseDirectory .
             DIRECTORY_SEPARATOR .
             $identifier .
             DIRECTORY_SEPARATOR .
-            $language;
+            strtolower($language);
     }
 
     /**
      * Final single filename.
+     */
+    /**
+     * Final multilingual audio filename.
+     *
+     * Example:
+     * topic_675_hi.mp3
+     * topic_675_pa.mp3
      */
     protected function generateFinalFileName(
         ?int $topicId,
         ?int $contentId,
         string $language
     ): string {
-        $identifier = $topicId ?: $contentId ?: 'general';
+        // Filename always content ID se unique hoga.
+        $identifier = $contentId ?: $topicId ?: 'general';
 
         return 'topic_' .
             $identifier .
             '_' .
-            $language .
+            strtolower($language) .
             '.mp3';
     }
 
     /**
      * Temporary chunk filename.
+     */
+    /**
+     * Temporary multilingual chunk filename.
+     *
+     * Example:
+     * topic_675_hi_part_1.mp3
      */
     protected function generateTemporaryPartFileName(
         ?int $topicId,
@@ -643,17 +695,17 @@ class TextToSpeechService {
         string $language,
         int $partNumber
     ): string {
-        $identifier = $topicId ?: $contentId ?: 'general';
+        // Temporary filename bhi content ID based hoga.
+        $identifier = $contentId ?: $topicId ?: 'general';
 
         return 'topic_' .
             $identifier .
             '_' .
-            $language .
+            strtolower($language) .
             '_part_' .
             $partNumber .
             '.mp3';
     }
-
     /**
      * Convert absolute public path to relative path for DB/player.
      */
@@ -673,6 +725,263 @@ class TextToSpeechService {
                 )
             ),
             '/'
+        );
+    }
+
+    /**
+     * Generate short English audio using content-management hierarchy.
+     */
+    protected function generateEnglishSingleAudio(
+        string $text,
+        int $levelId,
+        int $moduleId,
+        int $chapterId,
+        int $topicId,
+        int $contentId
+    ): string {
+        $directory = $this->getEnglishAudioDirectory(
+            $levelId,
+            $moduleId,
+            $chapterId,
+            $topicId,
+            $contentId
+        );
+
+        File::ensureDirectoryExists($directory);
+
+        $absolutePath = $directory . DIRECTORY_SEPARATOR . 'audio.mp3';
+
+        Log::channel('ai')->info(
+            'ENGLISH SINGLE TTS GENERATION STARTED',
+            [
+                'level_id' => $levelId,
+                'module_id' => $moduleId,
+                'chapter_id' => $chapterId,
+                'topic_id' => $topicId,
+                'content_id' => $contentId,
+                'output' => $absolutePath,
+                'text_length' => mb_strlen($text),
+            ]
+        );
+
+        $audioBinary = app(OpenAIService::class)->speech(
+            $text,
+            'en'
+        );
+
+        if (
+            !is_string($audioBinary) ||
+            strlen($audioBinary) < 100
+        ) {
+            throw new RuntimeException(
+                'OpenAI English TTS returned empty or invalid audio response.'
+            );
+        }
+
+        $written = file_put_contents(
+            $absolutePath,
+            $audioBinary
+        );
+
+        if (
+            $written === false ||
+            !file_exists($absolutePath) ||
+            filesize($absolutePath) < 100
+        ) {
+            throw new RuntimeException(
+                'Unable to save English audio file.'
+            );
+        }
+
+        Log::channel('ai')->info(
+            'ENGLISH SINGLE TTS GENERATION COMPLETED',
+            [
+                'content_id' => $contentId,
+                'file' => $absolutePath,
+                'bytes' => filesize($absolutePath),
+            ]
+        );
+
+        return $this->getRelativeAudioPath($absolutePath);
+    }
+    /**
+     * Generate long English text into chunks and merge into one audio.mp3.
+     */
+    protected function generateEnglishLongAudio(
+        string $text,
+        int $levelId,
+        int $moduleId,
+        int $chapterId,
+        int $topicId,
+        int $contentId
+    ): string {
+        $chunks = $this->splitTextIntoChunks(
+            $text,
+            $this->maxChunkCharacters
+        );
+
+        if (empty($chunks)) {
+            throw new RuntimeException(
+                'Unable to split English text into TTS chunks.'
+            );
+        }
+
+        $directory = $this->getEnglishAudioDirectory(
+            $levelId,
+            $moduleId,
+            $chapterId,
+            $topicId,
+            $contentId
+        );
+
+        File::ensureDirectoryExists($directory);
+
+        $finalAbsolutePath = $directory .
+            DIRECTORY_SEPARATOR .
+            'audio.mp3';
+
+        $temporaryFiles = [];
+
+        Log::channel('ai')->info(
+            'ENGLISH LONG TTS CHUNKING STARTED',
+            [
+                'level_id' => $levelId,
+                'module_id' => $moduleId,
+                'chapter_id' => $chapterId,
+                'topic_id' => $topicId,
+                'content_id' => $contentId,
+                'total_characters' => mb_strlen($text),
+                'total_chunks' => count($chunks),
+                'final_file' => $finalAbsolutePath,
+            ]
+        );
+
+        try {
+            foreach ($chunks as $index => $chunk) {
+                $partNumber = $index + 1;
+
+                $temporaryFile = $directory .
+                    DIRECTORY_SEPARATOR .
+                    'audio_part_' .
+                    $partNumber .
+                    '_' .
+                    uniqid() .
+                    '.mp3';
+
+                Log::channel('ai')->info(
+                    'ENGLISH TTS CHUNK GENERATION STARTED',
+                    [
+                        'content_id' => $contentId,
+                        'part' => $partNumber,
+                        'total_parts' => count($chunks),
+                        'chunk_length' => mb_strlen($chunk),
+                        'file' => $temporaryFile,
+                    ]
+                );
+
+                $audioBinary = app(OpenAIService::class)->speech(
+                    $chunk,
+                    'en'
+                );
+
+                if (
+                    !is_string($audioBinary) ||
+                    strlen($audioBinary) < 100
+                ) {
+                    throw new RuntimeException(
+                        "Invalid English TTS response for chunk {$partNumber}."
+                    );
+                }
+
+                $written = file_put_contents(
+                    $temporaryFile,
+                    $audioBinary
+                );
+
+                if (
+                    $written === false ||
+                    !file_exists($temporaryFile) ||
+                    filesize($temporaryFile) < 100
+                ) {
+                    throw new RuntimeException(
+                        "Failed to save English TTS chunk {$partNumber}."
+                    );
+                }
+
+                $temporaryFiles[] = $temporaryFile;
+            }
+
+            $this->mergeAudioFiles(
+                $temporaryFiles,
+                $finalAbsolutePath
+            );
+
+            if (
+                !file_exists($finalAbsolutePath) ||
+                filesize($finalAbsolutePath) < 100
+            ) {
+                throw new RuntimeException(
+                    'Final merged English audio file is missing or invalid.'
+                );
+            }
+
+            foreach ($temporaryFiles as $temporaryFile) {
+                if (file_exists($temporaryFile)) {
+                    @unlink($temporaryFile);
+                }
+            }
+
+            Log::channel('ai')->info(
+                'ENGLISH LONG TTS FINAL AUDIO CREATED',
+                [
+                    'content_id' => $contentId,
+                    'final_file' => $finalAbsolutePath,
+                    'bytes' => filesize($finalAbsolutePath),
+                    'temporary_parts' => count($temporaryFiles),
+                ]
+            );
+
+            return $this->getRelativeAudioPath(
+                $finalAbsolutePath
+            );
+        } catch (Throwable $e) {
+            Log::channel('ai')->error(
+                'ENGLISH LONG TTS GENERATION FAILED',
+                [
+                    'content_id' => $contentId,
+                    'error' => $e->getMessage(),
+                    'final_file' => $finalAbsolutePath,
+                    'temporary_files' => $temporaryFiles,
+                ]
+            );
+
+            foreach ($temporaryFiles as $temporaryFile) {
+                if (file_exists($temporaryFile)) {
+                    @unlink($temporaryFile);
+                }
+            }
+
+            throw $e;
+        }
+    }
+
+    /**
+     * English audio directory using complete content hierarchy.
+     */
+    protected function getEnglishAudioDirectory(
+        int $levelId,
+        int $moduleId,
+        int $chapterId,
+        int $topicId,
+        int $contentId
+    ): string {
+        return public_path(
+            'uploads/content-management/audio/' .
+                $levelId . '/' .
+                $moduleId . '/' .
+                $chapterId . '/' .
+                $topicId . '/' .
+                $contentId . '/en'
         );
     }
 }
