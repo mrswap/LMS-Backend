@@ -7,8 +7,7 @@ use Illuminate\Support\Facades\Log;
 use RuntimeException;
 use Throwable;
 
-class TextToSpeechService
-{
+class TextToSpeechService {
     /**
      * OpenAI TTS text limit safety threshold.
      */
@@ -64,6 +63,30 @@ class TextToSpeechService
             $contentId
         );
     }
+
+    /**
+     * Dedicated English audio generation.
+     *
+     * Uses the existing TTS pipeline:
+     * - Existing chunking
+     * - Existing FFmpeg merging
+     * - Existing final single-file logic
+     *
+     * No changes to existing multilingual generation required.
+     */
+    public function generateEnglish(
+        string $text,
+        ?int $topicId = null,
+        ?int $contentId = null
+    ): string {
+        return $this->generate(
+            $text,
+            'en',
+            $topicId,
+            $contentId
+        );
+    }
+
 
     /**
      * Generate one short audio file.
@@ -279,7 +302,6 @@ class TextToSpeechService
              * Only ONE final path is returned to caller/database/player.
              */
             return $this->getRelativeAudioPath($finalAbsolutePath);
-
         } catch (Throwable $e) {
             Log::channel('ai')->error('LONG TTS GENERATION FAILED', [
                 'language' => $language,
@@ -415,7 +437,6 @@ class TextToSpeechService
                 'output_file' => $finalFile,
                 'bytes' => filesize($finalFile),
             ]);
-
         } finally {
             if (file_exists($concatFile)) {
                 @unlink($concatFile);
@@ -549,7 +570,7 @@ class TextToSpeechService
         return array_values(
             array_filter(
                 $chunks,
-                fn ($chunk) => trim($chunk) !== ''
+                fn($chunk) => trim($chunk) !== ''
             )
         );
     }
@@ -557,8 +578,7 @@ class TextToSpeechService
     /**
      * Resolve language to OpenAI-compatible language code.
      */
-    protected function resolveLanguageCode(string $language): string
-    {
+    protected function resolveLanguageCode(string $language): string {
         return match (strtolower(trim($language))) {
             'english', 'en' => 'en',
             'hindi', 'hi' => 'hi',
