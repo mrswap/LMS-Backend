@@ -8,8 +8,7 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
-class GenerateMissingEnglishTopicAudio extends Command
-{
+class GenerateMissingEnglishTopicAudio extends Command {
     protected $signature = 'audio:generate-missing-english
                             {--limit= : Number of contents to process}';
 
@@ -122,7 +121,7 @@ class GenerateMissingEnglishTopicAudio extends Command
 
         $this->info(
             'Missing English audio contents selected: ' .
-            $contents->count()
+                $contents->count()
         );
 
         if ($contents->isEmpty()) {
@@ -151,11 +150,11 @@ class GenerateMissingEnglishTopicAudio extends Command
 
             $this->line(
                 'Hierarchy: ' .
-                'Level=' . ($level?->id ?? 'N/A') .
-                ' → Module=' . ($module?->id ?? 'N/A') .
-                ' → Chapter=' . ($chapter?->id ?? 'N/A') .
-                ' → Topic=' . ($topic?->id ?? 'N/A') .
-                ' → Content=' . $contentId
+                    'Level=' . ($level?->id ?? 'N/A') .
+                    ' → Module=' . ($module?->id ?? 'N/A') .
+                    ' → Chapter=' . ($chapter?->id ?? 'N/A') .
+                    ' → Topic=' . ($topic?->id ?? 'N/A') .
+                    ' → Content=' . $contentId
             );
 
             try {
@@ -178,11 +177,28 @@ class GenerateMissingEnglishTopicAudio extends Command
 
                 /*
                 |--------------------------------------------------------------------------
-                | Refresh latest database record
+                | Re-check latest database record
                 |--------------------------------------------------------------------------
+                |
+                | Do not refresh the original model because it can disturb
+                | already-loaded hierarchy relations.
+                |
                 */
 
-                $content->refresh();
+                $latestContent = TopicContent::query()
+                    ->whereKey($contentId)
+                    ->whereNull('deleted_at')
+                    ->first();
+
+                if (!$latestContent) {
+                    $this->warn(
+                        "Skipped Content ID {$contentId}: content no longer exists."
+                    );
+
+                    $skipped++;
+
+                    continue;
+                }
 
                 /*
                 |--------------------------------------------------------------------------
@@ -191,8 +207,8 @@ class GenerateMissingEnglishTopicAudio extends Command
                 */
 
                 if (
-                    $content->audio_path !== null &&
-                    trim((string) $content->audio_path) !== ''
+                    $latestContent->audio_path !== null &&
+                    trim((string) $latestContent->audio_path) !== ''
                 ) {
                     $this->warn(
                         "Skipped Content ID {$contentId}: audio already exists."
@@ -205,15 +221,82 @@ class GenerateMissingEnglishTopicAudio extends Command
 
                 /*
                 |--------------------------------------------------------------------------
-                | Validate English content
+                | Validate latest English content
                 |--------------------------------------------------------------------------
                 */
 
-                $englishText = trim((string) $content->content);
+                /*
+|--------------------------------------------------------------------------
+| Prepare clean English text for TTS
+|--------------------------------------------------------------------------
+| Remove embedded base64 images and HTML before sending content
+| to OpenAI TTS. Base64 image data can be extremely large.
+|--------------------------------------------------------------------------
+*/
+
+                $originalEnglishContent = (string) $latestContent->content;
+
+                $rawEnglishContent = $originalEnglishContent;
+
+                /*
+|--------------------------------------------------------------------------
+| Remove embedded base64 image tags
+|--------------------------------------------------------------------------
+*/
+
+                $rawEnglishContent = preg_replace(
+                    '/<img[^>]+src=["\']data:image\/[^"\']+["\'][^>]*>/i',
+                    '',
+                    $rawEnglishContent
+                );
+
+                /*
+|--------------------------------------------------------------------------
+| Convert HTML into readable plain text
+|--------------------------------------------------------------------------
+*/
+
+                $englishText = strip_tags(
+                    (string) $rawEnglishContent
+                );
+
+                /*
+|--------------------------------------------------------------------------
+| Decode HTML entities
+|--------------------------------------------------------------------------
+*/
+
+                $englishText = html_entity_decode(
+                    $englishText,
+                    ENT_QUOTES | ENT_HTML5,
+                    'UTF-8'
+                );
+
+                /*
+                |--------------------------------------------------------------------------
+                | Normalize whitespace
+                |--------------------------------------------------------------------------
+                */
+
+                $englishText = preg_replace(
+                    '/[ \t]+/u',
+                    ' ',
+                    $englishText
+                );
+
+                $englishText = preg_replace(
+                    "/\n{3,}/u",
+                    "\n\n",
+                    $englishText
+                );
+
+                $englishText = trim(
+                    (string) $englishText
+                );
 
                 if ($englishText === '') {
                     $this->warn(
-                        "Skipped Content ID {$contentId}: English content is empty."
+                        "Skipped Content ID {$contentId}: English content is empty after HTML cleanup."
                     );
 
                     $skipped++;
@@ -221,15 +304,26 @@ class GenerateMissingEnglishTopicAudio extends Command
                     continue;
                 }
 
+                Log::channel('ai')->info(
+                    'MISSING ENGLISH TEXT CLEANED FOR TTS',
+                    [
+                        'content_id' => $contentId,
+                        'raw_length' => mb_strlen($originalEnglishContent),
+                        'clean_text_length' => mb_strlen($englishText),
+                    ]
+                );
                 /*
                 |--------------------------------------------------------------------------
                 | Generate dedicated English audio
                 |--------------------------------------------------------------------------
                 |
-                | The service must generate:
+                | Existing generateEnglish() method will handle:
                 |
-                | public/uploads/content-management/audio/
-                | {level_id}/{module_id}/{chapter_id}/{topic_id}/{content_id}/en/audio.mp3
+                | - Long text chunking
+                | - OpenAI TTS generation
+                | - Temporary chunk files
+                | - FFmpeg merging
+                | - Final audio path
                 |
                 */
 
@@ -270,21 +364,40 @@ class GenerateMissingEnglishTopicAudio extends Command
                 ) {
                     throw new \RuntimeException(
                         "Unexpected English audio path returned: {$audioPath}. " .
-                        "Expected: {$expectedPathPart}"
+                            "Expected: {$expectedPathPart}"
                     );
                 }
 
                 /*
                 |--------------------------------------------------------------------------
-                | Final safety refresh before DB update
+                | Final concurrency safety check
                 |--------------------------------------------------------------------------
+                |
+                | Another process may have generated audio while TTS was running.
+                | Never overwrite that audio.
+                |
                 */
 
-                $content->refresh();
+                $latestContentAfterGeneration = TopicContent::query()
+                    ->whereKey($contentId)
+                    ->whereNull('deleted_at')
+                    ->first();
+
+                if (!$latestContentAfterGeneration) {
+                    $this->warn(
+                        "Skipped DB update for Content ID {$contentId}: content no longer exists."
+                    );
+
+                    $skipped++;
+
+                    continue;
+                }
 
                 if (
-                    $content->audio_path !== null &&
-                    trim((string) $content->audio_path) !== ''
+                    $latestContentAfterGeneration->audio_path !== null &&
+                    trim(
+                        (string) $latestContentAfterGeneration->audio_path
+                    ) !== ''
                 ) {
                     $this->warn(
                         "Skipped DB update for Content ID {$contentId}: audio was generated by another process."
@@ -301,10 +414,11 @@ class GenerateMissingEnglishTopicAudio extends Command
                 |--------------------------------------------------------------------------
                 */
 
-                $content->audio_path = $audioPath;
-                $content->audio_generated_at = now();
-                $content->audio_provider = 'openai';
-                $content->saveQuietly();
+                $latestContentAfterGeneration->audio_path = $audioPath;
+                $latestContentAfterGeneration->audio_generated_at = now();
+                $latestContentAfterGeneration->audio_provider = 'openai';
+
+                $latestContentAfterGeneration->saveQuietly();
 
                 $this->info(
                     "English audio generated successfully for Content ID {$contentId}"
@@ -323,17 +437,17 @@ class GenerateMissingEnglishTopicAudio extends Command
                         'topic_id' => $topic->id,
                         'content_id' => $contentId,
                         'audio_path' => $audioPath,
+                        'text_length' => mb_strlen($englishText),
                     ]
                 );
 
                 $generated++;
-
             } catch (Throwable $e) {
                 $failed++;
 
                 $this->error(
                     "Failed Content ID {$contentId}: " .
-                    $e->getMessage()
+                        $e->getMessage()
                 );
 
                 Log::channel('ai')->error(
