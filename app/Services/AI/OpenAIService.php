@@ -345,7 +345,7 @@ class OpenAIService {
         |
         */
 
-            $response = Http::timeout(120)
+            $response = Http::timeout(240)
                 ->connectTimeout(30)
                 ->withoutVerifying()
                 ->withHeaders([
@@ -647,7 +647,7 @@ class OpenAIService {
         |--------------------------------------------------------------------------
         */
 
-            $response = Http::timeout(120)
+            $response = Http::timeout(240)
                 ->connectTimeout(30)
                 ->withoutVerifying()
                 ->withHeaders([
