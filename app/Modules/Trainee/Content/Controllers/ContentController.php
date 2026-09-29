@@ -136,13 +136,13 @@ class ContentController extends Controller {
         $userId = auth()->id();
 
         /*
-    |--------------------------------------------------------------------------
-    | MANUAL TRANSLATION TOGGLE
-    |--------------------------------------------------------------------------
-    | false = Always English
-    | true  = resolveLanguage() will be executed
-    |--------------------------------------------------------------------------
-    */
+        |--------------------------------------------------------------------------
+        | MANUAL TRANSLATION TOGGLE
+        |--------------------------------------------------------------------------
+        | false = Always English
+        | true  = resolveLanguage() will be executed
+        |--------------------------------------------------------------------------
+        */
         $useTranslations = false;
 
         $lang = $useTranslations
@@ -155,10 +155,10 @@ class ContentController extends Controller {
         ])->findOrFail($topic_id);
 
         /*
-    |--------------------------------------------------------------------------
-    | TOPIC ACCESS
-    |--------------------------------------------------------------------------
-    */
+        |--------------------------------------------------------------------------
+        | TOPIC ACCESS
+        |--------------------------------------------------------------------------
+        */
 
         $progress = UserProgress::where('user_id', $userId)
             ->where('topic_id', $topic_id)
@@ -172,10 +172,10 @@ class ContentController extends Controller {
         }
 
         /*
-    |--------------------------------------------------------------------------
-    | CONTENT QUERY
-    |--------------------------------------------------------------------------
-    */
+        |--------------------------------------------------------------------------
+        | CONTENT QUERY
+        |--------------------------------------------------------------------------
+        */
 
         $query = TopicContent::with('translations')
             ->where('topic_id', $topic_id)
@@ -188,10 +188,10 @@ class ContentController extends Controller {
         }
 
         /*
-    |--------------------------------------------------------------------------
-    | TOTAL CONTENTS
-    |--------------------------------------------------------------------------
-    */
+        |--------------------------------------------------------------------------
+        | TOTAL CONTENTS
+        |--------------------------------------------------------------------------
+        */
 
         $allTopicContentIds = TopicContent::where('topic_id', $topic_id)
             ->where('status', true)
@@ -210,10 +210,10 @@ class ContentController extends Controller {
             : true;
 
         /*
-    |--------------------------------------------------------------------------
-    | PAGINATION
-    |--------------------------------------------------------------------------
-    */
+        |--------------------------------------------------------------------------
+        | PAGINATION
+        |--------------------------------------------------------------------------
+        */
 
         $limit = (int) $request->get('limit', 5);
 
@@ -227,10 +227,10 @@ class ContentController extends Controller {
         $contents = $query->paginate($limit);
 
         /*
-    |--------------------------------------------------------------------------
-    | USER CONTENT PROGRESS
-    |--------------------------------------------------------------------------
-    */
+        |--------------------------------------------------------------------------
+        | USER CONTENT PROGRESS
+        |--------------------------------------------------------------------------
+        */
 
         $userContentProgress = \App\Models\UserContentProgress::where(
             'user_id',
@@ -244,10 +244,10 @@ class ContentController extends Controller {
             ->keyBy('topic_content_id');
 
         /*
-    |--------------------------------------------------------------------------
-    | TRANSFORM CONTENTS
-    |--------------------------------------------------------------------------
-    */
+        |--------------------------------------------------------------------------
+        | TRANSFORM CONTENTS
+        |--------------------------------------------------------------------------
+        */
 
         $contents->getCollection()->transform(
             function ($item) use (
@@ -315,24 +315,24 @@ class ContentController extends Controller {
                 }
 
                 /*
-            |--------------------------------------------------------------------------
-            | TRANSLATED CONTENT
-            |--------------------------------------------------------------------------
-            */
+                |--------------------------------------------------------------------------
+                | TRANSLATED CONTENT
+                |--------------------------------------------------------------------------
+                */
 
                 $translation = $item->translations
                     ->where('language_code', $lang)
                     ->first();
 
                 /*
-            |--------------------------------------------------------------------------
-            | Translation Missing
-            |--------------------------------------------------------------------------
-            |
-            | Existing behavior maintained: if translation is missing,
-            | this content will not be returned.
-            |
-            */
+                |--------------------------------------------------------------------------
+                | Translation Missing
+                |--------------------------------------------------------------------------
+                |
+                | Existing behavior maintained: if translation is missing,
+                | this content will not be returned.
+                |
+                */
 
                 if (!$translation) {
                     return null;
@@ -388,10 +388,10 @@ class ContentController extends Controller {
         );
 
         /*
-    |--------------------------------------------------------------------------
-    | ASSESSMENT
-    |--------------------------------------------------------------------------
-    */
+        |--------------------------------------------------------------------------
+        | ASSESSMENT
+        |--------------------------------------------------------------------------
+        */
 
         $assessmentStatus = [
             'status' => 'not_attempted',
@@ -415,10 +415,10 @@ class ContentController extends Controller {
             ->first();
 
         /*
-    |--------------------------------------------------------------------------
-    | ATTEMPT
-    |--------------------------------------------------------------------------
-    */
+        |--------------------------------------------------------------------------
+        | ATTEMPT
+        |--------------------------------------------------------------------------
+        */
 
         $passedAttempt = null;
 
@@ -469,10 +469,10 @@ class ContentController extends Controller {
         }
 
         /*
-    |--------------------------------------------------------------------------
-    | FLAGS
-    |--------------------------------------------------------------------------
-    */
+        |--------------------------------------------------------------------------
+        | FLAGS
+        |--------------------------------------------------------------------------
+        */
 
         $isQuizAvailable = $isAllRead && $assessment;
 
@@ -481,10 +481,10 @@ class ContentController extends Controller {
             : false;
 
         /*
-    |--------------------------------------------------------------------------
-    | CONTEXT
-    |--------------------------------------------------------------------------
-    */
+        |--------------------------------------------------------------------------
+        | CONTEXT
+        |--------------------------------------------------------------------------
+        */
 
         $context = [
             'type' => 'topic',
@@ -544,10 +544,10 @@ class ContentController extends Controller {
         ];
 
         /*
-    |--------------------------------------------------------------------------
-    | RESPONSE
-    |--------------------------------------------------------------------------
-    */
+        |--------------------------------------------------------------------------
+        | RESPONSE
+        |--------------------------------------------------------------------------
+        */
 
         return response()->json([
             'success' => true,
@@ -597,17 +597,33 @@ class ContentController extends Controller {
 
         /*
     |--------------------------------------------------------------------------
-    | LANGUAGE
-    |--------------------------------------------------------------------------
-    | Text will always be English.
-    | Language is only used for fetching translated audio.
+    | CHECK TOPIC ACCESS
     |--------------------------------------------------------------------------
     */
+
+        $topicAccess = $this->checkTopicAccess(
+            $userId,
+            $topic_id
+        );
+
+        if (!$topicAccess['allowed']) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Topic is locked',
+            ], 403);
+        }
+
+        /*
+    |--------------------------------------------------------------------------
+    | LANGUAGE
+    |--------------------------------------------------------------------------
+    */
+
         $lang = $this->resolveLanguage($request);
 
         /*
     |--------------------------------------------------------------------------
-    | Get Topic
+    | GET TOPIC
     |--------------------------------------------------------------------------
     */
 
@@ -618,7 +634,7 @@ class ContentController extends Controller {
 
         /*
     |--------------------------------------------------------------------------
-    | Get All Contents Of Current Topic
+    | GET TOPIC CONTENTS
     |--------------------------------------------------------------------------
     */
 
@@ -641,12 +657,13 @@ class ContentController extends Controller {
 
         /*
     |--------------------------------------------------------------------------
-    | Find Current Content Index
+    | FIND CURRENT CONTENT
     |--------------------------------------------------------------------------
     */
 
         $currentIndex = $contents->search(
-            fn($content) => (int) $content->id === (int) $content_id
+            fn($content) =>
+            (int) $content->id === (int) $content_id
         );
 
         if ($currentIndex === false) {
@@ -658,6 +675,12 @@ class ContentController extends Controller {
 
         $current = $contents[$currentIndex];
 
+        /*
+    |--------------------------------------------------------------------------
+    | PREVIOUS / NEXT CONTENT
+    |--------------------------------------------------------------------------
+    */
+
         $previous = $currentIndex > 0
             ? $contents[$currentIndex - 1]
             : null;
@@ -668,21 +691,27 @@ class ContentController extends Controller {
 
         /*
     |--------------------------------------------------------------------------
-    | Current Content Progress
+    | CURRENT CONTENT PROGRESS
     |--------------------------------------------------------------------------
     */
 
-        $currentProgress = UserContentProgress::where('user_id', $userId)
-            ->where('topic_content_id', $current->id)
+        $currentProgress = UserContentProgress::where(
+            'user_id',
+            $userId
+        )
+            ->where(
+                'topic_content_id',
+                $current->id
+            )
             ->first();
 
         $isRead = (bool) ($currentProgress?->is_read ?? false);
 
-        $readAt = $currentProgress?->read_at ?? null;
+        $readAt = $currentProgress?->read_at;
 
         /*
     |--------------------------------------------------------------------------
-    | Resolve Media
+    | RESOLVE MEDIA
     |--------------------------------------------------------------------------
     */
 
@@ -700,7 +729,7 @@ class ContentController extends Controller {
 
         /*
     |--------------------------------------------------------------------------
-    | Find Requested Language Audio Only
+    | AUDIO
     |--------------------------------------------------------------------------
     */
 
@@ -712,20 +741,11 @@ class ContentController extends Controller {
                 ->first();
         }
 
-        /*
-    |--------------------------------------------------------------------------
-    | Audio Selection
-    |--------------------------------------------------------------------------
-    | Requested language audio first.
-    | If unavailable, fallback to English audio.
-    |--------------------------------------------------------------------------
-    */
-
-        $selectedAudioUrl = null;
-        $selectedAudioPath = null;
-        $selectedAudioGeneratedAt = null;
-        $selectedAudioProvider = null;
-        $selectedAudioLanguage = 'en';
+        $audioUrl = null;
+        $audioPath = null;
+        $audioGeneratedAt = null;
+        $audioProvider = null;
+        $audioLanguage = 'en';
 
         if (
             $audioTranslation &&
@@ -734,50 +754,44 @@ class ContentController extends Controller {
                 !empty($audioTranslation->audio_path)
             )
         ) {
-            $selectedAudioUrl = $audioTranslation->audio_url;
-            $selectedAudioPath = $audioTranslation->audio_path;
-            $selectedAudioGeneratedAt = $audioTranslation->audio_generated_at;
-            $selectedAudioProvider = $audioTranslation->audio_provider;
-            $selectedAudioLanguage = $lang;
+            $audioUrl = $audioTranslation->audio_url;
+            $audioPath = $audioTranslation->audio_path;
+            $audioGeneratedAt = $audioTranslation->audio_generated_at;
+            $audioProvider = $audioTranslation->audio_provider;
+            $audioLanguage = $lang;
         } else {
-            $selectedAudioUrl = $current->audio_url;
-            $selectedAudioPath = $current->audio_path;
-            $selectedAudioGeneratedAt = $current->audio_generated_at;
-            $selectedAudioProvider = $current->audio_provider;
-            $selectedAudioLanguage = 'en';
+            $audioUrl = $current->audio_url;
+            $audioPath = $current->audio_path;
+            $audioGeneratedAt = $current->audio_generated_at;
+            $audioProvider = $current->audio_provider;
         }
 
-        $selectedAudio = $selectedAudioUrl
-            ?? $selectedAudioPath
-            ?? null;
+        $audioContent = $audioUrl ?? $audioPath;
 
         /*
     |--------------------------------------------------------------------------
-    | Current Content Data
-    |--------------------------------------------------------------------------
-    | Text is ALWAYS English.
-    | Only audio changes according to X-Lang.
+    | CURRENT CONTENT DATA
     |--------------------------------------------------------------------------
     */
 
         $currentData = [
             'id' => $current->id,
             'topic_id' => $current->topic_id,
-
-            // Always English
             'title' => $current->title,
             'slug' => $current->slug ?? null,
             'type' => $current->type,
+
+            // Always English
             'content' => $current->content,
             'body' => $current->content,
 
             // Audio according to requested language
-            'audio_content' => $selectedAudio,
-            'audio_url' => $selectedAudioUrl,
-            'audio_path' => $selectedAudioPath,
-            'audio_generated_at' => $selectedAudioGeneratedAt,
-            'audio_provider' => $selectedAudioProvider,
-            'audio_language_code' => $selectedAudioLanguage,
+            'audio_content' => $audioContent,
+            'audio_url' => $audioUrl,
+            'audio_path' => $audioPath,
+            'audio_generated_at' => $audioGeneratedAt,
+            'audio_provider' => $audioProvider,
+            'audio_language_code' => $audioLanguage,
 
             'pdf_url' => $current->pdf_url ?? null,
             'image_url' => $current->image_url ?? null,
@@ -816,64 +830,85 @@ class ContentController extends Controller {
 
         /*
     |--------------------------------------------------------------------------
-    | Topic Data
-    |--------------------------------------------------------------------------
-    | Topic title and description always English.
+    | TOPIC PROGRESS
     |--------------------------------------------------------------------------
     */
 
-        $topicContentIds = TopicContent::where('topic_id', $topic->id)
-            ->where('status', true)
-            ->pluck('id');
+        $topicContentIds = $contents->pluck('id');
 
-        $totalTopicContents = $topicContentIds->count();
+        $totalContents = $topicContentIds->count();
 
-        $completedTopicContents = UserContentProgress::where('user_id', $userId)
-            ->whereIn('topic_content_id', $topicContentIds)
-            ->where('is_read', true)
+        $readContents = UserContentProgress::where(
+            'user_id',
+            $userId
+        )
+            ->whereIn(
+                'topic_content_id',
+                $topicContentIds
+            )
+            ->where(
+                'is_read',
+                true
+            )
             ->count();
 
-        $topicProgress = $totalTopicContents > 0
+        $topicProgress = $totalContents > 0
             ? round(
-                ($completedTopicContents / $totalTopicContents) * 100
+                ($readContents / $totalContents) * 100
             )
             : 0;
 
+        /*
+    |--------------------------------------------------------------------------
+    | TOPIC COMPLETION
+    |--------------------------------------------------------------------------
+    */
+
+        $isCompleted = (bool) (
+            $topicAccess['progress']?->is_completed ?? false
+        );
+
         $topicData = [
             'id' => $topic->id,
-
-            // Always English
             'title' => $topic->title,
             'description' => $topic->description,
-
             'estimated_duration' => $topic->estimated_duration,
-            'total_contents' => $totalTopicContents,
-            'completed_contents' => $completedTopicContents,
+
+            'total_contents' => $totalContents,
+            'completed_contents' => $readContents,
             'progress' => $topicProgress,
+
+            'is_completed' => $isCompleted,
         ];
 
         /*
     |--------------------------------------------------------------------------
-    | Current Topic Contents
-    |--------------------------------------------------------------------------
-    | Titles always English.
+    | CURRENT TOPIC CONTENTS
     |--------------------------------------------------------------------------
     */
 
+        $contentProgress = UserContentProgress::where(
+            'user_id',
+            $userId
+        )
+            ->whereIn(
+                'topic_content_id',
+                $topicContentIds
+            )
+            ->get()
+            ->keyBy('topic_content_id');
+
         $currentTopicContents = $contents
-            ->map(function ($content) use ($userId) {
-                $progress = UserContentProgress::where('user_id', $userId)
-                    ->where('topic_content_id', $content->id)
-                    ->first();
+            ->map(function ($content) use ($contentProgress) {
+
+                $progress = $contentProgress->get(
+                    $content->id
+                );
 
                 return [
                     'id' => $content->id,
-
-                    // Always English
                     'title' => $content->title,
-
                     'type' => $content->type,
-
                     'is_read' => (bool) (
                         $progress?->is_read ?? false
                     ),
@@ -884,30 +919,192 @@ class ContentController extends Controller {
 
         /*
     |--------------------------------------------------------------------------
-    | Chapter Topics
-    |--------------------------------------------------------------------------
-    | Topic titles always English.
-    |--------------------------------------------------------------------------
-    | topics table has no order column, so order by id.
+    | CHAPTER TOPICS
     |--------------------------------------------------------------------------
     */
 
-        $chapterTopics = Topic::with('translations')
-            ->where('chapter_id', $topic->chapter_id)
+        $chapterTopics = $this->getChapterTopics(
+            $topic,
+            $userId
+        );
+
+        /*
+    |--------------------------------------------------------------------------
+    | ASSESSMENT
+    |--------------------------------------------------------------------------
+    */
+
+        $assessmentData = $this->getTopicAssessment(
+            $topic_id,
+            $userId
+        );
+
+        /*
+    |--------------------------------------------------------------------------
+    | RESPONSE
+    |--------------------------------------------------------------------------
+    */
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Content fetched successfully',
+
+            'data' => [
+
+                'current' => $currentData,
+
+                'topic' => $topicData,
+
+                'navigation' => [
+                    'has_previous' => $previous !== null,
+                    'previous_content_id' => $previous?->id,
+
+                    'has_next' => $next !== null,
+                    'next_content_id' => $next?->id,
+                ],
+
+                'learning_navigation' => [
+                    'current_topic_contents' => $currentTopicContents,
+
+                    'chapter_topics' => $chapterTopics,
+
+                    'assessment' => $assessmentData,
+                ],
+            ],
+        ]);
+    }
+
+    private function checkTopicAccess(
+        int $userId,
+        int $topicId
+    ): array {
+        $topic = Topic::find($topicId);
+
+        if (!$topic) {
+            return [
+                'allowed' => false,
+                'progress' => null,
+            ];
+        }
+
+        $progress = UserProgress::where(
+            'user_id',
+            $userId
+        )
+            ->where(
+                'topic_id',
+                $topicId
+            )
+            ->first();
+
+        /*
+    |--------------------------------------------------------------------------
+    | FIRST TOPIC
+    |--------------------------------------------------------------------------
+    */
+
+        $previousTopic = Topic::where(
+            'chapter_id',
+            $topic->chapter_id
+        )
+            ->where('status', true)
+            ->where(function ($query) {
+                $query->where('publish_status', 'published')
+                    ->orWhereNull('publish_status');
+            })
+            ->where(
+                'id',
+                '<',
+                $topicId
+            )
+            ->orderBy('id', 'desc')
+            ->first();
+
+        if (!$previousTopic) {
+            return [
+                'allowed' => true,
+                'progress' => $progress,
+            ];
+        }
+
+        /*
+    |--------------------------------------------------------------------------
+    | CHECK PREVIOUS TOPIC
+    |--------------------------------------------------------------------------
+    */
+
+        $previousProgress = UserProgress::where(
+            'user_id',
+            $userId
+        )
+            ->where(
+                'topic_id',
+                $previousTopic->id
+            )
+            ->first();
+
+        if (!$previousProgress || !$previousProgress->is_completed) {
+            return [
+                'allowed' => false,
+                'progress' => $progress,
+            ];
+        }
+
+        return [
+            'allowed' => true,
+            'progress' => $progress,
+        ];
+    }
+
+    private function getChapterTopics(
+        Topic $topic,
+        int $userId
+    ): array {
+        $topics = Topic::where(
+            'chapter_id',
+            $topic->chapter_id
+        )
             ->where('status', true)
             ->where(function ($query) {
                 $query->where('publish_status', 'published')
                     ->orWhereNull('publish_status');
             })
             ->orderBy('id', 'asc')
-            ->get()
-            ->map(function ($chapterTopic) use ($topic, $userId) {
+            ->get();
 
-                /*
-            |--------------------------------------------------------------------------
-            | First Content Of Topic
-            |--------------------------------------------------------------------------
-            */
+        $topicIds = $topics->pluck('id');
+
+        $progresses = UserProgress::where(
+            'user_id',
+            $userId
+        )
+            ->whereIn(
+                'topic_id',
+                $topicIds
+            )
+            ->get()
+            ->keyBy('topic_id');
+
+        $previousCompleted = true;
+
+        return $topics
+            ->map(function ($chapterTopic) use (
+                $topic,
+                $progresses,
+                &$previousCompleted
+            ) {
+
+                $progress = $progresses->get(
+                    $chapterTopic->id
+                );
+
+                $isCompleted = (bool) (
+                    $progress?->is_completed ?? false
+                );
+
+                $isUnlocked = $previousCompleted;
+
+                $previousCompleted = $isCompleted;
 
                 $firstContent = TopicContent::where(
                     'topic_id',
@@ -921,51 +1118,15 @@ class ContentController extends Controller {
                     ->orderBy('order', 'asc')
                     ->first();
 
-                /*
-            |--------------------------------------------------------------------------
-            | Topic Completion
-            |--------------------------------------------------------------------------
-            */
-
-                $chapterTopicContentIds = TopicContent::where(
-                    'topic_id',
-                    $chapterTopic->id
-                )
-                    ->where('status', true)
-                    ->pluck('id');
-
-                $totalContents = $chapterTopicContentIds->count();
-
-                $completedContents = UserContentProgress::where(
-                    'user_id',
-                    $userId
-                )
-                    ->whereIn(
-                        'topic_content_id',
-                        $chapterTopicContentIds
-                    )
-                    ->where('is_read', true)
-                    ->count();
-
-                $isCompleted = $totalContents > 0
-                    && $completedContents >= $totalContents;
-
-                /*
-            |--------------------------------------------------------------------------
-            | Unlock Logic
-            |--------------------------------------------------------------------------
-            */
-
-                $isUnlocked = true;
-
                 return [
                     'id' => $chapterTopic->id,
 
-                    // Always English
                     'title' => $chapterTopic->title,
 
-                    'is_current' => (int) $chapterTopic->id
-                        === (int) $topic->id,
+                    'is_current' => (
+                        (int) $chapterTopic->id ===
+                        (int) $topic->id
+                    ),
 
                     'is_unlocked' => $isUnlocked,
 
@@ -976,17 +1137,15 @@ class ContentController extends Controller {
             })
             ->values()
             ->toArray();
-        /*
-|--------------------------------------------------------------------------
-| Assessment
-|--------------------------------------------------------------------------
-*/
+    }
 
-        $assessmentData = null;
-
+    private function getTopicAssessment(
+        int $topicId,
+        int $userId
+    ): ?array {
         $assessment = Assessment::where(
             'assessmentable_id',
-            $topic->id
+            $topicId
         )
             ->where(
                 'assessmentable_type',
@@ -1002,102 +1161,50 @@ class ContentController extends Controller {
             )
             ->first();
 
-        if ($assessment) {
+        if (!$assessment) {
+            return null;
+        }
 
-            $totalQuestions = AssessmentQuestion::where(
+        $totalQuestions = AssessmentQuestion::where(
+            'assessment_id',
+            $assessment->id
+        )->count();
+
+        $attempt = AssessmentAttempt::where(
+            'user_id',
+            $userId
+        )
+            ->where(
                 'assessment_id',
                 $assessment->id
-            )->count();
-
-            /*
-    |--------------------------------------------------------------------------
-    | Assessment Attempt
-    |--------------------------------------------------------------------------
-    */
-
-            $assessmentStatus = 'not_attempted';
-            $obtainedMarks = null;
-            $percentage = null;
-            $attemptId = null;
-
-            $attempt = AssessmentAttempt::where(
-                'user_id',
-                $userId
             )
-                ->where(
-                    'assessment_id',
-                    $assessment->id
-                )
-                ->whereIn(
-                    'status',
-                    [
-                        'passed',
-                        'failed'
-                    ]
-                )
-                ->latest()
-                ->first();
+            ->whereIn(
+                'status',
+                [
+                    'passed',
+                    'failed',
+                ]
+            )
+            ->latest()
+            ->first();
 
-            if ($attempt) {
-                $assessmentStatus = $attempt->status;
-                $obtainedMarks = $attempt->score;
-                $percentage = $attempt->percentage;
-                $attemptId = $attempt->id;
-            }
+        return [
+            'id' => $assessment->id,
 
-            /*
-    |--------------------------------------------------------------------------
-    | Assessment Response
-    |--------------------------------------------------------------------------
-    */
+            'title' => $assessment->title,
 
-            $assessmentData = [
-                'id' => $assessment->id,
+            'status' => $attempt?->status
+                ?? 'not_attempted',
 
-                'title' => $assessment->title,
+            'total_questions' => $totalQuestions,
 
-                'status' => $assessmentStatus,
+            'passing_marks' => $assessment->passing_score,
 
-                'total_questions' => $totalQuestions,
+            'obtained_marks' => $attempt?->score,
 
-                'passing_marks' => $assessment->passing_score,
+            'percentage' => $attempt?->percentage,
 
-                'obtained_marks' => $obtainedMarks,
-
-                'percentage' => $percentage,
-
-                'attempt_id' => $attemptId,
-            ];
-        }
-        /*
-    |--------------------------------------------------------------------------
-    | Final Response
-    |--------------------------------------------------------------------------
-    */
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Content fetched successfully',
-
-            'data' => [
-                'current' => $currentData,
-
-                'topic' => $topicData,
-
-                'navigation' => [
-                    'has_previous' => $previous !== null,
-                    'previous_content_id' => $previous?->id,
-
-                    'has_next' => $next !== null,
-                    'next_content_id' => $next?->id,
-                ],
-
-                'learning_navigation' => [
-                    'current_topic_contents' => $currentTopicContents,
-                    'chapter_topics' => $chapterTopics,
-                    'assessment' => $assessmentData,
-                ],
-            ],
-        ]);
+            'attempt_id' => $attempt?->id,
+        ];
     }
 }
