@@ -358,26 +358,26 @@ class UserController extends Controller {
             Mail::raw(
                 "Hello {$user->name},
 
-Your Avante Medical account has been created successfully.
+                        Your Avante Medical account has been created successfully.
 
-You can login using the following email address:
+                        You can login using the following email address:
 
-Username / Email: {$user->email}
+                        Username / Email: {$user->email}
 
-Login URL:
-" . rtrim(env('FRONT_END_SALES_URL'), '/') . "
+                        Login URL:
+                        " . rtrim(env('FRONT_END_SALES_URL'), '/') . "
 
-To create your password, please use the secure link below:
+                        To create your password, please use the secure link below:
 
-Set Your Password:
-{$passwordSetupLink}
+                        Set Your Password:
+                        {$passwordSetupLink}
 
-This password setup link is valid for 60 minutes.
+                        This password setup link is valid for 60 minutes.
 
-If you did not expect this account, please contact the administrator.
+                        If you did not expect this account, please contact the administrator.
 
-Regards,
-Avante Medical Team",
+                        Regards,
+                        Avante Medical Team",
                 function ($message) use ($user) {
                     $message->to($user->email)
                         ->subject('Your Avante Medical Account Has Been Created');
@@ -711,5 +711,188 @@ Avante Medical Team",
             'status'  => true,
             'message' => 'Device reset successfully.'
         ]);
+    }
+
+
+    /*
+        |--------------------------------------------------------------------------
+        | MANUALLY VERIFY USER EMAIL
+        |--------------------------------------------------------------------------
+        */
+
+    public function verifyEmail($id) {
+        $user = User::findOrFail($id);
+
+        /*
+        |--------------------------------------------------------------------------
+        | ALREADY VERIFIED
+        |--------------------------------------------------------------------------
+        */
+
+        if ($user->email_verified_at) {
+            return response()->json([
+                'success' => true,
+                'message' => 'User email is already verified.',
+                'data' => [
+                    'id' => $user->id,
+                    'email' => $user->email,
+                    'email_verified_at' => $user->email_verified_at,
+                ],
+            ]);
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | VERIFY EMAIL
+        |--------------------------------------------------------------------------
+        */
+
+        $user->email_verified_at = Carbon::now();
+        $user->save();
+
+        /*
+        |--------------------------------------------------------------------------
+        | RESPONSE
+        |--------------------------------------------------------------------------
+        */
+
+        return response()->json([
+            'success' => true,
+            'message' => 'User email verified successfully.',
+            'data' => [
+                'id' => $user->id,
+                'email' => $user->email,
+                'email_verified_at' => $user->email_verified_at,
+            ],
+        ]);
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | RESEND VERIFICATION / PASSWORD SETUP LINK
+    |--------------------------------------------------------------------------
+    */
+
+    public function resendVerification($id) {
+        $user = User::findOrFail($id);
+
+        /*
+        |--------------------------------------------------------------------------
+        | GENERATE NEW PASSWORD SETUP TOKEN
+        |--------------------------------------------------------------------------
+        */
+
+        $token = Str::random(64);
+
+        DB::table('password_reset_tokens')->updateOrInsert(
+            [
+                'email' => $user->email,
+            ],
+            [
+                'token' => $token,
+                'created_at' => Carbon::now(),
+            ]
+        );
+
+        /*
+        |--------------------------------------------------------------------------
+        | PASSWORD SETUP LINK
+        |--------------------------------------------------------------------------
+        */
+
+        $passwordSetupLink = rtrim(
+            env('FRONT_END_SALES_URL'),
+            '/'
+        ) . "/reset-password?token={$token}";
+
+        /*
+        |--------------------------------------------------------------------------
+        | APPLY SMTP CONFIGURATION
+        |--------------------------------------------------------------------------
+        */
+
+        $smtp = \App\Models\SmtpSetting::first();
+
+        if ($smtp) {
+            $this->smtpService->applyConfig($smtp);
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | SEND EMAIL
+        |--------------------------------------------------------------------------
+        */
+
+        try {
+
+            Mail::raw(
+                "Hello {$user->name},
+
+                Your Avante Medical account has been created successfully.
+
+                You can login using the following email address:
+
+                Username / Email: {$user->email}
+
+                Login URL:
+                " . rtrim(env('FRONT_END_SALES_URL'), '/') . "
+
+                To create or reset your password, please use the secure link below:
+
+                Set Your Password:
+                {$passwordSetupLink}
+
+                This password setup link is valid for 60 minutes.
+
+                If you did not expect this email, please contact the administrator.
+
+                Regards,
+                Avante Medical Team",
+                function ($message) use ($user) {
+
+                    $message->to($user->email)
+                        ->subject(
+                            'Avante Medical - Password Setup Link'
+                        );
+                }
+            );
+
+            /*
+        |--------------------------------------------------------------------------
+        | AUDIT LOG
+        |--------------------------------------------------------------------------
+        */
+
+            audit_log(
+                auth()->id(),
+                'resend_verification',
+                "Password setup link resent for user {$user->id}"
+            );
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Password setup link has been sent successfully.',
+                'data' => [
+                    'id' => $user->id,
+                    'email' => $user->email,
+                    'expires_in' => '60 minutes',
+                ],
+            ]);
+        } catch (\Throwable $e) {
+
+            \Log::error(
+                'User verification email failed',
+                [
+                    'user_id' => $user->id,
+                    'email' => $user->email,
+                    'error' => $e->getMessage(),
+                ]
+            );
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Unable to send verification email.',
+            ], 500);
+        }
     }
 }

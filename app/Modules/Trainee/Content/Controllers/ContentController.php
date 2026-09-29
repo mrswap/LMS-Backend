@@ -976,12 +976,11 @@ class ContentController extends Controller {
             })
             ->values()
             ->toArray();
-
         /*
-    |--------------------------------------------------------------------------
-    | Assessment
-    |--------------------------------------------------------------------------
-    */
+|--------------------------------------------------------------------------
+| Assessment
+|--------------------------------------------------------------------------
+*/
 
         $assessmentData = null;
 
@@ -989,27 +988,87 @@ class ContentController extends Controller {
             'assessmentable_id',
             $topic->id
         )
-            ->where('assessmentable_type', Topic::class)
-            ->where('type', 'topic')
-            ->where('status', true)
+            ->where(
+                'assessmentable_type',
+                Topic::class
+            )
+            ->where(
+                'type',
+                'topic'
+            )
+            ->where(
+                'status',
+                true
+            )
             ->first();
 
         if ($assessment) {
+
             $totalQuestions = AssessmentQuestion::where(
                 'assessment_id',
                 $assessment->id
             )->count();
 
+            /*
+    |--------------------------------------------------------------------------
+    | Assessment Attempt
+    |--------------------------------------------------------------------------
+    */
+
+            $assessmentStatus = 'not_attempted';
+            $obtainedMarks = null;
+            $percentage = null;
+            $attemptId = null;
+
+            $attempt = AssessmentAttempt::where(
+                'user_id',
+                $userId
+            )
+                ->where(
+                    'assessment_id',
+                    $assessment->id
+                )
+                ->whereIn(
+                    'status',
+                    [
+                        'passed',
+                        'failed'
+                    ]
+                )
+                ->latest()
+                ->first();
+
+            if ($attempt) {
+                $assessmentStatus = $attempt->status;
+                $obtainedMarks = $attempt->score;
+                $percentage = $attempt->percentage;
+                $attemptId = $attempt->id;
+            }
+
+            /*
+    |--------------------------------------------------------------------------
+    | Assessment Response
+    |--------------------------------------------------------------------------
+    */
+
             $assessmentData = [
                 'id' => $assessment->id,
+
                 'title' => $assessment->title,
-                'status' => 'ready',
+
+                'status' => $assessmentStatus,
+
                 'total_questions' => $totalQuestions,
+
                 'passing_marks' => $assessment->passing_score,
-                'obtained_marks' => null,
+
+                'obtained_marks' => $obtainedMarks,
+
+                'percentage' => $percentage,
+
+                'attempt_id' => $attemptId,
             ];
         }
-
         /*
     |--------------------------------------------------------------------------
     | Final Response

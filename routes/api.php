@@ -111,6 +111,8 @@ Route::prefix('v1/admin')->group(function () {
         Route::delete('users/{id}', [UserController::class, 'destroy'])->middleware('permission:users.delete');
         Route::post('users/{id}/toggle-status', [UserController::class, 'toggleStatus'])->middleware('permission:users.status');
         Route::post('users/{id}/reset-device', [UserController::class, 'resetDevice'])->middleware('permission:users.reset-device');
+        Route::post('users/{id}/verify-email', [UserController::class, 'verifyEmail'])->middleware('permission:users.verify-email');
+        Route::post('users/{id}/resend-verification',  [UserController::class, 'resendVerification'])->middleware('permission:users.resend-verification');
         /*
         |--------------------------------------------------------------------------
         | PROGRAMS

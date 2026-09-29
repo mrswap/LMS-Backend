@@ -424,17 +424,39 @@ class ProgressController extends Controller {
             $attempts = 0;
             $passed = false;
 
+            $attempts = 0;
+            $passed = false;
+            $passedAttemptId = null;
+
             if ($assessment) {
 
-                $attempts = \App\Models\AssessmentAttempt::where('assessment_id', $assessment->id)
+                $attemptQuery = \App\Models\AssessmentAttempt::where(
+                    'assessment_id',
+                    $assessment->id
+                )
                     ->where('user_id', $userId)
-                    ->whereIn('status', ['passed', 'failed'])
-                    ->count();
+                    ->whereIn('status', ['passed', 'failed']);
 
-                $passed = \App\Models\AssessmentAttempt::where('assessment_id', $assessment->id)
-                    ->where('user_id', $userId)
+                /*
+    |--------------------------------------------------------------------------
+    | TOTAL ATTEMPTS
+    |--------------------------------------------------------------------------
+    */
+                $attempts = (clone $attemptQuery)->count();
+
+                /*
+    |--------------------------------------------------------------------------
+    | PASSED ATTEMPT
+    |--------------------------------------------------------------------------
+    */
+                $passedAttempt = (clone $attemptQuery)
                     ->where('status', 'passed')
-                    ->exists();
+                    ->latest('id')
+                    ->first();
+
+                $passed = $passedAttempt !== null;
+
+                $passedAttemptId = $passedAttempt?->id;
             }
 
             return [
