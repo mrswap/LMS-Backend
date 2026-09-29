@@ -577,12 +577,97 @@ class ContentController extends Controller {
         ]);
     }
 
-    /*
+
+
+    private function checkTopicAccess(
+        int $userId,
+        int $topicId
+    ): array {
+        $topic = Topic::find($topicId);
+
+        if (!$topic) {
+            return [
+                'allowed' => false,
+                'progress' => null,
+            ];
+        }
+
+        $progress = UserProgress::where(
+            'user_id',
+            $userId
+        )
+            ->where(
+                'topic_id',
+                $topicId
+            )
+            ->first();
+
+        /*
     |--------------------------------------------------------------------------
-    | SINGLE CONTENT
+    | FIRST TOPIC
     |--------------------------------------------------------------------------
     */
 
+        $previousTopic = Topic::where(
+            'chapter_id',
+            $topic->chapter_id
+        )
+            ->where('status', true)
+            ->where(function ($query) {
+                $query->where('publish_status', 'published')
+                    ->orWhereNull('publish_status');
+            })
+            ->where(
+                'id',
+                '<',
+                $topicId
+            )
+            ->orderBy('id', 'desc')
+            ->first();
+
+        if (!$previousTopic) {
+            return [
+                'allowed' => true,
+                'progress' => $progress,
+            ];
+        }
+
+        /*
+    |--------------------------------------------------------------------------
+    | CHECK PREVIOUS TOPIC
+    |--------------------------------------------------------------------------
+    */
+
+        $previousProgress = UserProgress::where(
+            'user_id',
+            $userId
+        )
+            ->where(
+                'topic_id',
+                $previousTopic->id
+            )
+            ->first();
+
+        if (!$previousProgress || !$previousProgress->is_completed) {
+            return [
+                'allowed' => false,
+                'progress' => $progress,
+            ];
+        }
+
+        return [
+            'allowed' => true,
+            'progress' => $progress,
+        ];
+    }
+
+
+
+    /*
+|--------------------------------------------------------------------------
+| SINGLE CONTENT
+|--------------------------------------------------------------------------
+*/
     public function single(Request $request, $topic_id, $content_id) {
         AuditService::log(
             'content_viewed',
@@ -705,7 +790,9 @@ class ContentController extends Controller {
             )
             ->first();
 
-        $isRead = (bool) ($currentProgress?->is_read ?? false);
+        $isRead = (bool) (
+            $currentProgress?->is_read ?? false
+        );
 
         $readAt = $currentProgress?->read_at;
 
@@ -781,7 +868,7 @@ class ContentController extends Controller {
             'slug' => $current->slug ?? null,
             'type' => $current->type,
 
-            // Always English
+            // Always English content
             'content' => $current->content,
             'body' => $current->content,
 
@@ -860,6 +947,16 @@ class ContentController extends Controller {
 
         /*
     |--------------------------------------------------------------------------
+    | ALL CONTENTS READ
+    |--------------------------------------------------------------------------
+    */
+
+        $isAllRead = $totalContents > 0
+            ? $totalContents === $readContents
+            : true;
+
+        /*
+    |--------------------------------------------------------------------------
     | TOPIC COMPLETION
     |--------------------------------------------------------------------------
     */
@@ -878,6 +975,7 @@ class ContentController extends Controller {
             'completed_contents' => $readContents,
             'progress' => $topicProgress,
 
+            'is_all_read' => $isAllRead,
             'is_completed' => $isCompleted,
         ];
 
@@ -934,9 +1032,15 @@ class ContentController extends Controller {
     |--------------------------------------------------------------------------
     */
 
+
+        $isAllRead = $totalContents > 0
+            ? $totalContents === $readContents
+            : true;
+
         $assessmentData = $this->getTopicAssessment(
             $topic_id,
-            $userId
+            $userId,
+            $isAllRead
         );
 
         /*
@@ -951,9 +1055,27 @@ class ContentController extends Controller {
 
             'data' => [
 
+                /*
+            |--------------------------------------------------------------------------
+            | CURRENT CONTENT
+            |--------------------------------------------------------------------------
+            */
+
                 'current' => $currentData,
 
+                /*
+            |--------------------------------------------------------------------------
+            | TOPIC
+            |--------------------------------------------------------------------------
+            */
+
                 'topic' => $topicData,
+
+                /*
+            |--------------------------------------------------------------------------
+            | CONTENT NAVIGATION
+            |--------------------------------------------------------------------------
+            */
 
                 'navigation' => [
                     'has_previous' => $previous !== null,
@@ -963,7 +1085,14 @@ class ContentController extends Controller {
                     'next_content_id' => $next?->id,
                 ],
 
+                /*
+            |--------------------------------------------------------------------------
+            | LEARNING NAVIGATION
+            |--------------------------------------------------------------------------
+            */
+
                 'learning_navigation' => [
+
                     'current_topic_contents' => $currentTopicContents,
 
                     'chapter_topics' => $chapterTopics,
@@ -974,175 +1103,17 @@ class ContentController extends Controller {
         ]);
     }
 
-    private function checkTopicAccess(
-        int $userId,
-        int $topicId
-    ): array {
-        $topic = Topic::find($topicId);
-
-        if (!$topic) {
-            return [
-                'allowed' => false,
-                'progress' => null,
-            ];
-        }
-
-        $progress = UserProgress::where(
-            'user_id',
-            $userId
-        )
-            ->where(
-                'topic_id',
-                $topicId
-            )
-            ->first();
-
-        /*
-    |--------------------------------------------------------------------------
-    | FIRST TOPIC
-    |--------------------------------------------------------------------------
-    */
-
-        $previousTopic = Topic::where(
-            'chapter_id',
-            $topic->chapter_id
-        )
-            ->where('status', true)
-            ->where(function ($query) {
-                $query->where('publish_status', 'published')
-                    ->orWhereNull('publish_status');
-            })
-            ->where(
-                'id',
-                '<',
-                $topicId
-            )
-            ->orderBy('id', 'desc')
-            ->first();
-
-        if (!$previousTopic) {
-            return [
-                'allowed' => true,
-                'progress' => $progress,
-            ];
-        }
-
-        /*
-    |--------------------------------------------------------------------------
-    | CHECK PREVIOUS TOPIC
-    |--------------------------------------------------------------------------
-    */
-
-        $previousProgress = UserProgress::where(
-            'user_id',
-            $userId
-        )
-            ->where(
-                'topic_id',
-                $previousTopic->id
-            )
-            ->first();
-
-        if (!$previousProgress || !$previousProgress->is_completed) {
-            return [
-                'allowed' => false,
-                'progress' => $progress,
-            ];
-        }
-
-        return [
-            'allowed' => true,
-            'progress' => $progress,
-        ];
-    }
-
-    private function getChapterTopics(
-        Topic $topic,
-        int $userId
-    ): array {
-        $topics = Topic::where(
-            'chapter_id',
-            $topic->chapter_id
-        )
-            ->where('status', true)
-            ->where(function ($query) {
-                $query->where('publish_status', 'published')
-                    ->orWhereNull('publish_status');
-            })
-            ->orderBy('id', 'asc')
-            ->get();
-
-        $topicIds = $topics->pluck('id');
-
-        $progresses = UserProgress::where(
-            'user_id',
-            $userId
-        )
-            ->whereIn(
-                'topic_id',
-                $topicIds
-            )
-            ->get()
-            ->keyBy('topic_id');
-
-        $previousCompleted = true;
-
-        return $topics
-            ->map(function ($chapterTopic) use (
-                $topic,
-                $progresses,
-                &$previousCompleted
-            ) {
-
-                $progress = $progresses->get(
-                    $chapterTopic->id
-                );
-
-                $isCompleted = (bool) (
-                    $progress?->is_completed ?? false
-                );
-
-                $isUnlocked = $previousCompleted;
-
-                $previousCompleted = $isCompleted;
-
-                $firstContent = TopicContent::where(
-                    'topic_id',
-                    $chapterTopic->id
-                )
-                    ->where('status', true)
-                    ->where(function ($query) {
-                        $query->where('publish_status', 'published')
-                            ->orWhereNull('publish_status');
-                    })
-                    ->orderBy('order', 'asc')
-                    ->first();
-
-                return [
-                    'id' => $chapterTopic->id,
-
-                    'title' => $chapterTopic->title,
-
-                    'is_current' => (
-                        (int) $chapterTopic->id ===
-                        (int) $topic->id
-                    ),
-
-                    'is_unlocked' => $isUnlocked,
-
-                    'is_completed' => $isCompleted,
-
-                    'first_content_id' => $firstContent?->id,
-                ];
-            })
-            ->values()
-            ->toArray();
-    }
-
     private function getTopicAssessment(
         int $topicId,
-        int $userId
+        int $userId,
+        bool $isAllRead
     ): ?array {
+        /*
+    |--------------------------------------------------------------------------
+    | GET ASSESSMENT
+    |--------------------------------------------------------------------------
+    */
+
         $assessment = Assessment::where(
             'assessmentable_id',
             $topicId
@@ -1165,10 +1136,22 @@ class ContentController extends Controller {
             return null;
         }
 
+        /*
+    |--------------------------------------------------------------------------
+    | TOTAL QUESTIONS
+    |--------------------------------------------------------------------------
+    */
+
         $totalQuestions = AssessmentQuestion::where(
             'assessment_id',
             $assessment->id
         )->count();
+
+        /*
+    |--------------------------------------------------------------------------
+    | LATEST COMPLETED ATTEMPT
+    |--------------------------------------------------------------------------
+    */
 
         $attempt = AssessmentAttempt::where(
             'user_id',
@@ -1185,16 +1168,66 @@ class ContentController extends Controller {
                     'failed',
                 ]
             )
-            ->latest()
+            ->latest('id')
             ->first();
+
+        /*
+    |--------------------------------------------------------------------------
+    | DETERMINE STATUS
+    |--------------------------------------------------------------------------
+    */
+
+        if ($attempt) {
+
+            $status = $attempt->status;
+        } elseif ($isAllRead) {
+
+            /*
+         * All topic contents are read.
+         * Quiz is ready to start.
+         */
+
+            $status = 'ready';
+        } else {
+
+            /*
+         * Content is still pending.
+         * Quiz is not ready yet.
+         */
+
+            $status = 'locked';
+        }
+
+        /*
+    |--------------------------------------------------------------------------
+    | COMPLETED
+    |--------------------------------------------------------------------------
+    */
+
+        $isCompleted = $attempt &&
+            $attempt->status === 'passed';
+
+        /*
+    |--------------------------------------------------------------------------
+    | QUIZ AVAILABLE
+    |--------------------------------------------------------------------------
+    */
+
+        $isQuizAvailable = $isAllRead &&
+            !$isCompleted;
+
+        /*
+    |--------------------------------------------------------------------------
+    | RESPONSE
+    |--------------------------------------------------------------------------
+    */
 
         return [
             'id' => $assessment->id,
 
             'title' => $assessment->title,
 
-            'status' => $attempt?->status
-                ?? 'not_attempted',
+            'status' => $status,
 
             'total_questions' => $totalQuestions,
 
@@ -1205,6 +1238,165 @@ class ContentController extends Controller {
             'percentage' => $attempt?->percentage,
 
             'attempt_id' => $attempt?->id,
+
+            'is_quiz_available' => (bool) $isQuizAvailable,
+
+            'is_completed' => (bool) $isCompleted,
         ];
+    }
+
+
+    private function getChapterTopics(
+        Topic $topic,
+        int $userId
+    ): array {
+        /*
+    |--------------------------------------------------------------------------
+    | GET CHAPTER TOPICS
+    |--------------------------------------------------------------------------
+    */
+
+        $topics = Topic::where(
+            'chapter_id',
+            $topic->chapter_id
+        )
+            ->where(
+                'status',
+                true
+            )
+            ->where(function ($query) {
+                $query->where(
+                    'publish_status',
+                    'published'
+                )
+                    ->orWhereNull('publish_status');
+            })
+            ->orderBy(
+                'id',
+                'asc'
+            )
+            ->get();
+
+        /*
+    |--------------------------------------------------------------------------
+    | GET USER PROGRESS
+    |--------------------------------------------------------------------------
+    */
+
+        $topicIds = $topics->pluck('id');
+
+        $progresses = UserProgress::where(
+            'user_id',
+            $userId
+        )
+            ->whereIn(
+                'topic_id',
+                $topicIds
+            )
+            ->get()
+            ->keyBy('topic_id');
+
+        /*
+    |--------------------------------------------------------------------------
+    | BUILD TOPIC LIST
+    |--------------------------------------------------------------------------
+    */
+
+        $previousCompleted = true;
+
+        return $topics
+            ->map(function ($chapterTopic) use (
+                $topic,
+                $progresses,
+                &$previousCompleted
+            ) {
+
+                $progress = $progresses->get(
+                    $chapterTopic->id
+                );
+
+                $isCompleted = (bool) (
+                    $progress?->is_completed ?? false
+                );
+
+                /*
+            |--------------------------------------------------------------------------
+            | UNLOCK LOGIC
+            |--------------------------------------------------------------------------
+            |
+            | Topic 1:
+            | previousCompleted = true
+            | => unlocked
+            |
+            | Topic 2:
+            | previousCompleted = Topic 1 completed
+            |
+            | Topic 3:
+            | previousCompleted = Topic 2 completed
+            |
+            */
+
+                $isUnlocked = $previousCompleted;
+
+                /*
+            | Current topic becomes the previous
+            | topic for the next iteration.
+            */
+
+                $previousCompleted = $isCompleted;
+
+                /*
+            |--------------------------------------------------------------------------
+            | FIRST CONTENT
+            |--------------------------------------------------------------------------
+            */
+
+                $firstContent = TopicContent::where(
+                    'topic_id',
+                    $chapterTopic->id
+                )
+                    ->where(
+                        'status',
+                        true
+                    )
+                    ->where(function ($query) {
+                        $query->where(
+                            'publish_status',
+                            'published'
+                        )
+                            ->orWhereNull('publish_status');
+                    })
+                    ->orderBy(
+                        'order',
+                        'asc'
+                    )
+                    ->first();
+
+                /*
+            |--------------------------------------------------------------------------
+            | RESPONSE
+            |--------------------------------------------------------------------------
+            */
+
+                return [
+                    'id' => $chapterTopic->id,
+
+                    
+                    'title' => $chapterTopic->title,
+
+                    'is_current' => (
+                        (int) $chapterTopic->id ===
+                        (int) $topic->id
+                    ),
+
+                    'is_unlocked' => $isUnlocked,
+
+                    'is_completed' => $isCompleted,
+
+                    'first_content_id' => $firstContent?->id,
+                ];
+            })
+            ->values()
+            ->toArray();
     }
 }
